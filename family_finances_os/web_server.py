@@ -333,7 +333,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v3';
+const CACHE_NAME = 'ffos-shell-v5';
 
 const STATIC_SHELL = [
 
@@ -3279,6 +3279,9 @@ self.addEventListener('fetch', (event) => {
 
   <meta name="apple-mobile-web-app-title" content="Finances OS">
 
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="/manifest.json">
 
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
