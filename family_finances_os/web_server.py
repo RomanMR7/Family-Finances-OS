@@ -3618,7 +3618,147 @@ self.addEventListener('fetch', (event) => {
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: var(--bg); color: var(--text); min-height: 100vh; padding: calc(16px + env(safe-area-inset-top)) 16px calc(80px + env(safe-area-inset-bottom)) 16px; transition: background-color 0.25s, color 0.25s; }
     .container { max-width: 1050px; margin: 0 auto; }
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+        .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0 14px 0;
+      margin-bottom: 20px;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg);
+      backdrop-filter: blur(12px);
+      transition: background-color 0.25s, border-color 0.25s;
+    }
+    .brand-block {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .brand-icon {
+      font-size: 26px;
+      line-height: 1;
+      filter: drop-shadow(0 2px 8px rgba(255, 100, 51, 0.45));
+    }
+    .brand-title {
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+    }
+    .brand-tag {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .family-scope-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.28);
+      color: #a5b4fc;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+    .btn-icon-round {
+      padding: 6px 12px !important;
+      border-radius: 9999px !important;
+      font-size: 13px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 6px !important;
+      cursor: pointer;
+      transition: all 0.2s ease !important;
+    }
+    .btn-icon-round:hover {
+      transform: translateY(-1px);
+    }
+    .status-indicator-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 11px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .status-indicator-btn:hover {
+      background: rgba(16, 185, 129, 0.22);
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+      animation: pulseDot 2.5s infinite;
+    }
+    @keyframes pulseDot {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .desktop-only-text {
+      display: inline;
+    }
+
+    /* Privacy Mask Mode */
+    body.privacy-masked .stat-val,
+    body.privacy-masked .overview-balance-val,
+    body.privacy-masked #overviewAccountsBody td:last-child {
+      filter: blur(7px);
+      user-select: none;
+      transition: filter 0.2s ease;
+    }
+    body.privacy-masked .stat-val:active,
+    body.privacy-masked .stat-val:hover,
+    body.privacy-masked #overviewAccountsBody td:last-child:active,
+    body.privacy-masked #overviewAccountsBody td:last-child:hover {
+      filter: none;
+    }
+
+    /* Settings Sheet Modal */
+    .settings-section {
+      margin-bottom: 18px;
+    }
+    .settings-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
     .title { font-size: 20px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
     .badge { background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; border: 1px solid rgba(59, 130, 246, 0.3); }
     .nav-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -3819,18 +3959,37 @@ self.addEventListener('fetch', (event) => {
         max-width: 100% !important;
       }
       .header {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 10px !important;
-        padding-bottom: 10px !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 8px !important;
+        padding: 8px 0 12px 0 !important;
       }
       .header > div:last-child {
-        width: 100% !important;
-        justify-content: flex-start !important;
-        overflow-x: auto !important;
+        width: auto !important;
+        justify-content: flex-end !important;
+        overflow-x: visible !important;
         flex-wrap: nowrap !important;
-        padding-bottom: 4px !important;
-        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0 !important;
+      }
+      .desktop-only-text {
+        display: none !important;
+      }
+      .family-scope-chip {
+        display: none !important;
+      }
+      .settings-sheet {
+        position: fixed !important;
+        bottom: 0 !important;
+        top: auto !important;
+        left: 0 !important;
+        right: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        border-radius: 24px 24px 0 0 !important;
+        max-height: 85vh !important;
+        margin: 0 !important;
+        box-shadow: 0 -10px 40px rgba(0,0,0,0.6) !important;
       }
       .nav-tabs {
         gap: 4px !important;
@@ -3974,37 +4133,126 @@ self.addEventListener('fetch', (event) => {
   <div class="container">
 
     <div class="header">
-
-      <div>
-
-        <h1 class="title">Family Finances OS</h1>
-
-        <p style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">Автономная защищенная финансовая система семьи</p>
-
+      <div class="brand-block">
+        <div class="brand-logo" onclick="switchTab('tab-overview')">
+          <span class="brand-icon">💎</span>
+          <div class="brand-text">
+            <span class="brand-title">FamilyOS</span>
+            <span class="brand-tag">Семейный бюджет</span>
+          </div>
+        </div>
+        <div class="family-scope-chip" title="Текущий режим: общий семейный бюджет">
+          <span>👨‍👩‍👧</span>
+          <span>Вся семья</span>
+        </div>
       </div>
 
-      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-
-        <button id="themeToggleBtn" class="btn btn-secondary" onclick="toggleTheme()" title="Переключить тему оформления" style="padding: 4px 12px; font-size: 12px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-          <span id="themeToggleIcon">☀️</span> <span id="themeToggleText">Светлая</span>
+      <div class="header-actions">
+        <!-- Privacy Masking Button (Mask balances in public) -->
+        <button id="btnPrivacyToggle" class="btn btn-secondary btn-icon-round hidden" onclick="togglePrivacyMask()" title="Скрыть/показать суммы (режим приватности)">
+          <span id="privacyIcon">👁️</span>
         </button>
-        <span class="badge" id="storageBadge">Шифрование: AES-256-GCM</span>
 
-        <span class="badge" id="offlineModeBadge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight:600;">🏠 100% Локально</span>
-        <span class="badge" id="localVaultBadge" onclick="openVaultModal()" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); font-weight:600; cursor: pointer;" title="Данные сохранены локально в памяти телефона. Нажмите для резервных копий">💾 На телефоне (<span id="vaultTime">только что</span>)</span>
+        <!-- Discreet Status Dot -->
+        <button id="btnStatusIndicator" class="status-indicator-btn hidden" onclick="openSettingsModal()" title="Система защищена AES-256 • Данные на телефоне">
+          <span class="status-dot"></span>
+          <span class="status-dot-label desktop-only-text">Защищено</span>
+        </button>
 
-        <span class="badge hidden" id="syncBadge" style="background:#047857; cursor:pointer;" onclick="triggerLanSync()" title="Нажмите для синхронизации в домашней сети">📡 P2P: 0 пиров</span>
+        <!-- Theme Toggle -->
+        <button id="themeToggleBtn" class="btn btn-secondary btn-icon-round" onclick="toggleTheme()" title="Переключить тему оформления">
+          <span id="themeToggleIcon">☀️</span> <span id="themeToggleText" class="desktop-only-text">Светлая</span>
+        </button>
 
-        <button class="btn btn-secondary hidden" id="btnHeaderQrPair" style="padding: 4px 10px; font-size: 12px; background: #065f46; color: #a7f3d0;" onclick="openQrPairModal()" title="Подключить смартфон супруги или планшет через QR-код">📱 Подключить телефон</button>
-
-        <button class="btn btn-secondary hidden" id="btnInstallPwa" style="padding: 4px 10px; font-size: 12px; background: #1e3a8a; color: #93c5fd;" onclick="installPwaPrompt()" title="Установить приложение на телефон или компьютер">📥 Установить</button>
-
-        <button class="btn btn-secondary hidden" id="btnHeaderLock" style="padding: 4px 10px; font-size: 12px;" onclick="submitLock()">🔒 Запереть</button>
-
-        <button class="btn btn-secondary hidden" id="btnLogout" style="padding: 4px 10px; font-size: 12px;" onclick="logout()">Выйти</button>
-
+        <!-- Settings & Security Modal Trigger -->
+        <button id="btnOpenSettings" class="btn btn-secondary btn-icon-round hidden" onclick="openSettingsModal()" title="Настройки и безопасность">
+          <span>⚙️</span>
+          <span class="desktop-only-text">Настройки</span>
+        </button>
       </div>
+    </div>
 
+    <!-- Modal: Unified Settings & Security Sheet -->
+    <div id="settingsModal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div class="card settings-sheet" style="max-width: 500px; width: 100%; border-color: rgba(255,255,255,0.12); position: relative; max-height: 90vh; overflow-y: auto; padding: 22px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">⚙️</span>
+            <h3 style="margin: 0; font-size: 18px; font-weight: 700;">Настройки и безопасность</h3>
+          </div>
+          <button class="btn btn-secondary" onclick="closeSettingsModal()" style="padding: 4px 10px; font-size: 14px; border-radius: 50%;">✕</button>
+        </div>
+
+        <!-- Section 1: User & Family Context -->
+        <div class="settings-section">
+          <div class="settings-section-title">👤 Профиль и семейный доступ</div>
+          <div style="background: var(--card-hover); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 38px; height: 38px; border-radius: 50%; background: var(--primary-gradient); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff;">
+                👑
+              </div>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;" id="settingsUserName">Глава семьи</div>
+                <div style="font-size: 11px; color: var(--text-muted);" id="settingsUserRole">Администратор (admin)</div>
+              </div>
+            </div>
+            <button class="btn btn-secondary" id="btnLogout" onclick="logout()" style="padding: 6px 12px; font-size: 12px; color: #ef4444; border-color: rgba(239,68,68,0.3);">
+              🚪 Выйти
+            </button>
+          </div>
+          <button class="btn btn-secondary" id="btnHeaderQrPair" onclick="closeSettingsModal(); openQrPairModal();" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px;">
+            📱 Подключить телефон супруги (QR-код)
+          </button>
+        </div>
+
+        <!-- Section 2: Security & Protection -->
+        <div class="settings-section">
+          <div class="settings-section-title">🛡️ Защита данных и шифрование</div>
+          <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; font-size: 12px; line-height: 1.5;">
+            <div style="font-weight: 700; color: #34d399; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <span>🔒</span> <span>100% Локально и зашифровано</span>
+            </div>
+            <div style="color: var(--text-muted);">
+              База защищена шифрованием <strong style="color: var(--text);">AES-256-GCM</strong> (PBKDF2 600 000 итераций). Ни один сторонний сервер не имеет доступа к вашим чекам и балансам.
+            </div>
+            <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="badge" id="storageBadge" style="font-size: 10px; padding: 2px 8px;">AES-256-GCM / Память</span>
+              <span class="badge" id="offlineModeBadge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 10px; padding: 2px 8px;">🏠 100% Локально</span>
+              <span class="badge hidden" id="syncBadge" style="font-size: 10px; padding: 2px 8px;">📡 P2P: 0 пиров</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" id="btnHeaderLock" onclick="closeSettingsModal(); submitLock();" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: #fbbf24; border-color: rgba(251,191,36,0.3);">
+            🔒 Заблокировать экран мастер-паролем
+          </button>
+        </div>
+
+        <!-- Section 3: Vault & Backup Storage -->
+        <div class="settings-section">
+          <div class="settings-section-title">💾 Резервные копии и хранилище</div>
+          <div id="settingsVaultInfo" style="margin-bottom: 8px;"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-secondary" onclick="syncVaultNow(); updateSettingsModalInfo();" style="display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; padding: 8px;">
+              🔄 Сохранить в память
+            </button>
+            <button class="btn btn-secondary" onclick="downloadVaultBackup()" style="display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; padding: 8px;">
+              📥 Скачать .db
+            </button>
+          </div>
+          <label class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; padding: 8px; cursor: pointer; margin-bottom: 0;">
+            📂 Восстановить из файла .db
+            <input type="file" id="settingsVaultFileInput" accept=".db,.sqlite,.sqlite3" style="display: none;" onchange="restoreVaultFromFile(this.files[0])">
+          </label>
+          <span class="badge hidden" id="localVaultBadge" onclick="openVaultModal()"><span id="vaultTime"></span></span>
+        </div>
+
+        <!-- Section 4: Preferences & App Install -->
+        <div class="settings-section" style="margin-bottom: 0;">
+          <div class="settings-section-title">📱 Установка на телефон</div>
+          <button class="btn btn-secondary" id="btnInstallPwa" onclick="installPwaPrompt()" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; background: rgba(30, 58, 138, 0.4); color: #93c5fd; border-color: rgba(59, 130, 246, 0.4);">
+            📥 Установить приложение на телефон (PWA)
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal: Local Phone Database Vault -->
@@ -7621,14 +7869,13 @@ self.addEventListener('fetch', (event) => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
       });
-      const nav = document.getElementById('mobileBottomNav');
-      if (nav) nav.classList.add('hidden');
-      const btnLock = document.getElementById('btnHeaderLock');
-      if (btnLock) btnLock.classList.add('hidden');
-      const btnLogout = document.getElementById('btnLogout');
-      if (btnLogout) btnLogout.classList.add('hidden');
-      const btnQr = document.getElementById('btnHeaderQrPair');
-      if (btnQr) btnQr.classList.add('hidden');
+      document.getElementById('mobileBottomNav')?.classList.add('hidden');
+      document.getElementById('btnOpenSettings')?.classList.add('hidden');
+      document.getElementById('btnPrivacyToggle')?.classList.add('hidden');
+      document.getElementById('btnStatusIndicator')?.classList.add('hidden');
+      document.getElementById('btnHeaderLock')?.classList.add('hidden');
+      document.getElementById('btnLogout')?.classList.add('hidden');
+      document.getElementById('btnHeaderQrPair')?.classList.add('hidden');
     }
 
     function showScreen(screenId) {
@@ -7636,12 +7883,13 @@ self.addEventListener('fetch', (event) => {
       const target = document.getElementById(screenId);
       if (target) target.classList.remove('hidden');
       if (screenId === 'mainDashboard') {
-        const nav = document.getElementById('mobileBottomNav');
-        if (nav) nav.classList.remove('hidden');
-        const btnLock = document.getElementById('btnHeaderLock');
-        if (btnLock) btnLock.classList.remove('hidden');
-        const btnLogout = document.getElementById('btnLogout');
-        if (btnLogout) btnLogout.classList.remove('hidden');
+        document.getElementById('mobileBottomNav')?.classList.remove('hidden');
+        document.getElementById('btnOpenSettings')?.classList.remove('hidden');
+        document.getElementById('btnPrivacyToggle')?.classList.remove('hidden');
+        document.getElementById('btnStatusIndicator')?.classList.remove('hidden');
+        document.getElementById('btnHeaderLock')?.classList.remove('hidden');
+        document.getElementById('btnLogout')?.classList.remove('hidden');
+        document.getElementById('btnHeaderQrPair')?.classList.remove('hidden');
       }
     }
 
@@ -7664,6 +7912,50 @@ self.addEventListener('fetch', (event) => {
 
     function showLoginFallback() {
       showScreen('loginScreen');
+    }
+
+    function openSettingsModal() {
+      const modal = document.getElementById('settingsModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      updateSettingsModalInfo();
+    }
+
+    function closeSettingsModal() {
+      const modal = document.getElementById('settingsModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function togglePrivacyMask() {
+      const isMasked = document.body.classList.toggle('privacy-masked');
+      localStorage.setItem('ffos_privacy_masked', isMasked ? 'true' : 'false');
+      const icon = document.getElementById('privacyIcon');
+      if (icon) icon.innerText = isMasked ? '🙈' : '👁️';
+    }
+
+    async function updateSettingsModalInfo() {
+      const infoEl = document.getElementById('settingsVaultInfo');
+      if (!infoEl) return;
+      try {
+        const snap = await LocalDatabaseVault.getSnapshot();
+        if (snap && snap.updated_at) {
+          const d = new Date(snap.updated_at);
+          infoEl.innerHTML = `
+            <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 10px; padding: 10px 12px; font-size: 12px;">
+              <div style="font-weight: 600; color: #34d399; margin-bottom: 3px;">✅ База сохранена на телефоне</div>
+              <div style="color: var(--text-muted);">Размер: <strong style="color: var(--text);">${Math.round((snap.size_bytes || 0) / 1024)} КБ</strong> • Сохранено: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+            </div>
+          `;
+        } else {
+          infoEl.innerHTML = `
+            <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--text-muted);">
+              ℹ️ Локальная копия создается автоматически при добавлении данных.
+            </div>
+          `;
+        }
+      } catch (e) {
+        console.warn('updateSettingsModalInfo notice:', e);
+      }
     }
 
     async function loadStatus() {
@@ -12926,6 +13218,14 @@ self.addEventListener('fetch', (event) => {
         showErrorScreen('Сбой загрузки данных', 'Не удалось завершить операцию: ' + (event.reason?.message || event.reason || 'Ошибка запроса'));
       }
     });
+
+    
+    // Init privacy mask preference
+    if (localStorage.getItem('ffos_privacy_masked') === 'true') {
+      document.body.classList.add('privacy-masked');
+      const pIcon = document.getElementById('privacyIcon');
+      if (pIcon) pIcon.innerText = '🙈';
+    }
 
     window.addEventListener('load', loadStatus);
 
