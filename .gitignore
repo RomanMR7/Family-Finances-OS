@@ -37,3 +37,6 @@ family_finances_os/data/.dev_backup/
 
 # Node / Package managers
 node_modules/
+
+.vercel
+.env*

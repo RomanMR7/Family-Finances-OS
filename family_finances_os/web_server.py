@@ -40,8 +40,6 @@ from pathlib import Path
 
 from typing import Dict, Any, Optional, List
 
-
-
 from family_finances_os.config import APP_NAME, APP_VERSION, DB_PATH, ENC_DB_PATH, STRICT_ENCRYPTION
 
 from family_finances_os.db import init_database, check_db_health, GLOBAL_STORAGE
@@ -68,13 +66,7 @@ from family_finances_os.models import (
 
 )
 
-
-
 PORT = 8000
-
-
-
-
 
 def get_lan_ip_candidates() -> List[str]:
 
@@ -118,10 +110,6 @@ def get_lan_ip_candidates() -> List[str]:
 
     return candidates
 
-
-
-
-
 def resolve_external_host(headers: dict, fallback_host: str = "127.0.0.1") -> str:
 
     """
@@ -144,8 +132,6 @@ def resolve_external_host(headers: dict, fallback_host: str = "127.0.0.1") -> st
 
         return env_host
 
-
-
     raw_host = headers.get("X-Forwarded-Host") or headers.get("Host", "")
 
     host_name = raw_host.split(":")[0].strip()
@@ -156,27 +142,17 @@ def resolve_external_host(headers: dict, fallback_host: str = "127.0.0.1") -> st
 
             return host_name
 
-
-
     candidates = get_lan_ip_candidates()
 
     if candidates:
 
         return candidates[0]
 
-
-
     return fallback_host
-
-
-
-
 
 class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
     storage = GLOBAL_STORAGE
-
-
 
     def _validate_host(self) -> bool:
 
@@ -195,7 +171,9 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
             return True
 
         if os.environ.get("VERCEL") or raw_host.endswith(".vercel.app"):
+
             return True
+
         allowed_hosts = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
         if raw_host in allowed_hosts or raw_host.startswith("192.168.") or raw_host.startswith("10."):
@@ -211,8 +189,6 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
                 return True
 
         return False
-
-
 
     def _send_json(self, data: dict, status: int = 200):
 
@@ -237,8 +213,6 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
         self.wfile.write(body)
-
-
 
     def _send_html(self, html: str, status: int = 200):
 
@@ -271,8 +245,6 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
         self.wfile.write(body)
-
-
 
     def _send_manifest(self):
 
@@ -340,8 +312,6 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         self.wfile.write(body)
 
-
-
     def _send_sw(self):
 
         sw_code = """// Family Finances OS - PWA Service Worker
@@ -356,8 +326,6 @@ const STATIC_SHELL = [
 
 ];
 
-
-
 self.addEventListener('install', (event) => {
 
   event.waitUntil(
@@ -369,8 +337,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 
 });
-
-
 
 self.addEventListener('activate', (event) => {
 
@@ -400,13 +366,9 @@ self.addEventListener('activate', (event) => {
 
 });
 
-
-
 self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
-
-
 
   // CRITICAL: API requests must NEVER use Cache-First. Always use Network-First.
 
@@ -445,8 +407,6 @@ self.addEventListener('fetch', (event) => {
     return;
 
   }
-
-
 
   // Network-First for HTML navigation so changes are instantly visible; fallback to cache only when offline
 
@@ -556,8 +516,6 @@ self.addEventListener('fetch', (event) => {
 
         self.wfile.write(body)
 
-
-
     def _read_json_body(self) -> dict:
 
         content_length = int(self.headers.get("Content-Length", 0))
@@ -572,8 +530,6 @@ self.addEventListener('fetch', (event) => {
 
         return json.loads(self._raw_body_bytes.decode("utf-8"))
 
-
-
     def _get_bearer_token(self) -> Optional[str]:
 
         auth_header = self.headers.get("Authorization", "")
@@ -584,7 +540,11 @@ self.addEventListener('fetch', (event) => {
 
         return None
 
+    def _get_ledger(self) -> LedgerEngine:
 
+        conn = self.storage.get_connection() if self.storage.is_unlocked() else None
+
+        return LedgerEngine(conn_or_path=conn)
 
     def _require_auth(self) -> Optional[Dict[str, Any]]:
 
@@ -601,8 +561,6 @@ self.addEventListener('fetch', (event) => {
             return None
 
         return user
-
-
 
     def _is_db_locked(self) -> bool:
 
@@ -626,19 +584,13 @@ self.addEventListener('fetch', (event) => {
 
             return False
 
-
-
         if not self.storage.exists():
 
             return False
 
-
-
         if STRICT_ENCRYPTION:
 
             return True
-
-
 
         plain_counterpart = self.storage.enc_path.with_name(self.storage.enc_path.stem)
 
@@ -646,11 +598,7 @@ self.addEventListener('fetch', (event) => {
 
             return False
 
-
-
         return True
-
-
 
     def do_GET(self):
 
@@ -660,13 +608,9 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         url = urllib.parse.urlparse(self.path)
 
         path = url.path
-
-
 
         # PWA Web App Manifest
 
@@ -676,8 +620,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # PWA Service Worker
 
         if path in ("/sw.js", "/service-worker.js"):
@@ -686,8 +628,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # PWA & Web Icons
 
         if path in ("/icon.svg", "/icon-192.svg", "/icon-512.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/favicon.ico"):
@@ -695,8 +635,6 @@ self.addEventListener('fetch', (event) => {
             self._send_icon_svg()
 
             return
-
-
 
         # 1. Public Metadata & Status
 
@@ -758,8 +696,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # 2. Gatekeeper: if DB is encrypted and locked, prevent data leakage
 
         if self._is_db_locked() and path.startswith("/api/"):
@@ -773,8 +709,6 @@ self.addEventListener('fetch', (event) => {
             }, 423)
 
             return
-
-
 
         # 3. Protected Overview (Stage 2 & 3)
 
@@ -796,8 +730,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/accounts":
 
             user = self._require_auth()
@@ -814,8 +746,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/transactions":
 
             user = self._require_auth()
@@ -824,33 +754,85 @@ self.addEventListener('fetch', (event) => {
 
                 return
 
-            ledger = LedgerEngine()
+            ledger = self._get_ledger()
 
             conn = ledger._get_conn()
 
             cursor = conn.cursor()
 
+            query_params = urllib.parse.parse_qs(url.query)
+
+            month = query_params.get("month", [None])[0]
+
             cursor.execute("""
 
-            SELECT t.id, t.tx_date, t.tx_type, t.description, t.idempotency_key, t.created_at,
+            SELECT DISTINCT strftime('%Y-%m', tx_date) as ym 
 
-                   p.account_id, a.name as account_name, a.code as account_code, p.amount_cents, p.posting_type, p.ownership_scope,
+            FROM transactions 
 
-                   c.name as category_name, c.icon as category_icon
+            WHERE is_voided = 0 AND tx_date IS NOT NULL
 
-            FROM transactions t
-
-            JOIN postings p ON t.id = p.transaction_id
-
-            JOIN accounts a ON p.account_id = a.id
-
-            LEFT JOIN categories c ON p.category_id = c.id
-
-            ORDER BY t.created_at DESC
-
-            LIMIT 100;
+            ORDER BY ym DESC;
 
             """)
+
+            available_months = [r["ym"] for r in cursor.fetchall() if r["ym"]]
+
+            current_ym = current_iso_time()[:7]
+
+            if current_ym not in available_months:
+
+                available_months.insert(0, current_ym)
+
+            if month:
+
+                cursor.execute("""
+
+                SELECT t.id, t.tx_date, t.tx_type, t.description, t.idempotency_key, t.created_at,
+
+                       p.account_id, a.name as account_name, a.code as account_code, p.amount_cents, p.posting_type, p.ownership_scope,
+
+                       c.id as category_id, c.name as category_name, c.icon as category_icon
+
+                FROM transactions t
+
+                JOIN postings p ON t.id = p.transaction_id
+
+                JOIN accounts a ON p.account_id = a.id
+
+                LEFT JOIN categories c ON p.category_id = c.id
+
+                WHERE t.is_voided = 0 AND strftime('%Y-%m', t.tx_date) = ?
+
+                ORDER BY t.tx_date DESC, t.created_at DESC;
+
+                """, (month,))
+
+            else:
+
+                cursor.execute("""
+
+                SELECT t.id, t.tx_date, t.tx_type, t.description, t.idempotency_key, t.created_at,
+
+                       p.account_id, a.name as account_name, a.code as account_code, p.amount_cents, p.posting_type, p.ownership_scope,
+
+                       c.id as category_id, c.name as category_name, c.icon as category_icon
+
+                FROM transactions t
+
+                JOIN postings p ON t.id = p.transaction_id
+
+                JOIN accounts a ON p.account_id = a.id
+
+                LEFT JOIN categories c ON p.category_id = c.id
+
+                WHERE t.is_voided = 0
+
+                ORDER BY t.tx_date DESC, t.created_at DESC
+
+                LIMIT 100;
+
+                """)
 
             rows = cursor.fetchall()
 
@@ -874,15 +856,43 @@ self.addEventListener('fetch', (event) => {
 
                         "created_at": r["created_at"],
 
+                        "category_id": r["category_id"],
+
                         "category_name": r["category_name"] or "Без категории",
 
                         "category_icon": r["category_icon"] or "tag",
+
+                        "account_id": r["account_id"] if r["account_code"] in ("1010", "1011", "1020", "2010") else None,
+
+                        "account_name": r["account_name"] if r["account_code"] in ("1010", "1011", "1020", "2010") else None,
+
+                        "amount_rub": cents_to_rubles(r["amount_cents"]),
+
+                        "amount_cents": r["amount_cents"],
 
                         "postings": []
 
                     }
 
+                else:
+
+                    if r["account_code"] in ("1010", "1011", "1020", "2010") or (r["account_id"] and (r["account_id"].startswith("acc_core_10") or r["account_id"].startswith("acc_core_20"))):
+
+                        tx_map[tx_id]["account_id"] = r["account_id"]
+
+                        tx_map[tx_id]["account_name"] = r["account_name"]
+
+                    if r["category_id"]:
+
+                        tx_map[tx_id]["category_id"] = r["category_id"]
+
+                        tx_map[tx_id]["category_name"] = r["category_name"]
+
+                        tx_map[tx_id]["category_icon"] = r["category_icon"] or "tag"
+
                 tx_map[tx_id]["postings"].append({
+
+                    "account_id": r["account_id"],
 
                     "account_name": r["account_name"],
 
@@ -898,13 +908,27 @@ self.addEventListener('fetch', (event) => {
 
             ledger._close_if_local(conn)
 
-            self._send_json(list(tx_map.values()))
+            tx_list = list(tx_map.values())
+
+            if month:
+
+                self._send_json({
+
+                    "status": "success",
+
+                    "selected_month": month,
+
+                    "available_months": available_months,
+
+                    "transactions": tx_list
+
+                })
+
+            else:
+
+                self._send_json(tx_list)
 
             return
-
-
-
-        # Stage 3 Categories endpoint
 
         elif path == "/api/categories":
 
@@ -930,8 +954,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # Stage 3 Obligations endpoint
 
         elif path == "/api/obligations":
@@ -942,41 +964,31 @@ self.addEventListener('fetch', (event) => {
 
                 return
 
-            qs = urllib.parse.parse_qs(url.query)
+            ledger = self._get_ledger()
 
-            month_year = qs.get("month", [None])[0]
+            query_params = urllib.parse.parse_qs(url.query)
 
-            ledger = LedgerEngine()
+            month = query_params.get("month", [None])[0]
 
-            obls = ledger.get_obligations(month_year)
+            obligations = ledger.get_obligations(month_year=month)
 
-            unpaid, total, paid = ledger.calculate_unpaid_obligations_cents(month_year)
+            total_cents, paid_cents, unpaid_cents = ledger.calculate_unpaid_obligations_cents(month_year=month)
 
             self._send_json({
 
-                "month_year": month_year or current_iso_time()[:7],
+                "selected_month": month,
 
-                "obligations": obls,
+                "obligations": obligations,
 
-                "unpaid_cents": unpaid,
+                "total_rub": cents_to_rubles(total_cents),
 
-                "unpaid_rub": cents_to_rubles(unpaid),
+                "paid_rub": cents_to_rubles(paid_cents),
 
-                "total_cents": total,
-
-                "total_rub": cents_to_rubles(total),
-
-                "paid_cents": paid,
-
-                "paid_rub": cents_to_rubles(paid)
+                "unpaid_rub": cents_to_rubles(unpaid_cents)
 
             })
 
             return
-
-
-
-        # Stage 4 P2P Sync Status & Discovered LAN Peers
 
         elif path == "/api/sync/status":
 
@@ -1006,8 +1018,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # Stage 7 Financial Analytics Endpoint
 
         elif path == "/api/analytics/summary":
@@ -1033,8 +1043,6 @@ self.addEventListener('fetch', (event) => {
             self._send_json(analytics)
 
             return
-
-
 
         # Stage 7 30/60/90-Day Cash Flow Forecast Endpoint
 
@@ -1078,8 +1086,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # Stage 8 Quick QR Pairing Endpoint
 
         elif path == "/api/device/qr-pair":
@@ -1094,8 +1100,6 @@ self.addEventListener('fetch', (event) => {
 
             override_ip = qs.get("override_ip", [None])[0]
 
-
-
             server_port = self.server.server_port if hasattr(self, 'server') and hasattr(self.server, 'server_port') else PORT
 
             if override_ip and override_ip.strip():
@@ -1106,15 +1110,11 @@ self.addEventListener('fetch', (event) => {
 
                 host = resolve_external_host(self.headers, fallback_host="127.0.0.1")
 
-
-
             token = GLOBAL_SESSION_MANAGER.create_pairing_token(user, ttl_seconds=600)
 
             pair_url = f"http://{host}:{server_port}/?pair_token={token}"
 
             qr_svg = generate_qr_svg(pair_url)
-
-
 
             self._send_json({
 
@@ -1136,8 +1136,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # Stage 9 Financial Goals Endpoint
 
         elif path == "/api/goals":
@@ -1155,8 +1153,6 @@ self.addEventListener('fetch', (event) => {
             self._send_json({"status": "success", "goals": goals})
 
             return
-
-
 
         # Stage 9 Debts Summary Endpoint
 
@@ -1176,8 +1172,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # Stage 10 Envelopes / Piggy Banks Endpoint
 
         elif path == "/api/envelopes":
@@ -1196,15 +1190,11 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # Main HTML Application
 
         html = self._render_app_html()
 
         self._send_html(html)
-
-
 
     def do_POST(self):
 
@@ -1214,23 +1204,17 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         url = urllib.parse.urlparse(self.path)
 
         path = url.path
 
         body = self._read_json_body()
 
-
-
         # -------------------------------------------------------------
 
         # Encryption Lifecycle Endpoints (Accessible when locked)
 
         # -------------------------------------------------------------
-
-
 
         if path == "/api/unlock":
 
@@ -1270,8 +1254,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/lock":
 
             self.storage.lock()
@@ -1288,8 +1270,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/setup-master":
 
             master_password = body.get("master_password", "")
@@ -1298,23 +1278,17 @@ self.addEventListener('fetch', (event) => {
 
             display_name = body.get("display_name", "Глава семьи").strip()
 
-
-
             if len(master_password) < 6:
 
                 self._send_json({"status": "error", "message": "Мастер-пароль должен быть не менее 6 символов"}, 400)
 
                 return
 
-
-
             if self.storage.exists():
 
                 self._send_json({"status": "error", "message": "База данных уже инициализирована. Первичная настройка невозможна."}, 400)
 
                 return
-
-
 
             target_plain = self.storage.enc_path.with_name(self.storage.enc_path.stem)
 
@@ -1333,8 +1307,6 @@ self.addEventListener('fetch', (event) => {
                 except Exception:
 
                     pass
-
-
 
             try:
 
@@ -1364,8 +1336,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # -------------------------------------------------------------
 
         # Gatekeeper: if DB is locked, block any further POST calls
@@ -1383,8 +1353,6 @@ self.addEventListener('fetch', (event) => {
             }, 423)
 
             return
-
-
 
         if path == "/api/setup-owner":
 
@@ -1422,8 +1390,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/login":
 
             auth = AuthService()
@@ -1443,8 +1409,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": "Неверное имя пользователя или пароль"}, 401)
 
             return
-
-
 
         # Stage 8 Quick QR Pairing Login
 
@@ -1492,8 +1456,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/logout":
 
             token = self._get_bearer_token()
@@ -1504,11 +1466,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 2 Account Management Endpoints ---
-
-
 
         elif path == "/api/accounts/create":
 
@@ -1536,13 +1494,9 @@ self.addEventListener('fetch', (event) => {
 
                 credit_limit_rub = body.get("credit_limit_rub", "0")
 
-
-
                 init_cents = rubles_to_cents(initial_balance_rub)
 
                 limit_cents = rubles_to_cents(credit_limit_rub)
-
-
 
                 acc = ledger.create_account(
 
@@ -1572,8 +1526,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/accounts/update":
 
             user = self._require_auth()
@@ -1598,8 +1550,6 @@ self.addEventListener('fetch', (event) => {
 
                 ownership_scope = body.get("ownership_scope")
 
-
-
                 ok = ledger.update_account(account_id, name=name, description=description, credit_limit_cents=limit_cents, ownership_scope=ownership_scope)
 
                 self._send_json({"status": "success" if ok else "error"})
@@ -1609,8 +1559,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/accounts/archive":
 
@@ -1636,11 +1584,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 2 & 3 Transfers & Transactions ---
-
-
 
         elif path == "/api/transfer/create":
 
@@ -1666,8 +1610,6 @@ self.addEventListener('fetch', (event) => {
 
                 amount_cents = rubles_to_cents(amount_rub)
 
-
-
                 tx_id = ledger.record_transfer(
 
                     from_account_id=from_id,
@@ -1692,8 +1634,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/transaction/create":
 
             user = self._require_auth()
@@ -1704,7 +1644,7 @@ self.addEventListener('fetch', (event) => {
 
             try:
 
-                ledger = LedgerEngine()
+                ledger = self._get_ledger()
 
                 tx_type = body.get("tx_type", "EXPENSE")
 
@@ -1724,7 +1664,7 @@ self.addEventListener('fetch', (event) => {
 
                 amount_cents = rubles_to_cents(amount_rub)
 
-
+                tx_date = body.get("tx_date") or current_iso_time()[:10]
 
                 if is_personal_for_common:
 
@@ -1740,6 +1680,8 @@ self.addEventListener('fetch', (event) => {
 
                         created_by_member_id=user.get("member_id"),
 
+                        tx_date=tx_date,
+
                         idempotency_key=idempotency_key
 
                     )
@@ -1748,8 +1690,6 @@ self.addEventListener('fetch', (event) => {
 
                     tx_id = generate_uuid()
 
-                    tx_date = current_iso_time()[:10]
-
                     acc = ledger.get_account_by_id(account_id)
 
                     cat = ledger.get_account_by_id(category_account_id)
@@ -1757,8 +1697,6 @@ self.addEventListener('fetch', (event) => {
                     if not acc or not cat:
 
                         raise ValueError("Указанный денежный счет или статья не существуют.")
-
-
 
                     postings = []
 
@@ -1802,21 +1740,19 @@ self.addEventListener('fetch', (event) => {
 
                         ))
 
-
-
                     tx = Transaction(
 
                         id=tx_id, tx_date=tx_date, tx_type=tx_type, description=desc,
 
                         created_by_member_id=user.get("member_id"),
 
-                        idempotency_key=idempotency_key, postings=postings
+                        idempotency_key=idempotency_key,
+
+                        postings=postings
 
                     )
 
-                    ledger.record_transaction(tx)
-
-
+                    ledger.record_transaction(tx, idempotency_key=idempotency_key)
 
                 self._send_json({"status": "success", "transaction_id": tx_id})
 
@@ -1825,12 +1761,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
-
-        # --- Stage 3 Category Management Endpoints ---
-
-
 
         elif path == "/api/categories/create":
 
@@ -1863,8 +1793,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/categories/update":
 
@@ -1902,8 +1830,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/categories/archive":
 
             user = self._require_auth()
@@ -1928,11 +1854,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 3 Obligations Endpoints ---
-
-
 
         elif path == "/api/obligations/create":
 
@@ -1960,8 +1882,6 @@ self.addEventListener('fetch', (event) => {
 
                 amount_cents = rubles_to_cents(amount_rub)
 
-
-
                 obl = ledger.create_obligation(name, amount_cents, due_day, category_id, payment_account_id, note)
 
                 self._send_json({"status": "success", "obligation": {"id": obl.id, "name": obl.name, "amount_rub": cents_to_rubles(obl.amount_cents)}})
@@ -1971,8 +1891,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/obligations/update":
 
@@ -2002,8 +1920,6 @@ self.addEventListener('fetch', (event) => {
 
                 note = body.get("note")
 
-
-
                 ok = ledger.update_obligation(obl_id, name, amount_cents, due_day, category_id, payment_account_id, note)
 
                 self._send_json({"status": "success" if ok else "error"})
@@ -2013,8 +1929,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/obligations/archive":
 
@@ -2040,8 +1954,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/obligations/pay":
 
             user = self._require_auth()
@@ -2064,8 +1976,6 @@ self.addEventListener('fetch', (event) => {
 
                 tx_id = body.get("transaction_id")
 
-
-
                 ok = ledger.mark_obligation_paid(obl_id, month_year, tx_id, amount_cents)
 
                 self._send_json({"status": "success" if ok else "error"})
@@ -2075,8 +1985,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/obligations/unpay":
 
@@ -2094,8 +2002,6 @@ self.addEventListener('fetch', (event) => {
 
                 month_year = body.get("month_year")
 
-
-
                 ok = ledger.unmark_obligation_paid(obl_id, month_year)
 
                 self._send_json({"status": "success" if ok else "error"})
@@ -2106,11 +2012,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 4 P2P Synchronization Endpoints ---
-
-
 
         elif path == "/api/sync/pull":
 
@@ -2124,8 +2026,6 @@ self.addEventListener('fetch', (event) => {
 
             hlc_header = self.headers.get("X-FFOS-HLC")
 
-
-
             sync_engine = P2PSyncEngine()
 
             if sig:
@@ -2144,8 +2044,6 @@ self.addEventListener('fetch', (event) => {
 
                     return
 
-
-
             since_hlc = body.get("since_hlc")
 
             changes = sync_engine.export_changes(since_hlc=since_hlc)
@@ -2153,8 +2051,6 @@ self.addEventListener('fetch', (event) => {
             self._send_json(changes)
 
             return
-
-
 
         elif path == "/api/sync/push":
 
@@ -2168,8 +2064,6 @@ self.addEventListener('fetch', (event) => {
 
             hlc_header = self.headers.get("X-FFOS-HLC")
 
-
-
             sync_engine = P2PSyncEngine()
 
             if sig:
@@ -2188,8 +2082,6 @@ self.addEventListener('fetch', (event) => {
 
                     return
 
-
-
             try:
 
                 res = sync_engine.apply_remote_changes(body)
@@ -2201,8 +2093,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 500)
 
             return
-
-
 
         elif path == "/api/sync/trigger":
 
@@ -2222,13 +2112,9 @@ self.addEventListener('fetch', (event) => {
 
                 return
 
-
-
             from family_finances_os.sync import P2PSyncEngine, sign_sync_payload
 
             sync_engine = P2PSyncEngine()
-
-
 
             try:
 
@@ -2241,8 +2127,6 @@ self.addEventListener('fetch', (event) => {
                 hlc_val = sync_engine.hlc.now()
 
                 sig = sign_sync_payload(pull_body, sync_engine.sync_passphrase, nonce, hlc_val)
-
-
 
                 req_pull = urllib.request.Request(
 
@@ -2268,13 +2152,9 @@ self.addEventListener('fetch', (event) => {
 
                     remote_changes = json.loads(resp.read().decode("utf-8"))
 
-
-
                 # Apply remote changes locally
 
                 apply_res = sync_engine.apply_remote_changes(remote_changes)
-
-
 
                 # 2. Push our changes to remote peer
 
@@ -2287,8 +2167,6 @@ self.addEventListener('fetch', (event) => {
                 hlc_val2 = sync_engine.hlc.now()
 
                 sig2 = sign_sync_payload(push_body, sync_engine.sync_passphrase, nonce2, hlc_val2)
-
-
 
                 req_push = urllib.request.Request(
 
@@ -2314,8 +2192,6 @@ self.addEventListener('fetch', (event) => {
 
                     push_res = json.loads(resp2.read().decode("utf-8"))
 
-
-
                 self._send_json({
 
                     "status": "success",
@@ -2332,11 +2208,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 6 Onboarding & Universal Statement Importer Endpoints ---
-
-
 
         elif path == "/api/onboarding/setup":
 
@@ -2363,8 +2235,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/accounts/set-initial-balance":
 
@@ -2393,8 +2263,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/import/preview":
 
@@ -2426,8 +2294,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/import/confirm":
 
             user = self._require_auth()
@@ -2458,11 +2324,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 9 Financial Goals Endpoints ---
-
-
 
         elif path == "/api/goals/create":
 
@@ -2495,8 +2357,6 @@ self.addEventListener('fetch', (event) => {
                 target_cents = rubles_to_cents(target_rub)
 
                 init_cents = rubles_to_cents(init_rub) if init_rub else 0
-
-
 
                 goal = ledger.create_goal(
 
@@ -2538,8 +2398,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/goals/update":
 
             user = self._require_auth()
@@ -2580,8 +2438,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/goals/archive":
 
             user = self._require_auth()
@@ -2605,8 +2461,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/goals/contribute":
 
@@ -2632,8 +2486,6 @@ self.addEventListener('fetch', (event) => {
 
                 amount_cents = rubles_to_cents(amount_rub)
 
-
-
                 res = ledger.contribute_to_goal(
 
                     goal_id=goal_id,
@@ -2658,11 +2510,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 9 Debt Repayment Endpoints ---
-
-
 
         elif path == "/api/debts/pay":
 
@@ -2690,8 +2538,6 @@ self.addEventListener('fetch', (event) => {
 
                 amount_cents = rubles_to_cents(amount_rub)
 
-
-
                 tx_id = ledger.record_debt_repayment(
 
                     source_account_id=source_acc_id,
@@ -2718,11 +2564,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 9 Smart Quick Input Endpoints ---
-
-
 
         elif path == "/api/quick-tx/parse":
 
@@ -2747,8 +2589,6 @@ self.addEventListener('fetch', (event) => {
                 self._send_json({"status": "error", "message": str(e)}, 400)
 
             return
-
-
 
         elif path == "/api/quick-tx/create":
 
@@ -2794,11 +2634,101 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         # --- Stage 10 Savings Envelopes & Piggy Banks Endpoints ---
 
+        elif path == "/api/transactions/update":
 
+            user = self._require_auth()
+
+            if not user:
+
+                return
+
+            try:
+
+                ledger = self._get_ledger()
+
+                tx_id = body.get("transaction_id")
+
+                if not tx_id:
+
+                    self._send_json({"status": "error", "message": "ID операции обязателен"}, 400)
+
+                    return
+
+                amount_rub = body.get("amount_rub")
+
+                amount_cents = rubles_to_cents(amount_rub) if amount_rub is not None else None
+
+                ok = ledger.update_transaction(
+
+                    transaction_id=tx_id,
+
+                    tx_date=body.get("tx_date"),
+
+                    description=body.get("description"),
+
+                    amount_cents=amount_cents,
+
+                    category_id=body.get("category_id"),
+
+                    account_id=body.get("account_id"),
+
+                    tx_type=body.get("tx_type")
+
+                )
+
+                if ok:
+
+                    self._send_json({"status": "success", "message": "Операция успешно обновлена"})
+
+                else:
+
+                    self._send_json({"status": "error", "message": "Операция не найдена или аннулирована"}, 404)
+
+            except Exception as e:
+
+                self._send_json({"status": "error", "message": str(e)}, 400)
+
+            return
+
+        elif path in ("/api/transactions/delete", "/api/transactions/void"):
+
+            user = self._require_auth()
+
+            if not user:
+
+                return
+
+            try:
+
+                ledger = self._get_ledger()
+
+                tx_id = body.get("transaction_id")
+
+                if not tx_id:
+
+                    self._send_json({"status": "error", "message": "ID операции обязателен"}, 400)
+
+                    return
+
+                reason = body.get("reason", "Удаление через интерфейс")
+
+                ok = ledger.void_transaction(tx_id, reason=reason)
+
+                if ok:
+
+                    self._send_json({"status": "success", "message": "Операция успешно аннулирована"})
+
+                else:
+
+                    self._send_json({"status": "error", "message": "Операция не найдена"}, 404)
+
+            except Exception as e:
+
+                self._send_json({"status": "error", "message": str(e)}, 400)
+
+            return
 
         elif path == "/api/envelopes/create":
 
@@ -2831,8 +2761,6 @@ self.addEventListener('fetch', (event) => {
                 target_cents = rubles_to_cents(target_rub) if target_rub else 0
 
                 init_cents = rubles_to_cents(init_rub) if init_rub else 0
-
-
 
                 env = ledger.create_envelope(
 
@@ -2876,8 +2804,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/envelopes/update":
 
             user = self._require_auth()
@@ -2908,8 +2834,6 @@ self.addEventListener('fetch', (event) => {
 
                 note = body.get("note")
 
-
-
                 ok = ledger.update_envelope(
 
                     envelope_id=env_id,
@@ -2938,8 +2862,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/envelopes/archive":
 
             user = self._require_auth()
@@ -2964,8 +2886,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/envelopes/deposit":
 
             user = self._require_auth()
@@ -2987,8 +2907,6 @@ self.addEventListener('fetch', (event) => {
                 note = body.get("note") or None
 
                 amount_cents = rubles_to_cents(amount_rub)
-
-
 
                 res = ledger.deposit_to_envelope(
 
@@ -3012,8 +2930,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/envelopes/withdraw":
 
             user = self._require_auth()
@@ -3035,8 +2951,6 @@ self.addEventListener('fetch', (event) => {
                 note = body.get("note") or None
 
                 amount_cents = rubles_to_cents(amount_rub)
-
-
 
                 res = ledger.withdraw_from_envelope(
 
@@ -3060,8 +2974,6 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         elif path == "/api/envelopes/transfer":
 
             user = self._require_auth()
@@ -3083,8 +2995,6 @@ self.addEventListener('fetch', (event) => {
                 note = body.get("note") or None
 
                 amount_cents = rubles_to_cents(amount_rub)
-
-
 
                 res = ledger.transfer_between_envelopes(
 
@@ -3108,11 +3018,7 @@ self.addEventListener('fetch', (event) => {
 
             return
 
-
-
         self._send_json({"error": "Not Found"}, 404)
-
-
 
     def _render_app_html(self) -> str:
 
@@ -3253,8 +3159,6 @@ self.addEventListener('fetch', (event) => {
     .alert-error { background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #fca5a5; }
 
     .hidden { display: none !important; }
-
-
 
     /* Modern Custom Category Dropdown Picker */
 
@@ -3444,8 +3348,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     /* Category Chips for fast touch input (Fallback/Compact) */
 
     .chips-container { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 14px; -webkit-overflow-scrolling: touch; }
@@ -3455,8 +3357,6 @@ self.addEventListener('fetch', (event) => {
     .chip:hover { border-color: var(--primary); color: #fff; }
 
     .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
-
-
 
     /* Mobile Bottom Navigation Bar */
 
@@ -3520,8 +3420,6 @@ self.addEventListener('fetch', (event) => {
 
     .mobile-nav-item.active { color: var(--primary); font-weight: 600; }
 
-
-
     /* Tree View */
 
     .tree-node { margin-bottom: 10px; border-left: 2px solid var(--border); padding-left: 12px; margin-left: 8px; }
@@ -3531,8 +3429,6 @@ self.addEventListener('fetch', (event) => {
     .tree-children { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
 
     .tree-child { font-size: 13px; color: var(--text-muted); padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
-
-
 
     /* Stage 7 Analytics & Forecast Styles */
 
@@ -3553,8 +3449,6 @@ self.addEventListener('fetch', (event) => {
     .legend-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
 
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-
-
 
     @media (max-width: 640px) {
 
@@ -3610,8 +3504,6 @@ self.addEventListener('fetch', (event) => {
 
     </div>
 
-
-
     <!-- Modal: QR-Code Pairing for Smartphones -->
 
     <div id="modalQrPair" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
@@ -3630,8 +3522,6 @@ self.addEventListener('fetch', (event) => {
 
         </p>
 
-
-
         <!-- QR SVG Container -->
 
         <div id="qrPairSvgBox" style="background: #ffffff; padding: 10px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.5); margin-bottom: 14px; min-width: 220px; min-height: 220px;">
@@ -3639,8 +3529,6 @@ self.addEventListener('fetch', (event) => {
           <div style="color: #64748b; font-size: 13px; padding-top: 90px;">Генерация QR-кода...</div>
 
         </div>
-
-
 
         <!-- Pairing URL with copy button -->
 
@@ -3651,8 +3539,6 @@ self.addEventListener('fetch', (event) => {
           <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="copyQrPairUrl()">Копировать</button>
 
         </div>
-
-
 
         <!-- IP Override if needed (e.g. running localhost or multi-network) -->
 
@@ -3672,8 +3558,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div style="text-align: left; font-size: 12px; color: #94a3b8; border-top: 1px solid var(--border); padding-top: 12px; line-height: 1.5;">
 
           <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">Инструкция по установке (PWA):</div>
@@ -3689,8 +3573,6 @@ self.addEventListener('fetch', (event) => {
       </div>
 
     </div>
-
-
 
     <!-- Modal: Create / Edit Envelope (Конверт-копилка) -->
 
@@ -3822,8 +3704,6 @@ self.addEventListener('fetch', (event) => {
 
     </div>
 
-
-
     <!-- Modal: Deposit into Envelope (Положить в конверт) -->
 
     <div id="modalEnvelopeDeposit" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
@@ -3844,8 +3724,6 @@ self.addEventListener('fetch', (event) => {
 
         <input type="hidden" id="envDepositId" value="">
 
-
-
         <div class="form-group">
 
           <label>Счет списания (Откуда перевести):</label>
@@ -3854,8 +3732,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Сумма пополнения (₽):</label>
@@ -3863,8 +3739,6 @@ self.addEventListener('fetch', (event) => {
           <input type="number" step="0.01" id="envDepositAmount" placeholder="1000.00" style="font-size: 18px; font-weight: 700; color: #34d399;">
 
         </div>
-
-
 
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
 
@@ -3878,8 +3752,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Комментарий / примечание:</label>
@@ -3887,8 +3759,6 @@ self.addEventListener('fetch', (event) => {
           <input type="text" id="envDepositNote" placeholder="Пополнение копилки">
 
         </div>
-
-
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
@@ -3901,8 +3771,6 @@ self.addEventListener('fetch', (event) => {
       </div>
 
     </div>
-
-
 
     <!-- Modal: Withdraw from Envelope (Взять из конверта) -->
 
@@ -3924,8 +3792,6 @@ self.addEventListener('fetch', (event) => {
 
         <input type="hidden" id="envWithdrawId" value="">
 
-
-
         <div class="form-group">
 
           <label>Счет зачисления (Куда вернуть средства):</label>
@@ -3934,8 +3800,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Сумма списания (₽):</label>
@@ -3943,8 +3807,6 @@ self.addEventListener('fetch', (event) => {
           <input type="number" step="0.01" id="envWithdrawAmount" placeholder="1000.00" style="font-size: 18px; font-weight: 700; color: #f59e0b;">
 
         </div>
-
-
 
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
 
@@ -3956,8 +3818,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Причина изъятия / расход:</label>
@@ -3965,8 +3825,6 @@ self.addEventListener('fetch', (event) => {
           <input type="text" id="envWithdrawNote" placeholder="Например: Покупка билетов, подарок">
 
         </div>
-
-
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
@@ -3979,8 +3837,6 @@ self.addEventListener('fetch', (event) => {
       </div>
 
     </div>
-
-
 
     <!-- Modal: Transfer between Envelopes (Переложить между конвертами) -->
 
@@ -4000,8 +3856,6 @@ self.addEventListener('fetch', (event) => {
 
         <div id="envTransferMsg"></div>
 
-
-
         <div class="form-group">
 
           <label>Из какого конверта взять:</label>
@@ -4012,8 +3866,6 @@ self.addEventListener('fetch', (event) => {
 
         <div id="envTransferAvailInfo" style="font-size: 12px; color: var(--text-muted); margin-top: -6px; margin-bottom: 10px;"></div>
 
-
-
         <div class="form-group">
 
           <label>В какой конверт переложить:</label>
@@ -4021,8 +3873,6 @@ self.addEventListener('fetch', (event) => {
           <select id="envTransferToSelect"></select>
 
         </div>
-
-
 
         <div class="form-group">
 
@@ -4032,8 +3882,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Примечание:</label>
@@ -4041,8 +3889,6 @@ self.addEventListener('fetch', (event) => {
           <input type="text" id="envTransferNote" placeholder="Перераспределение копилок">
 
         </div>
-
-
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
@@ -4055,8 +3901,6 @@ self.addEventListener('fetch', (event) => {
       </div>
 
     </div>
-
-
 
     <!-- Modal: Create / Edit Financial Goal -->
 
@@ -4172,8 +4016,6 @@ self.addEventListener('fetch', (event) => {
 
     </div>
 
-
-
     <!-- Modal: Contribute to Financial Goal -->
 
     <div id="modalContributeGoal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
@@ -4194,8 +4036,6 @@ self.addEventListener('fetch', (event) => {
 
         <input type="hidden" id="contribGoalId" value="">
 
-
-
         <div class="form-group">
 
           <label>Счет списания (Откуда перевести):</label>
@@ -4204,8 +4044,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Сумма пополнения (₽):</label>
@@ -4213,8 +4051,6 @@ self.addEventListener('fetch', (event) => {
           <input type="number" step="0.01" id="contribGoalAmount" placeholder="5000.00" style="font-size: 18px; font-weight: 700; color: #34d399;">
 
         </div>
-
-
 
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
 
@@ -4228,8 +4064,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Комментарий / примечание:</label>
@@ -4237,8 +4071,6 @@ self.addEventListener('fetch', (event) => {
           <input type="text" id="contribGoalNote" placeholder="Пополнение цели">
 
         </div>
-
-
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
@@ -4251,8 +4083,6 @@ self.addEventListener('fetch', (event) => {
       </div>
 
     </div>
-
-
 
     <!-- Modal: Pay Debt / Liabilities -->
 
@@ -4276,8 +4106,6 @@ self.addEventListener('fetch', (event) => {
 
         <div id="payDebtMsg"></div>
 
-
-
         <div class="form-group">
 
           <label>Выберите задолженность для погашения:</label>
@@ -4285,8 +4113,6 @@ self.addEventListener('fetch', (event) => {
           <select id="payDebtLiabilityAccount" onchange="onDebtLiabilityChanged()"></select>
 
         </div>
-
-
 
         <div id="payDebtInfoBox" style="background: rgba(239,68,68,0.1); border: 1px dashed #ef4444; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;">
 
@@ -4308,8 +4134,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Счет списания (Откуда оплатить):</label>
@@ -4318,8 +4142,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Сумма погашения (₽):</label>
@@ -4327,8 +4149,6 @@ self.addEventListener('fetch', (event) => {
           <input type="number" step="0.01" id="payDebtAmount" placeholder="0.00" style="font-size: 18px; font-weight: 700; color: #60a5fa;">
 
         </div>
-
-
 
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
 
@@ -4342,8 +4162,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="form-group">
 
           <label>Назначение платежа:</label>
@@ -4351,8 +4169,6 @@ self.addEventListener('fetch', (event) => {
           <input type="text" id="payDebtDesc" value="Погашение задолженности">
 
         </div>
-
-
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
@@ -4365,8 +4181,6 @@ self.addEventListener('fetch', (event) => {
       </div>
 
     </div>
-
-
 
     <!-- 1. Lock Screen (Master Password Unlock) -->
 
@@ -4416,8 +4230,6 @@ self.addEventListener('fetch', (event) => {
 
     </div>
 
-
-
     <!-- 2. Setup Screen -->
 
     <div id="setupScreen" class="card hidden" style="max-width: 500px; margin: 30px auto;">
@@ -4454,8 +4266,6 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
-
-
       <div id="setupMsg"></div>
 
       <div class="form-group"><label>Логин:</label><input type="text" id="setupUsername" value="admin"></div>
@@ -4479,8 +4289,6 @@ self.addEventListener('fetch', (event) => {
       <button class="btn" style="width: 100%;" id="btnSetup" onclick="submitSetup()">Инициализировать защищенную семью</button>
 
     </div>
-
-
 
     <!-- 3. Login Screen -->
 
@@ -4516,8 +4324,6 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
-
-
       <div id="loginMsg"></div>
 
       <div class="form-group"><label>Логин:</label><input type="text" id="loginUsername" value="admin"></div>
@@ -4540,15 +4346,89 @@ self.addEventListener('fetch', (event) => {
 
     </div>
 
+    <!-- Modal: Edit Past / Existing Transaction -->
+<div id="modalEditTx" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+  <div class="card" style="max-width: 520px; width: 100%; border-color: var(--primary); position: relative; max-height: 90vh; overflow-y: auto;">
+    <button onclick="closeEditTxModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+      <span style="font-size: 22px;">✏️</span>
+      <h3 style="font-size: 18px; font-weight: 700; color: #fff; margin: 0;">Редактирование операции</h3>
+    </div>
+    <div id="editTxMsg"></div>
+    <input type="hidden" id="editTxId">
+    
+    <div class="form-group">
+      <label>📅 Дата операции (любое число выбранного месяца):</label>
+      <input type="date" id="editTxDate" style="width: 100%; padding: 10px; font-size: 14px;">
+    </div>
 
+    <div class="form-group">
+      <label>Сумма операции (₽):</label>
+      <input type="number" id="editTxAmount" step="0.01" min="0.01" style="width: 100%; font-size: 16px; font-weight: 700; padding: 10px;">
+    </div>
 
-    <!-- 4. App Main Body -->
+    <div class="form-group">
+      <label>Тип операции:</label>
+      <select id="editTxType" onchange="onEditTxTypeChange()" style="width: 100%; padding: 10px;">
+        <option value="EXPENSE">Расход семьи</option>
+        <option value="INCOME">Доход семьи</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Категория / статья:</label>
+      <select id="editTxCategory" style="width: 100%; padding: 10px;">
+        <!-- Populated dynamically -->
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Счет (списание / зачисление):</label>
+      <select id="editTxAccount" style="width: 100%; padding: 10px;">
+        <!-- Populated dynamically -->
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Описание / комментарий:</label>
+      <input type="text" id="editTxDescription" placeholder="Например: Супермаркет Продукты" style="width: 100%; padding: 10px;">
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-top: 20px;">
+      <button class="btn" id="btnSaveEditTx" style="flex: 1;" onclick="submitEditTransaction()">💾 Сохранить</button>
+      <button class="btn btn-secondary" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5;" onclick="deleteTransactionFromModal()">🗑️ Удалить</button>
+      <button class="btn btn-secondary" onclick="closeEditTxModal()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- 4. App Main Body -->
 
     <div id="mainDashboard" class="hidden">
 
-      <!-- Desktop Navigation Tabs -->
+<!-- Month Selector & Period Navigator Bar -->
+<div class="month-navigator-bar" style="background: rgba(30, 41, 59, 0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <span style="font-weight: 600; font-size: 14px; color: #cbd5e1; display: flex; align-items: center; gap: 6px;">
+      <span style="font-size: 18px;">📅</span>
+      <span>Период учёта:</span>
+    </span>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(-1)" title="Предыдущий месяц">◀</button>
+      <select id="globalMonthSelect" onchange="onGlobalMonthSelectChange(this.value)" style="padding: 6px 14px; font-size: 14px; font-weight: 600; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 8px; cursor: pointer; min-width: 170px;">
+        <!-- Filled dynamically -->
+      </select>
+      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(1)" title="Следующий месяц">▶</button>
+    </div>
+    <button type="button" id="btnCurrentMonthReset" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; display: none;" onclick="resetToCurrentMonth()">🔄 Текущий месяц</button>
+  </div>
+  <div id="pastMonthNotice" style="display: none; align-items: center; gap: 8px; font-size: 13px; color: #fbbf24; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 6px 14px;">
+    <span>⚠️ <strong>Архивный режим:</strong> <span id="pastMonthNoticeLabel"></span>. Все операции и бюджеты фильтруются за этот месяц.</span>
+  </div>
+</div>
 
-      <div class="nav-tabs">
+<!-- Desktop Navigation Tabs -->
+<div class="nav-tabs">
 
         <button class="tab-btn active" onclick="switchTab('tab-overview')">📊 Сводный дашборд</button>
 
@@ -4575,8 +4455,6 @@ self.addEventListener('fetch', (event) => {
         <button class="tab-btn" onclick="switchTab('tab-import')">📥 Импорт выписок</button>
 
       </div>
-
-
 
       <!-- Tab 1: Overview -->
 
@@ -4650,8 +4528,6 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-
-
             <input type="text" id="dashQuickInput" placeholder="Например: 500 кофе, 1500 продукты, 850 аптека..." 
 
                    style="font-size: 15px; padding: 11px 14px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 8px; color: #fff; flex: 1;"
@@ -4674,8 +4550,6 @@ self.addEventListener('fetch', (event) => {
 
           <div id="dashQuickMsg"></div>
 
-
-
           <!-- 1-Tap Quick presets -->
 
           <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px;">
@@ -4695,8 +4569,6 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         </div>
-
-
 
         <!-- Quick Onboarding Wizard Banner for Manual Zero-State Setup -->
 
@@ -4724,8 +4596,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px;">
 
             <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
@@ -4740,8 +4610,6 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-
-
             <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
 
               <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">2. Кредитная карта (2020)</h4>
@@ -4751,8 +4619,6 @@ self.addEventListener('fetch', (event) => {
               <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">Текущий долг по кредитке на сегодня (₽):</label><input type="number" id="obCreditDebt" placeholder="0" value="0"></div>
 
             </div>
-
-
 
             <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
 
@@ -4768,8 +4634,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <button class="btn" style="width: 100%; padding: 11px; font-size: 14px; font-weight: 600;" onclick="submitOnboarding()">
 
             🚀 Зафиксировать стартовый бюджет семьи и рассчитать Safe-to-Spend
@@ -4777,8 +4641,6 @@ self.addEventListener('fetch', (event) => {
           </button>
 
         </div>
-
-
 
         <!-- Multidimensional Financial Metrics Grid -->
 
@@ -4815,8 +4677,6 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         </div>
-
-
 
         <div class="grid-3">
 
@@ -4866,8 +4726,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <!-- Goals Progress Widget on Dashboard -->
 
         <div class="card" style="margin-bottom: 18px;">
@@ -4897,8 +4755,6 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         </div>
-
-
 
         <!-- Dashboard Envelopes & Piggy Banks Widget -->
 
@@ -4931,8 +4787,6 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         </div>
-
-
 
         <!-- Accounts Overview Table -->
 
@@ -4968,8 +4822,6 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
-
-
       <!-- Tab: Financial Goals (Цели накоплений) -->
 
       <div id="tab-goals" class="hidden">
@@ -4998,8 +4850,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div id="goalsListContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
 
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка целей...</div>
@@ -5009,8 +4859,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-
 
       <!-- Tab: Envelopes / Piggy Banks (Конверты-копилки) -->
 
@@ -5046,8 +4894,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div class="grid-3" style="margin-bottom: 18px;">
 
             <div class="card" style="margin-bottom: 0;">
@@ -5082,8 +4928,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div id="envelopesListContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
 
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка конвертов...</div>
@@ -5093,8 +4937,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-
 
       <!-- Tab: Debts & Liabilities (Долги и кредиты) -->
 
@@ -5123,8 +4965,6 @@ self.addEventListener('fetch', (event) => {
             <button class="btn btn-danger" onclick="openPayDebtModal()">💳 Погасить задолженность</button>
 
           </div>
-
-
 
           <div class="grid-3" style="margin-bottom: 18px;">
 
@@ -5160,8 +5000,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div id="debtsListContainer" style="display: flex; flex-direction: column; gap: 12px;">
 
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка задолженностей...</div>
@@ -5171,8 +5009,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-
 
       <!-- Tab: Financial Analytics & Cash Flow Forecast -->
 
@@ -5193,8 +5029,6 @@ self.addEventListener('fetch', (event) => {
           <button class="pill-btn" id="pillAll" onclick="changeAnalyticsPeriod('all')">За всё время</button>
 
         </div>
-
-
 
         <!-- 4 KPI Summary Cards -->
 
@@ -5242,8 +5076,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <!-- Category Breakdown & Visual Donut Chart -->
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px;">
@@ -5270,8 +5102,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <!-- Right: Category List with Progress Bars & Members Attribution -->
 
           <div class="card">
@@ -5279,8 +5109,6 @@ self.addEventListener('fetch', (event) => {
             <h3 style="font-size: 16px; margin-bottom: 12px;">📊 Рейтинг категорий расходов</h3>
 
             <div id="categoriesBarsContainer" style="max-height: 220px; overflow-y: auto; margin-bottom: 16px;"></div>
-
-
 
             <h4 style="font-size: 14px; margin-bottom: 8px; border-top: 1px solid var(--border); padding-top: 12px;">
 
@@ -5293,8 +5121,6 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         </div>
-
-
 
         <!-- Top 5 Largest Expenses -->
 
@@ -5325,8 +5151,6 @@ self.addEventListener('fetch', (event) => {
           </table>
 
         </div>
-
-
 
         <!-- Cash Flow 30/60/90-Day Predictive Forecast Section -->
 
@@ -5368,8 +5192,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <!-- Deficit Alert Banner if Gap Detected -->
 
           <div id="forecastDeficitAlert" class="hidden alert alert-error" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
@@ -5385,8 +5207,6 @@ self.addEventListener('fetch', (event) => {
             <div style="font-size: 20px; font-weight: 700; color: #ef4444; white-space: nowrap;" id="forecastDeficitBadge"></div>
 
           </div>
-
-
 
           <!-- Forecast Stats Strip -->
 
@@ -5426,8 +5246,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <!-- SVG Cash Flow Area / Line Chart Container -->
 
           <div class="chart-box" style="padding: 10px;">
@@ -5440,8 +5258,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <!-- Upcoming Critical Milestones in Forecast Period -->
 
           <h4 style="font-size: 14px; margin-top: 14px; margin-bottom: 8px;">🗓️ Ближайшие обязательные списания по календарю:</h4>
@@ -5451,8 +5267,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-
 
       <!-- Tab 2: New Transaction (Fast Mobile Entry) -->
 
@@ -5500,17 +5314,22 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <h3 style="margin-bottom: 14px; font-size: 16px; border-top: 1px solid var(--border); padding-top: 14px;">📝 Подробная форма записи операции</h3>
 
           <div id="txMsg"></div>
 
           
 
-          <div class="form-group"><label>Тип операции:</label>
-
-            <select id="txType" onchange="onTxTypeChange()">
+          <div class="form-group">
+<label>📅 Дата операции (можно указать прошлый месяц):</label>
+<div style="display: flex; gap: 8px; align-items: center;">
+<input type="date" id="txDate" class="form-control" style="flex: 1; padding: 10px 12px; font-size: 14px;">
+<button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 8px 12px; white-space: nowrap;" onclick="setTxDateToday()">Сегодня</button>
+<button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 8px 12px; white-space: nowrap;" onclick="setTxDateYesterday()">Вчера</button>
+</div>
+</div>
+<div class="form-group"><label>Тип операции:</label>
+<select id="txType" onchange="onTxTypeChange()">
 
               <option value="EXPENSE">Расход семьи</option>
 
@@ -5519,8 +5338,6 @@ self.addEventListener('fetch', (event) => {
             </select>
 
           </div>
-
-
 
           <!-- Выпадающее меню выбора категории (Category Dropdown Menu) -->
 
@@ -5560,8 +5377,6 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-
-
             <div id="txCatMenu" class="category-dropdown-menu hidden">
 
               <div class="category-dropdown-search">
@@ -5586,15 +5401,11 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-
-
             <!-- Скрытый нативный select для обратной совместимости -->
 
             <select id="txCategorySelect" style="display: none;"></select>
 
           </div>
-
-
 
           <div class="form-group">
 
@@ -5648,8 +5459,6 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
-
-
       <!-- Tab 3: Monthly Fixed Obligations -->
 
       <div id="tab-obligations" class="hidden">
@@ -5669,8 +5478,6 @@ self.addEventListener('fetch', (event) => {
             <button class="btn btn-secondary" onclick="toggleNewObligationForm()">➕ Добавить платеж</button>
 
           </div>
-
-
 
           <!-- Add Obligation Form -->
 
@@ -5710,8 +5517,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <!-- Obligations Table / Cards -->
 
           <div id="obligationsListContainer"></div>
@@ -5719,8 +5524,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-
 
       <!-- Tab 4: Accounts Management -->
 
@@ -5786,8 +5589,6 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-
-
         <div class="card">
 
           <h3 style="margin-bottom: 12px; font-size: 16px;">Список активных счетов</h3>
@@ -5824,8 +5625,6 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
-
-
       <!-- Tab 5: Categories Hierarchy -->
 
       <div id="tab-categories" class="hidden">
@@ -5845,8 +5644,6 @@ self.addEventListener('fetch', (event) => {
             <button class="btn btn-secondary" onclick="toggleNewCategoryForm()">➕ Новая категория</button>
 
           </div>
-
-
 
           <!-- Add Category Form -->
 
@@ -5892,15 +5689,11 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div id="categoryTreeContainer"></div>
 
         </div>
 
       </div>
-
-
 
       <!-- Tab 6: Internal Transfer -->
 
@@ -5932,8 +5725,6 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
-
-
       <!-- Tab 7: Ledger / Change Log -->
 
       <div id="tab-ledger" class="hidden">
@@ -5961,10 +5752,9 @@ self.addEventListener('fetch', (event) => {
                 <th>Описание</th>
 
                 <th>Проводки (Дт / Кт)</th>
-
-                <th>Сумма</th>
-
-              </tr>
+<th>Сумма</th>
+<th style="text-align: right; width: 120px;">Действия</th>
+</tr>
 
             </thead>
 
@@ -5975,8 +5765,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-
 
       <!-- Tab 8: Bank Statement Importer -->
 
@@ -5994,8 +5782,6 @@ self.addEventListener('fetch', (event) => {
 
           </p>
 
-
-
           <div class="form-group">
 
             <label>Целевой счет зачисления / списания:</label>
@@ -6003,8 +5789,6 @@ self.addEventListener('fetch', (event) => {
             <select id="importAccountSelect"></select>
 
           </div>
-
-
 
           <div class="form-group">
 
@@ -6014,8 +5798,6 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <div class="form-group">
 
             <label>Или вставьте текст CSV выписки напрямую:</label>
@@ -6024,15 +5806,11 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-
-
           <button class="btn" style="width:100%; margin-bottom: 16px;" onclick="runImportPreview()">
 
             🔍 Распознать операции и показать предпросмотр
 
           </button>
-
-
 
           <div id="importPreviewContainer" class="hidden">
 
@@ -6082,8 +5860,6 @@ self.addEventListener('fetch', (event) => {
 
   </div>
 
-
-
   <!-- Mobile Bottom Navigation Bar -->
 
   <div class="mobile-bottom-nav">
@@ -6130,8 +5906,6 @@ self.addEventListener('fetch', (event) => {
 
   </div>
 
-
-
   <script>
 
     let sessionToken = sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
@@ -6146,15 +5920,11 @@ self.addEventListener('fetch', (event) => {
 
     let activeTrIdempotencyKey = generateFormKey('tr');
 
-
-
     // Auto-lock on idle timer (15 minutes)
 
     let lastActivityTime = Date.now();
 
     const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
-
-
 
     function resetActivityTimer() {
 
@@ -6180,15 +5950,11 @@ self.addEventListener('fetch', (event) => {
 
     }, 30000);
 
-
-
     function generateFormKey(prefix) {
 
       return prefix + '_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
 
     }
-
-
 
     function authHeaders() {
 
@@ -6199,8 +5965,6 @@ self.addEventListener('fetch', (event) => {
       return headers;
 
     }
-
-
 
     // --- Stage 8 PWA & Offline Support ---
 
@@ -6218,8 +5982,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     let deferredInstallPrompt = null;
 
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -6233,8 +5995,6 @@ self.addEventListener('fetch', (event) => {
       if (btn) btn.classList.remove('hidden');
 
     });
-
-
 
     function installPwaPrompt() {
 
@@ -6258,8 +6018,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Stage 8 QR Pairing & Auto-Login ---
 
     async function checkPairTokenInUrl() {
@@ -6269,8 +6027,6 @@ self.addEventListener('fetch', (event) => {
       const pairToken = urlParams.get('pair_token');
 
       if (!pairToken) return false;
-
-
 
       try {
 
@@ -6310,8 +6066,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function openQrPairModal() {
 
       const modal = document.getElementById('modalQrPair');
@@ -6324,8 +6078,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function closeQrPairModal() {
 
       const modal = document.getElementById('modalQrPair');
@@ -6333,8 +6085,6 @@ self.addEventListener('fetch', (event) => {
       if (modal) modal.classList.add('hidden');
 
     }
-
-
 
     async function loadQrPairData(overrideIp = '') {
 
@@ -6346,8 +6096,6 @@ self.addEventListener('fetch', (event) => {
 
       const ipInput = document.getElementById('qrPairOverrideIp');
 
-
-
       let apiUrl = '/api/device/qr-pair';
 
       if (overrideIp) {
@@ -6355,8 +6103,6 @@ self.addEventListener('fetch', (event) => {
         apiUrl += '?override_ip=' + encodeURIComponent(overrideIp);
 
       }
-
-
 
       try {
 
@@ -6394,8 +6140,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function regenerateQrPair() {
 
       const ipInput = document.getElementById('qrPairOverrideIp');
@@ -6405,8 +6149,6 @@ self.addEventListener('fetch', (event) => {
       loadQrPairData(customIp);
 
     }
-
-
 
     function copyQrPairUrl() {
 
@@ -6430,8 +6172,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function switchTab(tabId) {
 
       ['tab-overview', 'tab-analytics', 'tab-accounts', 'tab-tx', 'tab-obligations', 'tab-categories', 'tab-transfer', 'tab-ledger', 'tab-import', 'tab-goals', 'tab-envelopes', 'tab-debts'].forEach(id => {
@@ -6446,13 +6186,9 @@ self.addEventListener('fetch', (event) => {
 
       document.querySelectorAll('.mobile-nav-item').forEach(btn => btn.classList.remove('active'));
 
-
-
       const targetEl = document.getElementById(tabId);
 
       if (targetEl) targetEl.classList.remove('hidden');
-
-
 
       // Update desktop buttons
 
@@ -6470,8 +6206,6 @@ self.addEventListener('fetch', (event) => {
 
       });
 
-
-
       if (tabId === 'tab-overview') { loadDashboard(); loadGoalsWidget(); loadEnvelopesWidget(); }
 
       if (tabId === 'tab-goals') loadGoals();
@@ -6482,7 +6216,7 @@ self.addEventListener('fetch', (event) => {
 
       if (tabId === 'tab-analytics') { loadAnalytics(); loadForecast(); }
 
-      if (tabId === 'tab-ledger') loadTransactions();
+      if (tabId === 'tab-ledger') loadTransactions(currentSelectedMonth);
 
       if (tabId === 'tab-obligations') loadObligations();
 
@@ -6494,8 +6228,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Stage 7 Analytics & Forecast State & Functions ---
 
     let currentAnalyticsPeriod = 'current_month';
@@ -6503,8 +6235,6 @@ self.addEventListener('fetch', (event) => {
     let currentForecastDays = 30;
 
     let forecastIncludeBurn = true;
-
-
 
     function changeAnalyticsPeriod(period) {
 
@@ -6534,8 +6264,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function changeForecastHorizon(days) {
 
       currentForecastDays = days;
@@ -6552,8 +6280,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function toggleForecastBurn() {
 
       const chk = document.getElementById('chkIncludeBurn');
@@ -6564,19 +6290,15 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
-    async function loadAnalytics() {
-
+    async function loadAnalytics(period) {
       try {
-
-        const res = await fetch('/api/analytics/summary?period=' + currentAnalyticsPeriod, { headers: authHeaders() });
+        const targetPeriod = period || currentAnalyticsPeriod || currentSelectedMonth || 'current_month';
+        currentAnalyticsPeriod = targetPeriod;
+        const res = await fetch('/api/analytics/summary?period=' + targetPeriod, { headers: authHeaders() });
 
         if (res.status === 401 || res.status === 423) return;
 
         const data = await res.json();
-
-
 
         // 1. KPI Cards
 
@@ -6618,13 +6340,9 @@ self.addEventListener('fetch', (event) => {
 
         document.getElementById('analyticsPeriodLabel').innerText = data.period_label;
 
-
-
         // 2. Render Donut Chart
 
         renderDonutChart(data.categories, data.total_expense_cents, data.total_expense_rub);
-
-
 
         // 3. Render Category Bars
 
@@ -6660,8 +6378,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         // 4. Render Members Bars
 
         const memBox = document.getElementById('membersBarsContainer');
@@ -6695,8 +6411,6 @@ self.addEventListener('fetch', (event) => {
           `).join('');
 
         }
-
-
 
         // 5. Render Top 5 Expenses
 
@@ -6734,8 +6448,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function renderDonutChart(categories, totalCents, totalRub) {
 
       const container = document.getElementById('donutChartContainer');
@@ -6764,8 +6476,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
 
       const R = 70;
@@ -6777,8 +6487,6 @@ self.addEventListener('fetch', (event) => {
       let circlesHtml = '';
 
       let legendHtml = '';
-
-
 
       categories.slice(0, 8).forEach((cat, idx) => {
 
@@ -6800,8 +6508,6 @@ self.addEventListener('fetch', (event) => {
 
         accumulatedOffset += sliceLen;
 
-
-
         legendHtml += `
 
           <div class="legend-item">
@@ -6821,8 +6527,6 @@ self.addEventListener('fetch', (event) => {
         `;
 
       });
-
-
 
       container.innerHTML = `
 
@@ -6844,8 +6548,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function loadForecast() {
 
       try {
@@ -6855,8 +6557,6 @@ self.addEventListener('fetch', (event) => {
         if (res.status === 401 || res.status === 423) return;
 
         const data = await res.json();
-
-
 
         // 1. Stats strip
 
@@ -6869,8 +6569,6 @@ self.addEventListener('fetch', (event) => {
         document.getElementById('fcMinBalance').innerText = data.min_projected_balance_rub + ' ₽';
 
         document.getElementById('fcMinBalance').style.color = data.min_projected_balance_cents < 0 ? '#ef4444' : '#34d399';
-
-
 
         // 2. Deficit Alert Banner
 
@@ -6895,8 +6593,6 @@ self.addEventListener('fetch', (event) => {
           alertEl.classList.add('hidden');
 
         }
-
-
 
         // 3. Render Milestones
 
@@ -6930,8 +6626,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         // 4. Render Cash Flow Chart
 
         renderCashFlowChart(data);
@@ -6943,8 +6637,6 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
-
-
 
     function renderCashFlowChart(data) {
 
@@ -6959,8 +6651,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       const W = 620;
 
@@ -6978,8 +6668,6 @@ self.addEventListener('fetch', (event) => {
 
       const plotH = H - padT - padB;
 
-
-
       let minVal = 0;
 
       let maxVal = Math.max(data.starting_liquid_cents, 100000);
@@ -6992,8 +6680,6 @@ self.addEventListener('fetch', (event) => {
 
       });
 
-
-
       const span = Math.max(1, maxVal - minVal);
 
       const yMax = maxVal + span * 0.08;
@@ -7002,15 +6688,11 @@ self.addEventListener('fetch', (event) => {
 
       const totalYRange = yMax - yMin;
 
-
-
       function getY(cents) {
 
         return padT + plotH * (1 - (cents - yMin) / totalYRange);
 
       }
-
-
 
       const zeroY = getY(0);
 
@@ -7018,15 +6700,11 @@ self.addEventListener('fetch', (event) => {
 
       const endX = padL + plotW;
 
-
-
       let pointsStr = '';
 
       let areaStr = `${startX},${zeroY} `;
 
       const dotsHtml = [];
-
-
 
       timeline.forEach((pt, i) => {
 
@@ -7038,8 +6716,6 @@ self.addEventListener('fetch', (event) => {
 
         areaStr += `${x.toFixed(1)},${y.toFixed(1)} `;
 
-
-
         if (pt.events && pt.events.some(e => e.type === 'OBLIGATION')) {
 
           dotsHtml.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#f59e0b" stroke="#0f172a" stroke-width="2" />`);
@@ -7049,8 +6725,6 @@ self.addEventListener('fetch', (event) => {
       });
 
       areaStr += `${endX},${zeroY}`;
-
-
 
       const xLabelsHtml = [];
 
@@ -7066,13 +6740,9 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const strokeColor = data.has_deficit ? '#f59e0b' : '#34d399';
 
       const gradColor = data.has_deficit ? '#f59e0b' : '#10b981';
-
-
 
       container.innerHTML = `
 
@@ -7098,15 +6768,11 @@ self.addEventListener('fetch', (event) => {
 
           <text x="${startX - 6}" y="${(zeroY + 3).toFixed(1)}" text-anchor="end" fill="#f87171" font-size="10" font-weight="600">0 ₽</text>
 
-
-
           <!-- Top Grid Line & Value -->
 
           <line x1="${startX}" y1="${padT}" x2="${endX}" y2="${padT}" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
 
           <text x="${startX - 6}" y="${padT + 4}" text-anchor="end" fill="#94a3b8" font-size="10">${Math.round(yMax / 100).toLocaleString('ru-RU')} ₽</text>
-
-
 
           <!-- Area & Trajectory Polyline -->
 
@@ -7114,13 +6780,9 @@ self.addEventListener('fetch', (event) => {
 
           <polyline fill="none" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${pointsStr}" />
 
-
-
           <!-- Obligation Event Milestone Circles -->
 
           ${dotsHtml.join('')}
-
-
 
           <!-- Date Labels on X Axis -->
 
@@ -7132,8 +6794,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function toggleCreditLimitField() {
 
       const subtype = document.getElementById('newAccSubtype').value;
@@ -7144,23 +6804,17 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function toggleNewObligationForm() {
 
       document.getElementById('divNewObligation').classList.toggle('hidden');
 
     }
 
-
-
     function toggleNewCategoryForm() {
 
       document.getElementById('divNewCategory').classList.toggle('hidden');
 
     }
-
-
 
     async function loadStatus() {
 
@@ -7169,8 +6823,6 @@ self.addEventListener('fetch', (event) => {
         const res = await fetch('/api/status');
 
         const data = await res.json();
-
-
 
         // 1. If database is encrypted and locked
 
@@ -7200,8 +6852,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         // Database is unlocked
 
         document.getElementById('lockScreen').classList.add('hidden');
@@ -7209,8 +6859,6 @@ self.addEventListener('fetch', (event) => {
         document.getElementById('storageBadge').innerText = 'AES-256-GCM / Память';
 
         document.getElementById('storageBadge').style.background = '#10b981';
-
-
 
         // 2. Check if owner exists
 
@@ -7232,8 +6880,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         // 3. Check authentication & URL QR pair token
 
         if (!sessionToken) {
@@ -7247,8 +6893,6 @@ self.addEventListener('fetch', (event) => {
           }
 
         }
-
-
 
         if (!sessionToken) {
 
@@ -7324,8 +6968,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function togglePasswordVisibility(inputId, btn) {
 
       const input = document.getElementById(inputId);
@@ -7354,8 +6996,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitUnlock() {
 
       const pwdInput = document.getElementById('masterUnlockPassword');
@@ -7366,8 +7006,6 @@ self.addEventListener('fetch', (event) => {
 
       const btn = document.getElementById('btnUnlock');
 
-
-
       if (!password) {
 
         msg.innerHTML = '<div class="alert alert-error">Введите мастер-пароль</div>';
@@ -7376,13 +7014,9 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       btn.disabled = true;
 
       msg.innerHTML = '<div class="alert alert-info">Расшифровка базы данных (PBKDF2 600 000 итераций)...</div>';
-
-
 
       try {
 
@@ -7454,10 +7088,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
-
-
     async function submitLock() {
 
       try {
@@ -7474,8 +7104,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitSetup() {
 
       const username = document.getElementById('setupUsername').value;
@@ -7484,13 +7112,9 @@ self.addEventListener('fetch', (event) => {
 
       const password = document.getElementById('setupPassword').value;
 
-
-
       const btn = document.getElementById('btnSetup');
 
       btn.disabled = true;
-
-
 
       try {
 
@@ -7528,23 +7152,15 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
-
-
     async function submitLogin() {
 
       const username = document.getElementById('loginUsername').value;
 
       const password = document.getElementById('loginPassword').value;
 
-
-
       const btn = document.getElementById('btnLogin');
 
       btn.disabled = true;
-
-
 
       try {
 
@@ -7584,10 +7200,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
-
-
     async function logout() {
 
       try {
@@ -7606,8 +7218,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function loadDashboard() {
 
       const res = await fetch('/api/overview', { headers: authHeaders() });
@@ -7615,8 +7225,6 @@ self.addEventListener('fetch', (event) => {
       if (res.status === 401 || res.status === 423) return false;
 
       overviewData = await res.json();
-
-
 
       // Metrics
 
@@ -7634,8 +7242,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       document.getElementById('valLiquid').innerText = overviewData.common_liquid_assets_rub + ' ₽';
 
       document.getElementById('valReserve').innerText = overviewData.emergency_reserves_rub + ' ₽';
@@ -7646,23 +7252,17 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       // Obligations Metric
 
       document.getElementById('valObligations').innerText = overviewData.unpaid_obligations_rub + ' ₽';
 
       document.getElementById('valObligationsDetail').innerText = `Всего в месяц: ${overviewData.total_obligations_rub} ₽ | Оплачено: ${overviewData.paid_obligations_rub} ₽`;
 
-
-
       const cc = overviewData.credit_cards;
 
       document.getElementById('valCreditSummary').innerText = `Долг: ${cc.total_debt_rub} ₽`;
 
       document.getElementById('valCreditDetail').innerText = `Лимит: ${cc.total_limit_rub} ₽ | Доступно: ${cc.available_limit_rub} ₽`;
-
-
 
       renderOverviewAccounts();
 
@@ -7671,8 +7271,6 @@ self.addEventListener('fetch', (event) => {
       populateSelects();
 
       await loadCategories();
-
-
 
       // Show Onboarding banner if system is clean (zero liquid assets and zero obligations)
 
@@ -7694,19 +7292,19 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       await loadGoalsWidget();
 
       await loadEnvelopesWidget();
-
-
-
+      if (document.getElementById('globalMonthSelect') && !document.getElementById('globalMonthSelect').options.length) {
+        renderMonthSelector([currentSelectedMonth], currentSelectedMonth);
+      }
+      const txDateInput = document.getElementById('txDate');
+      if (txDateInput && !txDateInput.value) {
+        txDateInput.value = new Date().toISOString().slice(0, 10);
+      }
       return true;
 
     }
-
-
 
     function renderOverviewAccounts() {
 
@@ -7741,8 +7339,6 @@ self.addEventListener('fetch', (event) => {
       });
 
     }
-
-
 
     function renderManageAccounts() {
 
@@ -7780,13 +7376,9 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function populateSelects() {
 
       const assetLiabAccounts = overviewData.accounts.filter(a => a.type === 'ASSET' || a.type === 'LIABILITY');
-
-
 
       // 1. Transaction Account
 
@@ -7808,8 +7400,6 @@ self.addEventListener('fetch', (event) => {
 
       });
 
-
-
       // 2. Transfer Accounts
 
       const trFrom = document.getElementById('trFromAccount');
@@ -7828,8 +7418,6 @@ self.addEventListener('fetch', (event) => {
 
         trFrom.appendChild(o1);
 
-
-
         const o2 = document.createElement('option');
 
         o2.value = a.id; o2.innerText = `${a.name} (${a.balance_rub} ₽)`;
@@ -7839,8 +7427,6 @@ self.addEventListener('fetch', (event) => {
       });
 
       if (trTo.options.length > 1) trTo.selectedIndex = 1;
-
-
 
       // 3. Obligation payment account
 
@@ -7862,19 +7448,13 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       checkPersonalCardExpense();
 
     }
 
-
-
     let activeCatFilter = { txCatMenu: 'ALL', dashCatMenu: 'ALL' };
 
     let selectedCategoryId = null;
-
-
 
     async function loadCategories() {
 
@@ -7900,8 +7480,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function onTxTypeChange() {
 
       const txType = document.getElementById('txType').value;
@@ -7913,8 +7491,6 @@ self.addEventListener('fetch', (event) => {
       checkPersonalCardExpense();
 
     }
-
-
 
     function toggleCategoryDropdown(menuId) {
 
@@ -7946,8 +7522,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function setCatMenuFilter(menuId, filterType, btn) {
 
       activeCatFilter[menuId] = filterType;
@@ -7968,8 +7542,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function filterCategoryDropdown(menuId, query) {
 
       query = (query || '').toLowerCase().trim();
@@ -7978,19 +7550,13 @@ self.addEventListener('fetch', (event) => {
 
       if (!listContainer || !categoryData || !categoryData.tree) return;
 
-
-
       const currentFilter = activeCatFilter[menuId] || 'ALL';
 
       let html = '';
 
-
-
       categoryData.tree.forEach(root => {
 
         if (currentFilter !== 'ALL' && root.type !== currentFilter) return;
-
-
 
         const rootMatch = root.name.toLowerCase().includes(query);
 
@@ -8002,15 +7568,9 @@ self.addEventListener('fetch', (event) => {
 
         });
 
-
-
         if (query && !rootMatch && matchedSubs.length === 0) return;
 
-
-
         html += `<div class="cat-group-header"><span>${root.icon || '📁'}</span> <span>${root.name}</span></div>`;
-
-
 
         // Root category item
 
@@ -8027,8 +7587,6 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         `;
-
-
 
         // Subcategories
 
@@ -8052,8 +7610,6 @@ self.addEventListener('fetch', (event) => {
 
       });
 
-
-
       if (!html) {
 
         html = '<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 14px;">Категории не найдены</div>';
@@ -8064,8 +7620,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function onSelectCategory(catId, menuId) {
 
       if (!categoryData || !categoryData.flat) return;
@@ -8074,17 +7628,11 @@ self.addEventListener('fetch', (event) => {
 
       if (!cat) return;
 
-
-
       selectedCategoryId = cat.id;
-
-
 
       const menu = document.getElementById(menuId);
 
       if (menu) menu.classList.add('hidden');
-
-
 
       if (menuId === 'txCatMenu') {
 
@@ -8097,8 +7645,6 @@ self.addEventListener('fetch', (event) => {
         const badgeEl = document.getElementById('txCatBadge');
 
         const selectEl = document.getElementById('txCategorySelect');
-
-
 
         if (iconEl) iconEl.innerText = cat.icon || '🏷️';
 
@@ -8122,8 +7668,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         const txTypeEl = document.getElementById('txType');
 
         if (txTypeEl && txTypeEl.value !== cat.type) {
@@ -8141,8 +7685,6 @@ self.addEventListener('fetch', (event) => {
         if (dashIcon) dashIcon.innerText = cat.icon || '🏷️';
 
         if (dashName) dashName.innerText = cat.name;
-
-
 
         const input = document.getElementById('dashQuickInput');
 
@@ -8172,8 +7714,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function renderCategoryCustomDropdowns() {
 
       filterCategoryDropdown('txCatMenu', '');
@@ -8193,8 +7733,6 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
-
-
 
     function renderCategorySelects() {
 
@@ -8256,8 +7794,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const oblCatSelect = document.getElementById('newOblCategory');
 
       if (oblCatSelect) {
@@ -8310,8 +7846,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const newCatParent = document.getElementById('newCatParent');
 
       if (newCatParent) {
@@ -8334,8 +7868,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // Global outside click listener to close category dropdowns
 
     document.addEventListener('click', function(e) {
@@ -8352,8 +7884,6 @@ self.addEventListener('fetch', (event) => {
 
     });
 
-
-
     function renderCategoryTree() {
 
       const container = document.getElementById('categoryTreeContainer');
@@ -8361,8 +7891,6 @@ self.addEventListener('fetch', (event) => {
       if (!container || !categoryData) return;
 
       container.innerHTML = '';
-
-
 
       categoryData.tree.forEach(root => {
 
@@ -8404,8 +7932,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function loadObligations() {
 
       try {
@@ -8420,8 +7946,6 @@ self.addEventListener('fetch', (event) => {
 
         if (!container) return;
 
-
-
         if (!data.obligations || data.obligations.length === 0) {
 
           container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px;">Обязательные платежи пока не добавлены. Добавьте аренду, ЖКУ или кредиты.</div>';
@@ -8429,8 +7953,6 @@ self.addEventListener('fetch', (event) => {
           return;
 
         }
-
-
 
         let html = `
 
@@ -8476,8 +7998,6 @@ self.addEventListener('fetch', (event) => {
 
         `;
 
-
-
         data.obligations.forEach(o => {
 
           const statusBadge = o.is_paid_this_month
@@ -8486,15 +8006,11 @@ self.addEventListener('fetch', (event) => {
 
             : '<span class="badge" style="background: #991b1b; color: #fca5a5;">К оплате</span>';
 
-
-
           const actionBtn = o.is_paid_this_month
 
             ? `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="unpayObligation('${o.id}')">Отменить</button>`
 
             : `<button class="btn btn-success" style="padding: 4px 8px; font-size: 12px;" onclick="payObligation('${o.id}')">Оплатить</button>`;
-
-
 
           html += `
 
@@ -8528,8 +8044,6 @@ self.addEventListener('fetch', (event) => {
 
         });
 
-
-
         html += '</tbody></table>';
 
         container.innerHTML = html;
@@ -8541,8 +8055,6 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
-
-
 
     async function submitCreateObligation() {
 
@@ -8558,11 +8070,7 @@ self.addEventListener('fetch', (event) => {
 
       const note = document.getElementById('newOblNote').value.trim();
 
-
-
       if (!name || !amount_rub) { alert('Укажите название и сумму платежа'); return; }
-
-
 
       const res = await fetch('/api/obligations/create', {
 
@@ -8596,8 +8104,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function payObligation(obligationId) {
 
       const res = await fetch('/api/obligations/pay', {
@@ -8616,8 +8122,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function unpayObligation(obligationId) {
 
       const res = await fetch('/api/obligations/unpay', {
@@ -8635,8 +8139,6 @@ self.addEventListener('fetch', (event) => {
       await loadDashboard();
 
     }
-
-
 
     async function archiveObligation(obligationId) {
 
@@ -8658,8 +8160,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitCreateCategory() {
 
       const name = document.getElementById('newCatName').value.trim();
@@ -8670,11 +8170,7 @@ self.addEventListener('fetch', (event) => {
 
       const parent_id = document.getElementById('newCatParent').value || null;
 
-
-
       if (!name) { alert('Введите название категории'); return; }
-
-
 
       const res = await fetch('/api/categories/create', {
 
@@ -8704,8 +8200,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function archiveCategory(categoryId) {
 
       if (!confirm('Архивировать эту категорию и её подкатегории?')) return;
@@ -8724,8 +8218,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function checkPersonalCardExpense() {
 
       const txType = document.getElementById('txType').value;
@@ -8737,8 +8229,6 @@ self.addEventListener('fetch', (event) => {
       const scope = selectedOpt ? selectedOpt.dataset.scope : 'COMMON';
 
       const div = document.getElementById('personalExpenseOption');
-
-
 
       if (txType === 'EXPENSE' && (scope === 'PERSONAL_HUSBAND' || scope === 'PERSONAL_WIFE')) {
 
@@ -8754,8 +8244,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitCreateAccount() {
 
       const name = document.getElementById('newAccName').value.trim();
@@ -8770,19 +8258,13 @@ self.addEventListener('fetch', (event) => {
 
       const desc = document.getElementById('newAccDesc').value.trim();
 
-
-
       if (!name) { alert('Введите название счета'); return; }
-
-
 
       const account_type = subtype === 'CREDIT_CARD' ? 'LIABILITY' : 'ASSET';
 
       const btn = document.getElementById('btnCreateAcc');
 
       btn.disabled = true;
-
-
 
       try {
 
@@ -8844,10 +8326,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
-
-
     async function archiveAccount(accountId) {
 
       if (!confirm('Архивировать этот счет? История операций будет сохранена.')) return;
@@ -8866,8 +8344,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitTransfer() {
 
       const fromAcc = document.getElementById('trFromAccount').value;
@@ -8878,19 +8354,13 @@ self.addEventListener('fetch', (event) => {
 
       const desc = document.getElementById('trDesc').value.trim() || 'Внутренний перевод';
 
-
-
       if (!amount || parseFloat(amount) <= 0) { alert('Введите корректную сумму перевода'); return; }
 
       if (fromAcc === toAcc) { alert('Счета списания и зачисления должны различаться'); return; }
 
-
-
       const btn = document.getElementById('btnSubmitTransfer');
 
       btn.disabled = true;
-
-
 
       try {
 
@@ -8944,159 +8414,353 @@ self.addEventListener('fetch', (event) => {
 
     }
 
+    let currentSelectedMonth = new Date().toISOString().slice(0, 7);
+    let cachedTransactions = [];
+    const RU_MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
+    function formatMonthRu(ym) {
+      if (!ym || typeof ym !== 'string' || !ym.includes('-')) return ym || '';
+      const parts = ym.split('-');
+      const y = parts[0];
+      const m = parseInt(parts[1], 10);
+      const name = RU_MONTH_NAMES[m - 1] || parts[1];
+      return `${name} ${y}`;
+    }
 
+    function renderMonthSelector(availableMonths, selectedMonth) {
+      const select = document.getElementById('globalMonthSelect');
+      if (!select) return;
+      const curRealMonth = new Date().toISOString().slice(0, 7);
+      const targetMonth = selectedMonth || currentSelectedMonth || curRealMonth;
 
+      const monthsSet = new Set(availableMonths || []);
+      monthsSet.add(curRealMonth);
+      monthsSet.add(targetMonth);
+
+      const now = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        monthsSet.add(ym);
+      }
+
+      const sortedMonths = Array.from(monthsSet).sort().reverse();
+      select.innerHTML = '';
+      sortedMonths.forEach(ym => {
+        const opt = document.createElement('option');
+        opt.value = ym;
+        const isCur = (ym === curRealMonth);
+        opt.innerText = formatMonthRu(ym) + (isCur ? ' (Текущий)' : '');
+        if (ym === targetMonth) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      const resetBtn = document.getElementById('btnCurrentMonthReset');
+      const notice = document.getElementById('pastMonthNotice');
+      const noticeLbl = document.getElementById('pastMonthNoticeLabel');
+      if (resetBtn) resetBtn.style.display = (targetMonth === curRealMonth ? 'none' : 'inline-block');
+      if (notice) {
+        notice.style.display = (targetMonth === curRealMonth ? 'none' : 'flex');
+        if (noticeLbl) noticeLbl.innerText = formatMonthRu(targetMonth);
+      }
+    }
+
+    function shiftSelectedMonth(delta) {
+      const parts = currentSelectedMonth.split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1 + delta, 1);
+      const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      onGlobalMonthSelectChange(ym);
+    }
+
+    function onGlobalMonthSelectChange(ym) {
+      currentSelectedMonth = ym;
+      const curRealMonth = new Date().toISOString().slice(0, 7);
+      const select = document.getElementById('globalMonthSelect');
+      if (select && select.value !== ym) select.value = ym;
+
+      const resetBtn = document.getElementById('btnCurrentMonthReset');
+      const notice = document.getElementById('pastMonthNotice');
+      const noticeLbl = document.getElementById('pastMonthNoticeLabel');
+      if (resetBtn) resetBtn.style.display = (ym === curRealMonth ? 'none' : 'inline-block');
+      if (notice) {
+        notice.style.display = (ym === curRealMonth ? 'none' : 'flex');
+        if (noticeLbl) noticeLbl.innerText = formatMonthRu(ym);
+      }
+
+      const txDateInput = document.getElementById('txDate');
+      if (txDateInput) {
+        if (ym === curRealMonth) {
+          txDateInput.value = new Date().toISOString().slice(0, 10);
+        } else {
+          txDateInput.value = ym + '-01';
+        }
+      }
+
+      loadTransactions(ym);
+      loadAnalytics(ym);
+      loadObligations(ym);
+    }
+
+    function resetToCurrentMonth() {
+      const cur = new Date().toISOString().slice(0, 7);
+      onGlobalMonthSelectChange(cur);
+    }
+
+    function setTxDateToday() {
+      const el = document.getElementById('txDate');
+      if (el) el.value = new Date().toISOString().slice(0, 10);
+    }
+
+    function setTxDateYesterday() {
+      const el = document.getElementById('txDate');
+      if (el) {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        el.value = d.toISOString().slice(0, 10);
+      }
+    }
 
     async function submitTransaction() {
-
       const txType = document.getElementById('txType').value;
-
       const account_id = document.getElementById('txAccount').value;
-
       const category_id = document.getElementById('txCategorySelect').value || selectedChipCategoryId || null;
-
-      // Default coarse accounting bucket: 5010 for Expense, 4010 for Income
-
       const defaultChartAcc = overviewData.accounts.find(a => a.type === txType) || overviewData.accounts[0];
-
       const category_account_id = defaultChartAcc.id;
 
-
-
       const description = document.getElementById('txDescription').value.trim() || 'Операция';
-
       const amount_rub = document.getElementById('txAmount').value;
-
       const isPersonalCommon = document.getElementById('chkPersonalForCommon').checked;
-
-
+      const tx_date = document.getElementById('txDate') ? document.getElementById('txDate').value : undefined;
 
       if (!amount_rub || parseFloat(amount_rub) <= 0) { alert('Введите корректную сумму'); return; }
 
-
-
       const btn = document.getElementById('btnSubmitTx');
-
       btn.disabled = true;
 
-
-
       try {
-
         const res = await fetch('/api/transaction/create', {
-
           method: 'POST',
-
           headers: authHeaders(),
-
           body: JSON.stringify({
-
             tx_type: txType,
-
             account_id,
-
             category_account_id,
-
             category_id,
-
             description,
-
             amount_rub,
-
             is_personal_for_common: isPersonalCommon,
-
+            tx_date: tx_date || undefined,
             idempotency_key: activeTxIdempotencyKey
-
           })
-
         });
-
         const data = await res.json();
-
         if (data.status === 'success') {
-
           activeTxIdempotencyKey = generateFormKey('tx');
-
           document.getElementById('txAmount').value = '';
-
           document.getElementById('txDescription').value = '';
-
           document.getElementById('chkPersonalForCommon').checked = false;
-
           document.getElementById('txMsg').innerHTML = `<div class="alert alert-success">Операция записана!</div>`;
-
           setTimeout(() => { document.getElementById('txMsg').innerHTML = ''; }, 3000);
-
           await loadDashboard();
-
+          await loadTransactions(currentSelectedMonth);
+          await loadAnalytics(currentSelectedMonth);
         } else {
-
           document.getElementById('txMsg').innerHTML = `<div class="alert alert-error">${data.message}</div>`;
-
         }
-
       } finally {
-
         btn.disabled = false;
-
       }
-
     }
 
-
-
-
-
-    async function loadTransactions() {
-
-      const res = await fetch('/api/transactions', { headers: authHeaders() });
-
+    async function loadTransactions(month) {
+      const targetMonth = month || currentSelectedMonth || new Date().toISOString().slice(0, 7);
+      const res = await fetch('/api/transactions?month=' + targetMonth, { headers: authHeaders() });
       if (res.status === 401 || res.status === 423) return;
-
-      const txs = await res.json();
-
-      const tbody = document.getElementById('txTableBody');
-
-      if (!txs || txs.length === 0) {
-
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Операций пока нет</td></tr>';
-
-        return;
-
+      const data = await res.json();
+      let txs = [];
+      if (Array.isArray(data)) {
+        txs = data;
+      } else if (data && data.transactions) {
+        txs = data.transactions;
+        if (data.available_months) {
+          renderMonthSelector(data.available_months, data.selected_month || targetMonth);
+        }
       }
-
+      cachedTransactions = txs;
+      const tbody = document.getElementById('txTableBody');
+      if (!tbody) return;
+      if (!txs || txs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">В периоде ' + formatMonthRu(targetMonth) + ' операций не найдено</td></tr>';
+        return;
+      }
       tbody.innerHTML = '';
-
       txs.forEach(t => {
-
         const tr = document.createElement('tr');
-
         const postingSummary = t.postings.map(p => `${p.type === 'DEBIT' ? 'Дт' : 'Кт'} ${p.account_name} (${p.amount_rub} ₽)`).join('<br>');
-
         const mainAmount = t.postings[0] ? t.postings[0].amount_rub + ' ₽' : '0.00 ₽';
-
+        const safeDesc = encodeURIComponent(t.description || '');
         tr.innerHTML = `
-
-          <td>${t.tx_date}</td>
-
+          <td><strong>${t.tx_date}</strong></td>
           <td><span class="badge" style="background:#1e293b; border:1px solid #475569;">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
-
           <td>${t.description}</td>
-
           <td style="font-size: 13px;">${postingSummary}</td>
-
           <td style="font-weight: 700; color: ${t.tx_type === 'EXPENSE' ? '#f87171' : '#34d399'};">${mainAmount}</td>
-
+          <td style="text-align: right; white-space: nowrap;">
+            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="openEditTxModal('${t.id}')" title="Редактировать операцию">✏️</button>
+            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; color: #f87171;" onclick="deleteTransaction('${t.id}', '${safeDesc}', '${mainAmount}')" title="Удалить операцию">🗑️</button>
+          </td>
         `;
-
         tbody.appendChild(tr);
+      });
+    }
 
+    function openEditTxModal(txId) {
+      const t = cachedTransactions.find(x => x.id === txId);
+      if (!t) {
+        alert('Операция не найдена в текущем списке.');
+        return;
+      }
+      document.getElementById('editTxId').value = t.id;
+      document.getElementById('editTxDate').value = t.tx_date;
+      document.getElementById('editTxAmount').value = t.postings[0] ? t.postings[0].amount_rub : 0;
+      document.getElementById('editTxType').value = t.tx_type || 'EXPENSE';
+      document.getElementById('editTxDescription').value = t.description || '';
+      document.getElementById('editTxMsg').innerHTML = '';
+
+      const accSelect = document.getElementById('editTxAccount');
+      accSelect.innerHTML = '';
+      const assetLiab = (overviewData && overviewData.accounts) 
+        ? overviewData.accounts.filter(a => a.type === 'ASSET' || a.type === 'LIABILITY')
+        : [];
+      const currentAccId = (t.postings && t.postings[0]) ? t.postings[0].account_id : '';
+      assetLiab.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.innerText = `${a.name} (${a.balance_rub} ₽)`;
+        if (a.id === currentAccId) opt.selected = true;
+        accSelect.appendChild(opt);
       });
 
+      populateEditTxCategories(t.tx_type || 'EXPENSE', t.category_id);
+      document.getElementById('modalEditTx').classList.remove('hidden');
     }
 
+    function populateEditTxCategories(txType, selectedCatId) {
+      const catSelect = document.getElementById('editTxCategory');
+      catSelect.innerHTML = '';
+      if (!categoryData) return;
+      const cats = (txType === 'INCOME') ? categoryData.income : categoryData.expense;
+      if (!cats) return;
 
+      function addNodes(nodes, depth) {
+        nodes.forEach(n => {
+          const opt = document.createElement('option');
+          opt.value = n.id;
+          opt.innerText = '  '.repeat(depth) + (n.icon ? n.icon + ' ' : '') + n.name;
+          if (n.id === selectedCatId) opt.selected = true;
+          catSelect.appendChild(opt);
+          if (n.children && n.children.length > 0) {
+            addNodes(n.children, depth + 1);
+          }
+        });
+      }
+      addNodes(cats, 0);
+    }
+
+    function onEditTxTypeChange() {
+      const txType = document.getElementById('editTxType').value;
+      populateEditTxCategories(txType, null);
+    }
+
+    function closeEditTxModal() {
+      document.getElementById('modalEditTx').classList.add('hidden');
+    }
+
+    async function submitEditTransaction() {
+      const tx_id = document.getElementById('editTxId').value;
+      const tx_date = document.getElementById('editTxDate').value;
+      const amount_rub = parseFloat(document.getElementById('editTxAmount').value);
+      const tx_type = document.getElementById('editTxType').value;
+      const category_id = document.getElementById('editTxCategory').value;
+      const account_id = document.getElementById('editTxAccount').value;
+      const description = document.getElementById('editTxDescription').value.trim() || 'Операция';
+      const msgEl = document.getElementById('editTxMsg');
+
+      if (!amount_rub || amount_rub <= 0) {
+        msgEl.innerHTML = '<div class="alert alert-error">Укажите сумму больше нуля</div>';
+        return;
+      }
+      if (!tx_date) {
+        msgEl.innerHTML = '<div class="alert alert-error">Укажите дату операции</div>';
+        return;
+      }
+
+      const btn = document.getElementById('btnSaveEditTx');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/transactions/update', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            transaction_id: tx_id,
+            tx_date: tx_date,
+            amount_rub: amount_rub,
+            description: description,
+            category_id: category_id || null,
+            account_id: account_id || null,
+            tx_type: tx_type
+          })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          closeEditTxModal();
+          await loadDashboard();
+          await loadTransactions(currentSelectedMonth);
+          await loadAnalytics(currentSelectedMonth);
+        } else {
+          msgEl.innerHTML = `<div class="alert alert-error">${data.message || 'Ошибка обновления'}</div>`;
+        }
+      } catch (e) {
+        msgEl.innerHTML = `<div class="alert alert-error">Ошибка сети: ${e.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteTransaction(txId, encodedDesc, amount) {
+      const desc = decodeURIComponent(encodedDesc || '');
+      if (!confirm(`Удалить операцию "${desc || 'Операция'}" на сумму ${amount || ''}?`)) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/transactions/delete', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            transaction_id: txId,
+            reason: 'Удалено пользователем'
+          })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          await loadDashboard();
+          await loadTransactions(currentSelectedMonth);
+          await loadAnalytics(currentSelectedMonth);
+        } else {
+          alert('Ошибка удаления: ' + (data.message || 'Неизвестная ошибка'));
+        }
+      } catch (e) {
+        alert('Ошибка связи: ' + e.message);
+      }
+    }
+
+    function deleteTransactionFromModal() {
+      const txId = document.getElementById('editTxId').value;
+      const desc = encodeURIComponent(document.getElementById('editTxDescription').value || '');
+      const amount = document.getElementById('editTxAmount').value + ' ₽';
+      closeEditTxModal();
+      deleteTransaction(txId, desc, amount);
+    }
 
     async function updateSyncStatus() {
 
@@ -9135,8 +8799,6 @@ self.addEventListener('fetch', (event) => {
     }
 
     setInterval(updateSyncStatus, 8000);
-
-
 
     async function triggerLanSync() {
 
@@ -9190,8 +8852,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitOnboarding() {
 
       const mainCard = document.getElementById('obMainCard').value || 0;
@@ -9210,8 +8870,6 @@ self.addEventListener('fetch', (event) => {
 
       const oblDay = parseInt(document.getElementById('obOblDay').value) || 15;
 
-
-
       const mainAcc = overviewData.accounts.find(a => a.code === '1010');
 
       const wifeAcc = overviewData.accounts.find(a => a.code === '1012') || overviewData.accounts.find(a => a.code === '1011');
@@ -9219,8 +8877,6 @@ self.addEventListener('fetch', (event) => {
       const cashAcc = overviewData.accounts.find(a => a.code === '1020');
 
       const credAcc = overviewData.accounts.find(a => a.code === '2020');
-
-
 
       const balances = [];
 
@@ -9256,8 +8912,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const obligations = [];
 
       if (oblName && parseFloat(oblAmount) > 0) {
@@ -9275,8 +8929,6 @@ self.addEventListener('fetch', (event) => {
         });
 
       }
-
-
 
       try {
 
@@ -9316,11 +8968,7 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     let currentPreviewItems = [];
-
-
 
     function populateImportAccounts() {
 
@@ -9344,8 +8992,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function handleFileSelect(evt) {
 
       const file = evt.target.files[0];
@@ -9363,8 +9009,6 @@ self.addEventListener('fetch', (event) => {
       reader.readAsText(file, 'utf-8');
 
     }
-
-
 
     async function runImportPreview() {
 
@@ -9412,8 +9056,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function renderImportPreview() {
 
       const container = document.getElementById('importPreviewContainer');
@@ -9426,8 +9068,6 @@ self.addEventListener('fetch', (event) => {
 
       tbody.innerHTML = '';
 
-
-
       currentPreviewItems.forEach((item, idx) => {
 
         const tr = document.createElement('tr');
@@ -9437,8 +9077,6 @@ self.addEventListener('fetch', (event) => {
           '<span class="badge" style="background:#065f46; color:#6ee7b7;">+ Доход</span>' :
 
           '<span class="badge" style="background:#991b1b; color:#fca5a5;">- Расход</span>';
-
-
 
         tr.innerHTML = `
 
@@ -9472,13 +9110,9 @@ self.addEventListener('fetch', (event) => {
 
       });
 
-
-
       container.classList.remove('hidden');
 
     }
-
-
 
     async function confirmImport() {
 
@@ -9550,21 +9184,15 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // =========================================================================
 
     // Stage 9: Smart Quick Input, Financial Goals & Debt Repayment Functions
 
     // =========================================================================
 
-
-
     // --- Smart Quick Input ---
 
     let quickInputDebounceTimer = null;
-
-
 
     async function onQuickInputLive(val, previewId) {
 
@@ -9634,8 +9262,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitQuickInput(inputId, msgId) {
 
       const inputEl = document.getElementById(inputId);
@@ -9653,8 +9279,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       try {
 
@@ -9679,8 +9303,6 @@ self.addEventListener('fetch', (event) => {
           const prevEl = document.getElementById(previewId);
 
           if (prevEl) prevEl.classList.add('hidden');
-
-
 
           if (msgEl) {
 
@@ -9716,8 +9338,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function applyQuickPreset(text) {
 
       const inputEl = document.getElementById('dashQuickInput') || document.getElementById('txQuickInput');
@@ -9736,8 +9356,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function addTxAmount(rub) {
 
       const el = document.getElementById('txAmount');
@@ -9749,8 +9367,6 @@ self.addEventListener('fetch', (event) => {
       el.value = (current + rub).toFixed(2);
 
     }
-
-
 
     function autoSelectCategoryByDesc(text) {
 
@@ -9792,15 +9408,11 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Financial Goals Management ---
 
     let allGoalsData = [];
 
     let activeContribGoal = null;
-
-
 
     async function loadGoals() {
 
@@ -9815,8 +9427,6 @@ self.addEventListener('fetch', (event) => {
         if (res.status === 401 || res.status === 423) return;
 
         allGoalsData = await res.json();
-
-
 
         if (!allGoalsData || allGoalsData.length === 0) {
 
@@ -9844,8 +9454,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         container.innerHTML = allGoalsData.map(g => {
 
           const isDone = g.is_completed || g.progress_percent >= 100;
@@ -9858,15 +9466,11 @@ self.addEventListener('fetch', (event) => {
 
             : `<span class="badge" style="background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid #3b82f6;">В процессе (${g.progress_percent}%)</span>`;
 
-
-
           const paceText = g.recommended_monthly_rub 
 
             ? `<div style="font-size: 12px; color: #38bdf8; margin-top: 6px;">🎯 Рекомендуемый темп: <strong>${g.recommended_monthly_rub} ₽/мес</strong></div>`
 
             : '';
-
-
 
           const dateText = g.target_date 
 
@@ -9874,15 +9478,11 @@ self.addEventListener('fetch', (event) => {
 
             : '<span style="font-size: 11px; color: var(--text-muted);">Бессрочно</span>';
 
-
-
           const accText = g.account_name 
 
             ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">🏦 Счет: ${g.account_name}</div>`
 
             : '';
-
-
 
           return `
 
@@ -9909,8 +9509,6 @@ self.addEventListener('fetch', (event) => {
                   ${statusBadge}
 
                 </div>
-
-
 
                 <div style="margin: 12px 0 8px 0;">
 
@@ -9950,8 +9548,6 @@ self.addEventListener('fetch', (event) => {
 
               </div>
 
-
-
               <div style="display: flex; gap: 6px; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
 
                 ${!isDone ? `<button class="btn btn-success" style="flex: 1; padding: 6px 10px; font-size: 12px;" onclick="openContributeGoalModal('${g.id}')">💰 Пополнить</button>` : ''}
@@ -9976,8 +9572,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function loadGoalsWidget() {
 
       const container = document.getElementById('dashGoalsContainer');
@@ -9993,8 +9587,6 @@ self.addEventListener('fetch', (event) => {
         const goals = await res.json();
 
         allGoalsData = goals;
-
-
 
         if (!goals || goals.length === 0) {
 
@@ -10014,8 +9606,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         const activeGoals = goals.filter(g => !g.is_completed).slice(0, 3);
 
         if (activeGoals.length === 0) {
@@ -10033,8 +9623,6 @@ self.addEventListener('fetch', (event) => {
           return;
 
         }
-
-
 
         container.innerHTML = activeGoals.map(g => `
 
@@ -10072,8 +9660,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function populateGoalAccountSelect(selectedId) {
 
       const sel = document.getElementById('goalInputAccount');
@@ -10102,8 +9688,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function openNewGoalModal() {
 
       document.getElementById('goalEditId').value = '';
@@ -10129,8 +9713,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('modalGoal').classList.remove('hidden');
 
     }
-
-
 
     function openEditGoalModal(goalId) {
 
@@ -10162,15 +9744,11 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function closeGoalModal() {
 
       document.getElementById('modalGoal').classList.add('hidden');
 
     }
-
-
 
     async function submitSaveGoal() {
 
@@ -10192,8 +9770,6 @@ self.addEventListener('fetch', (event) => {
 
       const msgEl = document.getElementById('goalModalMsg');
 
-
-
       if (!name) {
 
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите название цели</div>';
@@ -10210,8 +9786,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const endpoint = goalId ? '/api/goals/update' : '/api/goals/create';
 
       const payload = goalId 
@@ -10219,8 +9793,6 @@ self.addEventListener('fetch', (event) => {
         ? { goal_id: goalId, name, target_amount_rub, icon, target_date, account_id, note }
 
         : { name, target_amount_rub, icon, target_date, initial_saved_rub, account_id, note };
-
-
 
       try {
 
@@ -10257,8 +9829,6 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
-
-
 
     async function archiveGoal(goalId) {
 
@@ -10298,15 +9868,11 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function openContributeGoalModal(goalId) {
 
       activeContribGoal = allGoalsData.find(g => g.id === goalId);
 
       if (!activeContribGoal) return;
-
-
 
       document.getElementById('contribGoalId').value = activeContribGoal.id;
 
@@ -10319,8 +9885,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('contribGoalNote').value = `Пополнение цели "${activeContribGoal.name}"`;
 
       document.getElementById('contribGoalMsg').innerHTML = '';
-
-
 
       // Populate source accounts select with liquid asset accounts
 
@@ -10344,21 +9908,15 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       document.getElementById('modalContributeGoal').classList.remove('hidden');
 
     }
-
-
 
     function closeContributeGoalModal() {
 
       document.getElementById('modalContributeGoal').classList.add('hidden');
 
     }
-
-
 
     function addContribAmount(amt) {
 
@@ -10370,8 +9928,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function setContribAllRemaining() {
 
       if (!activeContribGoal) return;
@@ -10379,8 +9935,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('contribGoalAmount').value = activeContribGoal.remaining_rub;
 
     }
-
-
 
     async function submitContributeGoal() {
 
@@ -10394,8 +9948,6 @@ self.addEventListener('fetch', (event) => {
 
       const msgEl = document.getElementById('contribGoalMsg');
 
-
-
       if (!amount_rub || parseFloat(amount_rub) <= 0) {
 
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите сумму пополнения больше нуля</div>';
@@ -10403,8 +9955,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       try {
 
@@ -10444,13 +9994,9 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Debts & Liabilities Management ---
 
     let allDebtsData = null;
-
-
 
     async function loadDebts() {
 
@@ -10466,8 +10012,6 @@ self.addEventListener('fetch', (event) => {
 
         allDebtsData = await res.json();
 
-
-
         // Update KPI summary cards
 
         document.getElementById('debtsTabTotal').innerText = allDebtsData.total_debt_rub + ' ₽';
@@ -10475,8 +10019,6 @@ self.addEventListener('fetch', (event) => {
         document.getElementById('debtsTabCards').innerText = allDebtsData.credit_cards_debt_rub + ' ₽';
 
         document.getElementById('debtsTabLoans').innerText = allDebtsData.loans_debt_rub + ' ₽';
-
-
 
         const debts = allDebtsData.debts || [];
 
@@ -10504,8 +10046,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         container.innerHTML = debts.map(d => {
 
           const isCard = d.subtype === 'CREDIT_CARD';
@@ -10515,8 +10055,6 @@ self.addEventListener('fetch', (event) => {
             ? '<span class="badge" style="background:#be185d; color:#fbcfe8;">Кредитная карта</span>'
 
             : '<span class="badge" style="background:#b45309; color:#fde68a;">Кредит / Займ</span>';
-
-
 
           const hasDebt = d.debt_cents > 0;
 
@@ -10550,8 +10088,6 @@ self.addEventListener('fetch', (event) => {
 
           }
 
-
-
           const obInfo = d.linked_obligation ? `
 
             <div style="font-size: 12px; color: #60a5fa; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
@@ -10563,8 +10099,6 @@ self.addEventListener('fetch', (event) => {
             </div>
 
           ` : '';
-
-
 
           return `
 
@@ -10618,8 +10152,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function populatePayDebtSelects(selectedLiabilityId) {
 
       const liabSel = document.getElementById('payDebtLiabilityAccount');
@@ -10627,8 +10159,6 @@ self.addEventListener('fetch', (event) => {
       const srcSel = document.getElementById('payDebtSourceAccount');
 
       if (!liabSel || !srcSel) return;
-
-
 
       // Populate Liability Accounts
 
@@ -10652,8 +10182,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       // Populate Source Liquid Asset Accounts
 
       srcSel.innerHTML = '';
@@ -10675,8 +10203,6 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
-
-
 
     async function openPayDebtModal(targetLiabilityId) {
 
@@ -10704,15 +10230,11 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function closePayDebtModal() {
 
       document.getElementById('modalPayDebt').classList.add('hidden');
 
     }
-
-
 
     function onDebtLiabilityChanged() {
 
@@ -10723,8 +10245,6 @@ self.addEventListener('fetch', (event) => {
       const d = allDebtsData.debts.find(x => x.id === liabId);
 
       if (!d) return;
-
-
 
       document.getElementById('payDebtCurrentAmount').innerText = d.debt_rub + ' ₽';
 
@@ -10746,8 +10266,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function setPayDebtFull() {
 
       const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
@@ -10762,8 +10280,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function addPayDebtAmount(amt) {
 
       const el = document.getElementById('payDebtAmount');
@@ -10773,8 +10289,6 @@ self.addEventListener('fetch', (event) => {
       el.value = (cur + amt).toFixed(2);
 
     }
-
-
 
     async function submitPayDebt() {
 
@@ -10787,8 +10301,6 @@ self.addEventListener('fetch', (event) => {
       const description = document.getElementById('payDebtDesc').value.trim();
 
       const msgEl = document.getElementById('payDebtMsg');
-
-
 
       if (!liability_account_id) {
 
@@ -10813,8 +10325,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       try {
 
@@ -10864,10 +10374,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
-
-
     // =========================================================================
 
     // Stage 10: Savings Envelopes & Piggy Banks (Конверты-копилки) Functions
@@ -10879,8 +10385,6 @@ self.addEventListener('fetch', (event) => {
     let activeEnvDeposit = null;
 
     let activeEnvWithdraw = null;
-
-
 
     async function loadEnvelopes() {
 
@@ -10900,8 +10404,6 @@ self.addEventListener('fetch', (event) => {
 
         allEnvelopesData = summary.envelopes || [];
 
-
-
         // Update KPI cards
 
         const savedEl = document.getElementById('envelopesTotalSaved');
@@ -10915,8 +10417,6 @@ self.addEventListener('fetch', (event) => {
         const targetEl = document.getElementById('envelopesTotalTarget');
 
         if (targetEl) targetEl.innerText = summary.total_target_rub + ' ₽';
-
-
 
         if (allEnvelopesData.length === 0) {
 
@@ -10944,8 +10444,6 @@ self.addEventListener('fetch', (event) => {
 
         }
 
-
-
         container.innerHTML = allEnvelopesData.map(e => {
 
           const hasTarget = e.target_amount_cents > 0;
@@ -10953,8 +10451,6 @@ self.addEventListener('fetch', (event) => {
           const isDone = hasTarget && e.current_amount_cents >= e.target_amount_cents;
 
           const barColor = e.color || '#3b82f6';
-
-
 
           let progressSection = '';
 
@@ -10990,15 +10486,11 @@ self.addEventListener('fetch', (event) => {
 
           }
 
-
-
           const accInfo = e.linked_account_name ? `
 
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">🏦 Счет хранения: ${e.linked_account_name}</div>
 
           ` : '';
-
-
 
           return `
 
@@ -11030,8 +10522,6 @@ self.addEventListener('fetch', (event) => {
 
               </div>
 
-
-
               <div style="margin: 8px 0;">
 
                 <div style="font-size: 11px; color: var(--text-muted);">Баланс копилки:</div>
@@ -11040,15 +10530,11 @@ self.addEventListener('fetch', (event) => {
 
               </div>
 
-
-
               ${progressSection}
 
               ${accInfo}
 
               ${e.note ? `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">💬 ${e.note}</div>` : ''}
-
-
 
               <div style="display: flex; gap: 6px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
 
@@ -11072,8 +10558,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function loadEnvelopesWidget() {
 
       const container = document.getElementById('dashEnvelopesContainer');
@@ -11096,8 +10580,6 @@ self.addEventListener('fetch', (event) => {
 
         if (badge) badge.innerText = `Всего: ${summary.total_saved_rub} ₽`;
 
-
-
         if (allEnvelopesData.length === 0) {
 
           container.innerHTML = `
@@ -11115,8 +10597,6 @@ self.addEventListener('fetch', (event) => {
           return;
 
         }
-
-
 
         container.innerHTML = allEnvelopesData.slice(0, 4).map(e => `
 
@@ -11160,8 +10640,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function populateEnvelopeAccountSelect(selectedId) {
 
       const sel = document.getElementById('envelopeInputAccount');
@@ -11190,8 +10668,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function openNewEnvelopeModal() {
 
       document.getElementById('envelopeEditId').value = '';
@@ -11217,8 +10693,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('modalEnvelope').classList.remove('hidden');
 
     }
-
-
 
     function openEditEnvelopeModal(envId) {
 
@@ -11250,15 +10724,11 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function closeEnvelopeModal() {
 
       document.getElementById('modalEnvelope').classList.add('hidden');
 
     }
-
-
 
     async function submitSaveEnvelope() {
 
@@ -11280,8 +10750,6 @@ self.addEventListener('fetch', (event) => {
 
       const msgEl = document.getElementById('envelopeModalMsg');
 
-
-
       if (!name) {
 
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите название конверта-копилки</div>';
@@ -11290,8 +10758,6 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       const endpoint = envId ? '/api/envelopes/update' : '/api/envelopes/create';
 
       const payload = envId
@@ -11299,8 +10765,6 @@ self.addEventListener('fetch', (event) => {
         ? { envelope_id: envId, name, target_amount_rub, icon, color, linked_account_id, note }
 
         : { name, target_amount_rub, icon, color, initial_amount_rub, linked_account_id, note };
-
-
 
       try {
 
@@ -11337,8 +10801,6 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
-
-
 
     async function archiveEnvelope(envId) {
 
@@ -11378,8 +10840,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Envelope Deposit Modal ---
 
     function openEnvelopeDepositModal(envId) {
@@ -11387,8 +10847,6 @@ self.addEventListener('fetch', (event) => {
       activeEnvDeposit = allEnvelopesData.find(e => e.id === envId);
 
       if (!activeEnvDeposit) return;
-
-
 
       document.getElementById('envDepositId').value = activeEnvDeposit.id;
 
@@ -11401,8 +10859,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('envDepositNote').value = `Пополнение конверта "${activeEnvDeposit.name}"`;
 
       document.getElementById('envDepositMsg').innerHTML = '';
-
-
 
       // Populate source accounts select with liquid asset accounts
 
@@ -11426,21 +10882,15 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       document.getElementById('modalEnvelopeDeposit').classList.remove('hidden');
 
     }
-
-
 
     function closeEnvelopeDepositModal() {
 
       document.getElementById('modalEnvelopeDeposit').classList.add('hidden');
 
     }
-
-
 
     function addEnvDepositAmount(amt) {
 
@@ -11451,8 +10901,6 @@ self.addEventListener('fetch', (event) => {
       el.value = (cur + amt).toFixed(2);
 
     }
-
-
 
     async function submitEnvelopeDeposit() {
 
@@ -11466,8 +10914,6 @@ self.addEventListener('fetch', (event) => {
 
       const msgEl = document.getElementById('envDepositMsg');
 
-
-
       if (!amount_rub || parseFloat(amount_rub) <= 0) {
 
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите сумму больше нуля</div>';
@@ -11475,8 +10921,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       try {
 
@@ -11516,8 +10960,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Envelope Withdraw Modal ---
 
     function openEnvelopeWithdrawModal(envId) {
@@ -11525,8 +10967,6 @@ self.addEventListener('fetch', (event) => {
       activeEnvWithdraw = allEnvelopesData.find(e => e.id === envId);
 
       if (!activeEnvWithdraw) return;
-
-
 
       document.getElementById('envWithdrawId').value = activeEnvWithdraw.id;
 
@@ -11539,8 +10979,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('envWithdrawNote').value = `Изъятие из конверта "${activeEnvWithdraw.name}"`;
 
       document.getElementById('envWithdrawMsg').innerHTML = '';
-
-
 
       // Populate destination accounts select
 
@@ -11564,21 +11002,15 @@ self.addEventListener('fetch', (event) => {
 
       }
 
-
-
       document.getElementById('modalEnvelopeWithdraw').classList.remove('hidden');
 
     }
-
-
 
     function closeEnvelopeWithdrawModal() {
 
       document.getElementById('modalEnvelopeWithdraw').classList.add('hidden');
 
     }
-
-
 
     function setEnvWithdrawAll() {
 
@@ -11587,8 +11019,6 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('envWithdrawAmount').value = activeEnvWithdraw.current_amount_rub;
 
     }
-
-
 
     function addEnvWithdrawAmount(amt) {
 
@@ -11599,8 +11029,6 @@ self.addEventListener('fetch', (event) => {
       el.value = (cur + amt).toFixed(2);
 
     }
-
-
 
     async function submitEnvelopeWithdraw() {
 
@@ -11614,8 +11042,6 @@ self.addEventListener('fetch', (event) => {
 
       const msgEl = document.getElementById('envWithdrawMsg');
 
-
-
       if (!amount_rub || parseFloat(amount_rub) <= 0) {
 
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите сумму больше нуля</div>';
@@ -11623,8 +11049,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       try {
 
@@ -11664,8 +11088,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     // --- Envelope Transfer Modal ---
 
     function openEnvelopeTransferModal(fromEnvId) {
@@ -11675,8 +11097,6 @@ self.addEventListener('fetch', (event) => {
       const toSel = document.getElementById('envTransferToSelect');
 
       if (!fromSel || !toSel) return;
-
-
 
       fromSel.innerHTML = '';
 
@@ -11694,8 +11114,6 @@ self.addEventListener('fetch', (event) => {
 
         fromSel.appendChild(opt1);
 
-
-
         const opt2 = document.createElement('option');
 
         opt2.value = e.id;
@@ -11706,15 +11124,11 @@ self.addEventListener('fetch', (event) => {
 
       });
 
-
-
       if (toSel.options.length > 1) {
 
         toSel.selectedIndex = 1;
 
       }
-
-
 
       onEnvTransferFromChanged();
 
@@ -11728,15 +11142,11 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     function closeEnvelopeTransferModal() {
 
       document.getElementById('modalEnvelopeTransfer').classList.add('hidden');
 
     }
-
-
 
     function onEnvTransferFromChanged() {
 
@@ -11756,8 +11166,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     async function submitEnvelopeTransfer() {
 
       const from_envelope_id = document.getElementById('envTransferFromSelect').value;
@@ -11769,8 +11177,6 @@ self.addEventListener('fetch', (event) => {
       const note = document.getElementById('envTransferNote').value.trim() || null;
 
       const msgEl = document.getElementById('envTransferMsg');
-
-
 
       if (from_envelope_id === to_envelope_id) {
 
@@ -11787,8 +11193,6 @@ self.addEventListener('fetch', (event) => {
         return;
 
       }
-
-
 
       try {
 
@@ -11826,8 +11230,6 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-
-
     if (document.readyState === 'loading') {
 
       document.addEventListener('DOMContentLoaded', loadStatus);
@@ -11848,13 +11250,7 @@ self.addEventListener('fetch', (event) => {
 
 """
 
-
-
 GLOBAL_DISCOVERY_BEACON = None
-
-
-
-
 
 def start_server(port: int = PORT, host: str = "127.0.0.1"):
 
@@ -11867,8 +11263,6 @@ def start_server(port: int = PORT, host: str = "127.0.0.1"):
     elif not ENC_DB_PATH.exists() and not STRICT_ENCRYPTION:
 
         init_database()
-
-
 
     # Attempt seamless auto-unlock with default password for frictionless local UX
 
@@ -11883,8 +11277,6 @@ def start_server(port: int = PORT, host: str = "127.0.0.1"):
         except Exception:
 
             print(f"[{APP_NAME}] Хранилище защищено пользовательским мастер-паролем (ожидает разблокировки).")
-
-
 
     # Start LAN P2P Discovery Beacon
 
@@ -11909,8 +11301,6 @@ def start_server(port: int = PORT, host: str = "127.0.0.1"):
     except Exception as e:
 
         print(f"[{APP_NAME}] Discovery beacon notice: {e}")
-
-
 
     socketserver.TCPServer.allow_reuse_address = True
 
@@ -11950,10 +11340,7 @@ def start_server(port: int = PORT, host: str = "127.0.0.1"):
 
                 GLOBAL_DISCOVERY_BEACON.stop()
 
-
-
-
-
 if __name__ == "__main__":
 
     start_server()
+
