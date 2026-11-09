@@ -8919,6 +8919,8 @@ self.addEventListener('fetch', (event) => {
 
         await loadCategories();
 
+        LocalDatabaseVault.syncAfterMutation();
+
       } else {
 
         alert(data.message);
@@ -8942,6 +8944,8 @@ self.addEventListener('fetch', (event) => {
       });
 
       await loadCategories();
+
+      LocalDatabaseVault.syncAfterMutation();
 
     }
 
@@ -10555,6 +10559,8 @@ self.addEventListener('fetch', (event) => {
 
           await loadGoalsWidget();
 
+          LocalDatabaseVault.syncAfterMutation();
+
         } else {
 
           msgEl.innerHTML = `<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Ошибка: ${data.message}</div>`;
@@ -10592,6 +10598,8 @@ self.addEventListener('fetch', (event) => {
           await loadGoals();
 
           await loadGoalsWidget();
+
+          LocalDatabaseVault.syncAfterMutation();
 
         } else {
 
@@ -12044,6 +12052,8 @@ self.addEventListener('fetch', (event) => {
 
           await loadEnvelopesWidget();
 
+          LocalDatabaseVault.syncAfterMutation();
+
         } else {
 
           msgEl.innerHTML = `<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Ошибка: ${data.message}</div>`;
@@ -12081,6 +12091,8 @@ self.addEventListener('fetch', (event) => {
           await loadEnvelopes();
 
           await loadEnvelopesWidget();
+
+          LocalDatabaseVault.syncAfterMutation();
 
         } else {
 
@@ -12477,6 +12489,8 @@ self.addEventListener('fetch', (event) => {
           await loadEnvelopes();
 
           await loadEnvelopesWidget();
+
+          LocalDatabaseVault.syncAfterMutation();
 
         } else {
 
