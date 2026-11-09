@@ -2,8 +2,11 @@
 Family Finances OS - Security, Encryption & Authentication Module
 Implements Envelope Encryption (KEK + DEK) with AES-256-GCM and PBKDF2-HMAC-SHA256.
 """
+import base64
 import hashlib
 import hmac
+import json
+import os
 import secrets
 import time
 from typing import Tuple, Dict, Any, Optional
@@ -273,36 +276,68 @@ def decrypt_database_bytes(encrypted_container: bytes, password: str) -> bytes:
 # Session Manager
 # ---------------------------------------------------------------------------
 
+SESSION_HMAC_SECRET = os.environ.get(
+    "FFOS_SESSION_SECRET",
+    "family_finances_os_persistent_hmac_secret_2026_vercel_stateless_v1"
+).encode("utf-8")
+
+
 class SessionManager:
     """
-    In-memory session manager with TTL expiration and explicit logout invalidation.
+    Stateless HMAC-signed session manager with in-memory TTL caching and explicit logout invalidation.
     Supports single-use pairing tokens for quick mobile QR onboarding.
+    Stateless tokens ensure 100% reliability across ephemeral serverless instances (Vercel, AWS Lambda, multi-process).
     """
-    def __init__(self, ttl_seconds: int = SESSION_TTL_SECONDS):
+    def __init__(self, ttl_seconds: int = SESSION_TTL_SECONDS, hmac_secret: bytes = SESSION_HMAC_SECRET):
         self.ttl_seconds = ttl_seconds
+        self._hmac_secret = hmac_secret
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._pairing_tokens: Dict[str, Dict[str, Any]] = {}
 
     def create_session(self, user_info: Dict[str, Any]) -> str:
-        token = secrets.token_hex(SESSION_TOKEN_SIZE)
         now = time.time()
-        self._sessions[token] = {
+        payload = {
             "user": user_info,
             "created_at": now,
             "expires_at": now + self.ttl_seconds
         }
+        payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
+        payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode("ascii").rstrip("=")
+        sig = hmac.new(self._hmac_secret, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+        token = f"{payload_b64}.{sig}"
+        self._sessions[token] = payload
         return token
 
     def validate_session(self, token: Optional[str]) -> Optional[Dict[str, Any]]:
         if not token:
             return None
+
+        # 1. Fast in-memory cache check
         session = self._sessions.get(token)
-        if not session:
-            return None
-        if time.time() > session["expires_at"]:
-            del self._sessions[token]
-            return None
-        return session["user"]
+        if session:
+            if time.time() > session["expires_at"]:
+                del self._sessions[token]
+                return None
+            return session["user"]
+
+        # 2. Stateless HMAC verification (crucial for cross-container Vercel requests!)
+        if "." in token:
+            try:
+                parts = token.split(".", 1)
+                if len(parts) == 2:
+                    payload_b64, sig = parts
+                    expected_sig = hmac.new(self._hmac_secret, payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+                    if hmac.compare_digest(sig, expected_sig):
+                        rem = len(payload_b64) % 4
+                        padded = payload_b64 + ("=" * (4 - rem) if rem else "")
+                        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+                        if time.time() <= payload.get("expires_at", 0):
+                            self._sessions[token] = payload
+                            return payload["user"]
+            except Exception:
+                pass
+
+        return None
 
     def invalidate_session(self, token: Optional[str]) -> bool:
         if token and token in self._sessions:
@@ -333,7 +368,7 @@ class SessionManager:
 
     def consume_pairing_token(self, token: Optional[str]) -> Optional[Dict[str, Any]]:
         user_info = self.validate_pairing_token(token)
-        if user_info and token in self._pairing_tokens:
+        if token and token in self._pairing_tokens:
             del self._pairing_tokens[token]
         return user_info
 

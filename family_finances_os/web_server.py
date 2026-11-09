@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v6';
+const CACHE_NAME = 'ffos-shell-v7';
 
 const STATIC_SHELL = [
 
@@ -3755,6 +3755,50 @@ self.addEventListener('fetch', (event) => {
       background: var(--primary) !important;
       color: #ffffff !important;
       border-color: var(--primary) !important;
+    }
+
+    /* Bottom Navigation Bar for Mobile */
+    .mobile-bottom-nav {
+      display: none !important;
+    }
+    @media (max-width: 680px) {
+      .mobile-bottom-nav {
+        display: none !important;
+      }
+      #mainDashboard:not(.hidden) ~ .mobile-bottom-nav {
+        display: flex !important;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--card-bg);
+        border-top: 1px solid var(--border);
+        z-index: 1000;
+        justify-content: space-around;
+        align-items: center;
+        padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) 4px;
+        box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+      }
+      .mobile-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 8px;
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .mobile-nav-item .icon {
+        font-size: 18px;
+        margin-bottom: 2px;
+      }
+      .mobile-nav-item.active {
+        color: var(--primary) !important;
+      }
     }
 
     /* Mobile Responsive Layout */
@@ -7622,13 +7666,13 @@ self.addEventListener('fetch', (event) => {
 
           const manualLogout = sessionStorage.getItem('ffos_manual_logout') === 'true';
 
+          let autoLoggedIn = false;
+
           if (!manualLogout && document.getElementById('loginUsername') && document.getElementById('loginPassword')) {
 
             try {
 
-              await submitLogin();
-
-              return;
+              autoLoggedIn = await submitLogin();
 
             } catch (loginErr) {
 
@@ -7638,29 +7682,57 @@ self.addEventListener('fetch', (event) => {
 
           }
 
-          document.getElementById('setupScreen').classList.add('hidden');
+          if (!autoLoggedIn && !sessionToken) {
 
-          document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('setupScreen').classList.add('hidden');
 
-          document.getElementById('mainDashboard').classList.add('hidden');
+            document.getElementById('loginScreen').classList.remove('hidden');
 
-          document.getElementById('btnHeaderLock').classList.add('hidden');
+            document.getElementById('mainDashboard').classList.add('hidden');
 
-          document.getElementById('btnLogout').classList.add('hidden');
+            document.getElementById('btnHeaderLock').classList.add('hidden');
 
-          document.getElementById('btnHeaderQrPair').classList.add('hidden');
+            document.getElementById('btnLogout').classList.add('hidden');
+
+            document.getElementById('btnHeaderQrPair').classList.add('hidden');
+
+          }
 
         } else {
 
-          const ok = await loadDashboard();
+          let ok = false;
+
+          try {
+
+            ok = await loadDashboard();
+
+          } catch (dashErr) {
+
+            console.error('loadDashboard error:', dashErr);
+
+            ok = false;
+
+          }
 
           if (!ok) {
 
             sessionToken = null;
 
-            sessionStorage.removeItem('ffos_session_token'); localStorage.removeItem('ffos_session_token');
+            sessionStorage.removeItem('ffos_session_token');
 
-            loadStatus();
+            localStorage.removeItem('ffos_session_token');
+
+            document.getElementById('setupScreen').classList.add('hidden');
+
+            document.getElementById('loginScreen').classList.remove('hidden');
+
+            document.getElementById('mainDashboard').classList.add('hidden');
+
+            document.getElementById('btnHeaderLock').classList.add('hidden');
+
+            document.getElementById('btnLogout').classList.add('hidden');
+
+            document.getElementById('btnHeaderQrPair').classList.add('hidden');
 
           } else {
 
@@ -7673,11 +7745,6 @@ self.addEventListener('fetch', (event) => {
             document.getElementById('btnHeaderLock').classList.remove('hidden');
 
             document.getElementById('btnLogout').classList.remove('hidden');
-
-            // Wi-Fi / P2P sync and QR pairing disabled for local home mode
-            // document.getElementById('btnHeaderQrPair').classList.remove('hidden');
-            // document.getElementById('syncBadge').classList.remove('hidden');
-            // updateSyncStatus();
 
           }
 
@@ -7877,13 +7944,21 @@ self.addEventListener('fetch', (event) => {
 
     async function submitLogin() {
 
-      const username = document.getElementById('loginUsername').value;
+      const usernameEl = document.getElementById('loginUsername');
 
-      const password = document.getElementById('loginPassword').value;
+      const passwordEl = document.getElementById('loginPassword');
+
+      if (!usernameEl || !passwordEl) return false;
+
+      const username = usernameEl.value.trim();
+
+      const password = passwordEl.value;
+
+      if (!username || !password) return false;
 
       const btn = document.getElementById('btnLogin');
 
-      btn.disabled = true;
+      if (btn) btn.disabled = true;
 
       try {
 
@@ -7905,19 +7980,53 @@ self.addEventListener('fetch', (event) => {
 
           sessionToken = data.user.session_token;
 
-          sessionStorage.setItem('ffos_session_token', sessionToken); localStorage.setItem('ffos_session_token', sessionToken);
+          sessionStorage.setItem('ffos_session_token', sessionToken);
 
-          loadStatus();
+          localStorage.setItem('ffos_session_token', sessionToken);
+
+          LocalDatabaseVault.syncAfterMutation();
+
+          const ok = await loadDashboard();
+
+          if (ok) {
+
+            document.getElementById('setupScreen').classList.add('hidden');
+
+            document.getElementById('loginScreen').classList.add('hidden');
+
+            document.getElementById('mainDashboard').classList.remove('hidden');
+
+            document.getElementById('btnHeaderLock').classList.remove('hidden');
+
+            document.getElementById('btnLogout').classList.remove('hidden');
+
+          }
+
+          return true;
 
         } else {
 
-          document.getElementById('loginMsg').innerHTML = `<div class="alert alert-error">${data.message}</div>`;
+          const msgEl = document.getElementById('loginMsg');
+
+          if (msgEl) {
+
+            msgEl.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
+
+          }
+
+          return false;
 
         }
 
+      } catch (e) {
+
+        console.error('submitLogin error:', e);
+
+        return false;
+
       } finally {
 
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
 
       }
 

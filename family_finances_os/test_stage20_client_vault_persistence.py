@@ -245,5 +245,20 @@ class TestStage20ClientVaultPersistence(unittest.TestCase):
         self.assertIn("/api/database/restore-blob", html)
 
 
+    def test_08_stateless_session_across_instances(self):
+        """Cross-container validation: token created by one SessionManager instance must be valid in another."""
+        from family_finances_os.security import SessionManager
+        sm1 = SessionManager()
+        user_info = {"user_id": "u_test", "username": "admin", "role": "OWNER"}
+        token = sm1.create_session(user_info)
+
+        # Simulate fresh Lambda instance with brand new SessionManager instance
+        sm2 = SessionManager()
+        validated_user = sm2.validate_session(token)
+        self.assertIsNotNone(validated_user)
+        self.assertEqual(validated_user["username"], "admin")
+        self.assertEqual(validated_user["role"], "OWNER")
+
+
 if __name__ == "__main__":
     unittest.main()
