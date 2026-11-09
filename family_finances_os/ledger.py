@@ -71,6 +71,17 @@ def compute_tx_payload_hash(tx: Transaction) -> str:
 
     return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
 
+
+DEBT_CATEGORY_MAP = {
+    "CREDIT_CARD": "cat_debts_credit_card",
+    "CONSUMER_LOAN": "cat_debts_consumer",
+    "MORTGAGE": "cat_debts_mortgage",
+    "AUTO_LOAN": "cat_debts_auto",
+    "INSTALLMENT_BNPL": "cat_debts_bnpl",
+    "PERSONAL_DEBT": "cat_debts_personal",
+    "LOAN": "cat_debts_consumer"
+}
+
 class LedgerEngine:
 
     def __init__(self, conn_or_path: Any = None):
@@ -1658,139 +1669,81 @@ class LedgerEngine:
     # ---------------------------------------------------------
 
     def seed_default_categories(self) -> List[str]:
-
         """
-
         Seed pre-defined hierarchical category tree for a Russian family.
-
         Does not overwrite if categories already exist.
-
         """
-
         conn = self._get_conn()
-
         cursor = conn.cursor()
-
-        cursor.execute("SELECT count(*) FROM categories;")
-
-        count = cursor.fetchone()[0]
-
-        if count > 0:
-
-            self._close_if_local(conn)
-
-            return []
+        cursor.execute("SELECT id FROM categories;")
+        existing_ids = {row[0] for row in cursor.fetchall()}
 
         categories = [
-
             # EXPENSES
-
             # (id, name, type, parent_id, icon, sort_order)
-
             ("cat_food", "Продукты и питание", "EXPENSE", None, "🛒", 10),
-
             ("cat_food_super", "Супермаркеты и продукты", "EXPENSE", "cat_food", "🛍️", 11),
-
             ("cat_food_cafe", "Кафе, рестораны и фастфуд", "EXPENSE", "cat_food", "☕", 12),
-
             ("cat_food_delivery", "Доставка готовой еды", "EXPENSE", "cat_food", "🛵", 13),
-
             ("cat_housing", "Жилье и связь", "EXPENSE", None, "🏠", 20),
-
             ("cat_housing_rent", "Аренда / Ипотека", "EXPENSE", "cat_housing", "🔑", 21),
-
             ("cat_housing_communal", "ЖКХ и коммунальные услуги", "EXPENSE", "cat_housing", "⚡", 22),
-
             ("cat_housing_comm", "Интернет и мобильная связь", "EXPENSE", "cat_housing", "📶", 23),
-
             ("cat_housing_goods", "Товары для дома и уют", "EXPENSE", "cat_housing", "🛋️", 24),
-
             ("cat_housing_repair", "Ремонт и стройматериалы", "EXPENSE", "cat_housing", "🔨", 25),
-
             ("cat_transport", "Транспорт и авто", "EXPENSE", None, "🚗", 30),
-
             ("cat_transport_fuel", "Бензин и заправки", "EXPENSE", "cat_transport", "⛽", 31),
-
             ("cat_transport_taxi", "Такси и каршеринг", "EXPENSE", "cat_transport", "🚕", 32),
-
             ("cat_transport_public", "Общественный транспорт", "EXPENSE", "cat_transport", "🚌", 33),
-
             ("cat_transport_service", "ТО, страховка, парковка", "EXPENSE", "cat_transport", "🛡️", 34),
-
             ("cat_health", "Здоровье и медицина", "EXPENSE", None, "💊", 40),
-
             ("cat_health_pharmacy", "Аптеки и лекарства", "EXPENSE", "cat_health", "🩹", 41),
-
             ("cat_health_doctors", "Врачи, клиники и анализы", "EXPENSE", "cat_health", "🩺", 42),
-
             ("cat_health_dentist", "Стоматология", "EXPENSE", "cat_health", "🦷", 43),
-
             ("cat_kids", "Дети и развитие", "EXPENSE", None, "👶", 50),
-
             ("cat_kids_edu", "Школа, садик, кружки, репетиторы", "EXPENSE", "cat_kids", "📚", 51),
-
             ("cat_kids_clothes", "Детская одежда и обувь", "EXPENSE", "cat_kids", "👕", 52),
-
             ("cat_kids_toys", "Игрушки, секции и досуг", "EXPENSE", "cat_kids", "🧸", 53),
-
             ("cat_leisure", "Досуг, отдых и подписки", "EXPENSE", None, "🎉", 60),
-
             ("cat_leisure_events", "Кино, театры, концерты, хобби", "EXPENSE", "cat_leisure", "🎟️", 61),
-
             ("cat_leisure_travel", "Путешествия, отели и билеты", "EXPENSE", "cat_leisure", "✈️", 62),
-
             ("cat_leisure_subs", "Цифровые подписки и сервисы", "EXPENSE", "cat_leisure", "📱", 63),
-
             ("cat_personal", "Личные траты и одежда", "EXPENSE", None, "👔", 70),
-
             ("cat_personal_clothes", "Одежда и обувь для взрослых", "EXPENSE", "cat_personal", "👗", 71),
-
             ("cat_personal_care", "Стрижки, уход и косметика", "EXPENSE", "cat_personal", "✂️", 72),
-
             ("cat_personal_gifts", "Подарки близким и друзьям", "EXPENSE", "cat_personal", "🎁", 73),
-
+            # DEBTS & LOANS (Кредиты, долги и займы)
+            ("cat_debts", "Кредиты, долги и займы", "EXPENSE", None, "💳", 80),
+            ("cat_debts_credit_card", "Погашение кредитных карт", "EXPENSE", "cat_debts", "💳", 81),
+            ("cat_debts_consumer", "Потребительские кредиты", "EXPENSE", "cat_debts", "📋", 82),
+            ("cat_debts_mortgage", "Ипотечные платежи", "EXPENSE", "cat_debts", "🏠", 83),
+            ("cat_debts_auto", "Автокредиты", "EXPENSE", "cat_debts", "🚗", 84),
+            ("cat_debts_bnpl", "Рассрочки и сплиты (BNPL)", "EXPENSE", "cat_debts", "🛍️", 85),
+            ("cat_debts_personal", "Возврат долгов людям", "EXPENSE", "cat_debts", "🤝", 86),
+            ("cat_debts_interest", "Проценты, штрафы и комиссии", "EXPENSE", "cat_debts", "⚠️", 87),
             ("cat_other_exp", "Прочие расходы", "EXPENSE", None, "📦", 90),
-
             # INCOME
-
             ("cat_salary", "Зарплата и аванс", "INCOME", None, "💼", 10),
-
             ("cat_salary_husband", "Зарплата Муж", "INCOME", "cat_salary", "👨", 11),
-
             ("cat_salary_wife", "Зарплата Жена", "INCOME", "cat_salary", "👩", 12),
-
             ("cat_freelance", "Подработка и проекты", "INCOME", None, "💻", 20),
-
             ("cat_passive", "Пассивный доход", "INCOME", None, "📈", 30),
-
             ("cat_passive_interest", "Проценты по вкладам и счетам", "INCOME", "cat_passive", "💰", 31),
-
             ("cat_passive_cashback", "Кэшбэк и бонусы банков", "INCOME", "cat_passive", "💳", 32),
-
+            ("cat_borrow_income", "Получение кредитов и займов", "INCOME", None, "📥", 35),
             ("cat_other_inc", "Подарки и прочие поступления", "INCOME", None, "🎁", 40),
-
         ]
-
         created_ids = []
-
         for cid, name, ctype, pid, icon, sort_order in categories:
-
-            cursor.execute("""
-
-            INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
-
-            VALUES (?, ?, ?, ?, ?, ?, 1);
-
-            """, (cid, name, ctype, pid, icon, sort_order))
-
-            created_ids.append(cid)
-
+            if cid not in existing_ids:
+                cursor.execute("""
+                INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, 1);
+                """, (cid, name, ctype, pid, icon, sort_order))
+                created_ids.append(cid)
         conn.commit()
-
         self._save_if_encrypted()
-
         self._close_if_local(conn)
-
         return created_ids
 
     def create_category(self, name: str, category_type: str, parent_id: Optional[str] = None, icon: str = "tag", sort_order: int = 0) -> Category:
@@ -4387,16 +4340,18 @@ class LedgerEngine:
             if monthly_payment_cents > 0 and due_day:
                 obligation_id = generate_uuid()
                 day_val = max(1, min(31, int(due_day)))
+                ob_cat_id = DEBT_CATEGORY_MAP.get(subtype, "cat_debts")
                 cursor.execute("""
                 INSERT INTO obligations (
-                    id, name, amount_cents, due_day, payment_account_id,
+                    id, name, amount_cents, due_day, category_id, payment_account_id,
                     note, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, 1);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1);
                 """, (
                     obligation_id,
                     f"Платеж: {name.strip()}",
                     monthly_payment_cents,
                     day_val,
+                    ob_cat_id,
                     account_id,
                     f"Автоматический ежемесячный платеж по долгу '{name.strip()}'"
                 ))
@@ -4641,7 +4596,8 @@ class LedgerEngine:
 
         member_id: Optional[str] = None,
 
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
+        category_id: Optional[str] = None
 
     ) -> str:
 
@@ -4681,6 +4637,8 @@ class LedgerEngine:
 
         tx_date = current_iso_time()[:10]
 
+        cat = category_id or DEBT_CATEGORY_MAP.get(liability_acc.subtype, "cat_debts")
+
         postings = [
 
             # DEBIT Liability (reduces liability balance)
@@ -4700,6 +4658,8 @@ class LedgerEngine:
                 ownership_scope=liability_acc.ownership_scope,
 
                 purpose_allocation="SAFE_TO_SPEND",
+
+                category_id=cat,
 
                 note=f"Погашение долга по '{liability_acc.name}'"
 
@@ -4722,6 +4682,8 @@ class LedgerEngine:
                 ownership_scope=source_acc.ownership_scope,
 
                 purpose_allocation="SAFE_TO_SPEND",
+
+                category_id=cat,
 
                 note=f"Оплата задолженности: '{liability_acc.name}'"
 

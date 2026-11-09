@@ -2639,6 +2639,8 @@ self.addEventListener('fetch', (event) => {
 
                 desc = body.get("description")
 
+                category_id = body.get("category_id")
+
                 obligation_id = body.get("obligation_id")
 
                 idempotency_key = body.get("idempotency_key")
@@ -2659,7 +2661,9 @@ self.addEventListener('fetch', (event) => {
 
                     member_id=user.get("member_id"),
 
-                    idempotency_key=idempotency_key
+                    idempotency_key=idempotency_key,
+
+                    category_id=category_id
 
                 )
 
@@ -4296,6 +4300,14 @@ self.addEventListener('fetch', (event) => {
 
         <div class="form-group">
 
+          <label>Категория погашения задолженности:</label>
+
+          <select id="payDebtCategory"></select>
+
+        </div>
+
+        <div class="form-group">
+
           <label>Назначение платежа:</label>
 
           <input type="text" id="payDebtDesc" value="Погашение задолженности">
@@ -4550,7 +4562,7 @@ self.addEventListener('fetch', (event) => {
           </div>
 
           <!-- Type Selection Buttons Grid -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
             <button type="button" class="btn btn-secondary debt-type-btn active" data-type="CREDIT_CARD" onclick="selectDebtType('CREDIT_CARD')" style="font-size: 12px; padding: 8px 6px; text-align: center;">💳 Кредитка</button>
             <button type="button" class="btn btn-secondary debt-type-btn" data-type="CONSUMER_LOAN" onclick="selectDebtType('CONSUMER_LOAN')" style="font-size: 12px; padding: 8px 6px; text-align: center;">📋 Потребкредит</button>
             <button type="button" class="btn btn-secondary debt-type-btn" data-type="MORTGAGE" onclick="selectDebtType('MORTGAGE')" style="font-size: 12px; padding: 8px 6px; text-align: center;">🏠 Ипотека</button>
@@ -4559,6 +4571,10 @@ self.addEventListener('fetch', (event) => {
             <button type="button" class="btn btn-secondary debt-type-btn" data-type="PERSONAL_DEBT" onclick="selectDebtType('PERSONAL_DEBT')" style="font-size: 12px; padding: 8px 6px; text-align: center;">🤝 Долг человеку</button>
           </div>
           <input type="hidden" id="newDebtSubtype" value="CREDIT_CARD">
+
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
+            <span>📂 Категория учета:</span> <strong id="newDebtCategoryLabel" style="color: #60a5fa;">💳 Погашение кредитных карт</strong>
+          </div>
 
           <div class="form-group" style="margin-bottom: 12px;">
             <label id="lblDebtName">Название карты / банк:</label>
@@ -4787,6 +4803,8 @@ self.addEventListener('fetch', (event) => {
             </h3>
 
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+
+              <button class="btn btn-secondary" onclick="openNewDebtModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; color: #93c5fd;">➕ Добавить долг</button>
 
               <button class="btn btn-secondary" onclick="openPayDebtModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5;">💳 Погасить долг</button>
 
@@ -5251,81 +5269,6 @@ self.addEventListener('fetch', (event) => {
         </div>
 
       </div>
-
-      <!-- Tab: Debts & Liabilities (Долги и кредиты) -->
-
-      <div id="tab-debts" class="hidden">
-
-        <div class="card">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
-
-            <div>
-
-              <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
-
-                <span>💳</span> <span>Задолженности и кредиты семьи</span>
-
-              </h3>
-
-              <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
-
-                Контроль кредитных карт, потребительских кредитов, ипотек и удобное погашение задолженностей.
-
-              </p>
-
-            </div>
-
-            <button class="btn btn-danger" onclick="openPayDebtModal()">💳 Погасить задолженность</button>
-
-          </div>
-
-          <div class="grid-3" style="margin-bottom: 18px;">
-
-            <div class="card" style="margin-bottom: 0;">
-
-              <div class="stat-label">Общая задолженность семьи</div>
-
-              <div class="stat-val danger" id="debtsTabTotal">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Все кредиты и карты</p>
-
-            </div>
-
-            <div class="card" style="margin-bottom: 0;">
-
-              <div class="stat-label">Долг по кредитным картам</div>
-
-              <div class="stat-val" style="color: #fb7185;" id="debtsTabCards">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Вычитается из Safe-to-Spend</p>
-
-            </div>
-
-            <div class="card" style="margin-bottom: 0;">
-
-              <div class="stat-label">Кредиты и ипотека</div>
-
-              <div class="stat-val warning" id="debtsTabLoans">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Долгосрочные обязательства</p>
-
-            </div>
-
-          </div>
-
-          <div id="debtsListContainer" style="display: flex; flex-direction: column; gap: 12px;">
-
-            <div style="color: var(--text-muted); font-size: 13px;">Загрузка задолженностей...</div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <!-- Tab: Financial Analytics & Cash Flow Forecast -->
-
 
       <!-- Tab: Debts & Credit Cards (Stage 12 & 13) -->
       <div id="tab-debts" class="hidden">
@@ -10637,6 +10580,18 @@ self.addEventListener('fetch', (event) => {
       });
       document.getElementById('newDebtSubtype').value = subtype;
 
+      const subtypeCatMap = {
+        'CREDIT_CARD': '💳 Погашение кредитных карт',
+        'CONSUMER_LOAN': '📋 Потребительские кредиты',
+        'MORTGAGE': '🏠 Ипотечные платежи',
+        'AUTO_LOAN': '🚗 Автокредиты',
+        'INSTALLMENT_BNPL': '🛍️ Рассрочки и сплиты (BNPL)',
+        'PERSONAL_DEBT': '🤝 Возврат долгов людям',
+        'LOAN': '📋 Потребительские кредиты'
+      };
+      const catLabel = document.getElementById('newDebtCategoryLabel');
+      if (catLabel) catLabel.innerText = subtypeCatMap[subtype] || '💳 Кредиты, долги и займы';
+
       const lblName = document.getElementById('lblDebtName');
       const inputName = document.getElementById('newDebtName');
       const lblAmount = document.getElementById('lblDebtAmount');
@@ -10881,6 +10836,21 @@ self.addEventListener('fetch', (event) => {
           srcSel.appendChild(opt);
         });
       }
+
+      // Populate Debt Repayment Categories
+      const catSel = document.getElementById('payDebtCategory');
+      if (catSel) {
+        catSel.innerHTML = '';
+        if (categoryData && categoryData.flat) {
+          const expenseCats = categoryData.flat.filter(c => c.type === 'EXPENSE');
+          expenseCats.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.innerText = `${c.icon || '💳'} ${c.name}`;
+            catSel.appendChild(opt);
+          });
+        }
+      }
     }
 
     function openPayDebtModal(targetLiabilityId, presetAmount) {
@@ -10918,8 +10888,28 @@ self.addEventListener('fetch', (event) => {
       if (!allDebtsData || !allDebtsData.debts) return;
       const d = allDebtsData.debts.find(x => x.id === liabId);
       if (!d) return;
-      document.getElementById('payDebtTargetName').innerText = d.name;
-      document.getElementById('payDebtTargetTotal').innerText = d.debt_rub + ' ₽';
+      const curEl = document.getElementById('payDebtCurrentAmount');
+      if (curEl) curEl.innerText = d.debt_rub + ' ₽';
+      const limEl = document.getElementById('payDebtLimitAmount');
+      if (limEl) limEl.innerText = (d.credit_limit_rub || '0.00') + ' ₽';
+
+      // Auto-select category corresponding to debt subtype
+      const catSel = document.getElementById('payDebtCategory');
+      if (catSel && categoryData && categoryData.flat) {
+        const subtypeCatMap = {
+          'CREDIT_CARD': 'cat_debts_credit_card',
+          'CONSUMER_LOAN': 'cat_debts_consumer',
+          'MORTGAGE': 'cat_debts_mortgage',
+          'AUTO_LOAN': 'cat_debts_auto',
+          'INSTALLMENT_BNPL': 'cat_debts_bnpl',
+          'PERSONAL_DEBT': 'cat_debts_personal',
+          'LOAN': 'cat_debts_consumer'
+        };
+        const targetCatId = subtypeCatMap[d.subtype] || 'cat_debts';
+        if (catSel.querySelector(`option[value="${targetCatId}"]`)) {
+          catSel.value = targetCatId;
+        }
+      }
     }
 
     function setPayDebtFull() {
@@ -10958,6 +10948,7 @@ self.addEventListener('fetch', (event) => {
       }
 
       try {
+        const category_id = document.getElementById('payDebtCategory')?.value || null;
         const res = await fetch('/api/debts/pay', {
           method: 'POST',
           headers: authHeaders(),
@@ -10965,7 +10956,8 @@ self.addEventListener('fetch', (event) => {
             liability_account_id,
             source_account_id,
             amount_rub,
-            description
+            description,
+            category_id
           })
         });
         const data = await res.json();
