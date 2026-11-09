@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v9';
+const CACHE_NAME = 'ffos-shell-v10';
 
 const STATIC_SHELL = [
 
@@ -3749,7 +3749,7 @@ self.addEventListener('fetch', (event) => {
       filter: none;
     }
 
-    /* Appetite UI Capsule Pill Navigation Tabs */
+    /* Appetite UI Capsule Pill Navigation Tabs with visible high-contrast scrollbar */
     .nav-tabs {
       display: flex;
       gap: 6px;
@@ -3758,10 +3758,33 @@ self.addEventListener('fetch', (event) => {
       padding-bottom: 12px;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.35) rgba(255, 255, 255, 0.05);
     }
     .nav-tabs::-webkit-scrollbar {
-      display: none;
+      height: 7px;
+      display: block;
+    }
+    .nav-tabs::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 9999px;
+    }
+    .nav-tabs::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.32);
+      border-radius: 9999px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+    }
+    .nav-tabs::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+    [data-theme="light"] .nav-tabs {
+      scrollbar-color: rgba(0, 0, 0, 0.35) rgba(0, 0, 0, 0.06);
+    }
+    [data-theme="light"] .nav-tabs::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.06);
+    }
+    [data-theme="light"] .nav-tabs::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.32);
     }
 
     .tab-btn {
@@ -4442,13 +4465,85 @@ self.addEventListener('fetch', (event) => {
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
       margin-bottom: 8px;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      transition: all 0.2s;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Distinct active and colored states for Expense and Income Hero Action Buttons */
+    .hero-action-btn.active-expense .hero-action-icon,
+    .hero-action-btn#heroBtnExpense:hover .hero-action-icon {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+      color: #ffffff !important;
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.5) !important;
+    }
+
+    .hero-action-btn.active-income .hero-action-icon,
+    .hero-action-btn#heroBtnIncome:hover .hero-action-icon {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+      color: #ffffff !important;
+      border-color: #10b981 !important;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.5) !important;
     }
 
     [data-theme="light"] .hero-action-icon {
       background: #ffffff;
       color: #1d68f6;
-      border: none;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    /* Segmented Toggle for Expense / Income in New Transaction Form */
+    .tx-type-segment-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .tx-type-segment-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--card-hover);
+      color: var(--text-muted);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .tx-type-segment-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+    .tx-type-segment-btn.active-expense {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+      color: #ffffff !important;
+      border-color: #ef4444 !important;
+      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45) !important;
+    }
+    .tx-type-segment-btn.active-income {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+      color: #ffffff !important;
+      border-color: #10b981 !important;
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45) !important;
+    }
+
+    /* Vibrant Semantic Colors for Category Filter Buttons */
+    .cat-filter-btn[data-filter="EXPENSE"].active,
+    .cat-filter-btn.active-expense {
+      background: #dc2626 !important;
+      color: #ffffff !important;
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 10px rgba(220, 38, 38, 0.45);
+    }
+    .cat-filter-btn[data-filter="INCOME"].active,
+    .cat-filter-btn.active-income {
+      background: #16a34a !important;
+      color: #ffffff !important;
+      border-color: #22c55e !important;
+      box-shadow: 0 0 10px rgba(22, 163, 74, 0.45);
     }
 
     .hero-action-btn span {
@@ -5846,24 +5941,24 @@ self.addEventListener('fetch', (event) => {
 
           <!-- 4 Quick Actions (Exact Appetite UI Dashboard specification) -->
           <div class="hero-actions-grid">
-            <button class="hero-action-btn" onclick="openNewTxModal('EXPENSE')">
+            <button class="hero-action-btn" id="heroBtnExpense" onclick="openNewTxModal('EXPENSE')">
               <div class="hero-action-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                 </svg>
               </div>
-              <span>Расход</span>
+              <span style="font-weight: 700;">🔴 Расход</span>
             </button>
 
-            <button class="hero-action-btn" onclick="openNewTxModal('INCOME')">
+            <button class="hero-action-btn" id="heroBtnIncome" onclick="openNewTxModal('INCOME')">
               <div class="hero-action-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="17" y1="7" x2="7" y2="17"></line>
                   <polyline points="17 17 7 17 7 7"></polyline>
                 </svg>
               </div>
-              <span>Доход</span>
+              <span style="font-weight: 700;">🟢 Доход</span>
             </button>
 
             <button class="hero-action-btn" onclick="openPayDebtModal()">
@@ -6619,15 +6714,20 @@ self.addEventListener('fetch', (event) => {
 <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 8px 12px; white-space: nowrap;" onclick="setTxDateYesterday()">Вчера</button>
 </div>
 </div>
-<div class="form-group"><label>Тип операции:</label>
-<select id="txType" onchange="onTxTypeChange()">
-
+<div class="form-group">
+            <label style="margin-bottom: 8px;">Тип операции (нажмите для переключения):</label>
+            <div class="tx-type-segment-group">
+              <button type="button" id="segBtnExpense" class="tx-type-segment-btn active-expense" onclick="setTxTypeSegment('EXPENSE')">
+                <span style="font-size: 16px;">🔴</span> Расход семьи
+              </button>
+              <button type="button" id="segBtnIncome" class="tx-type-segment-btn" onclick="setTxTypeSegment('INCOME')">
+                <span style="font-size: 16px;">🟢</span> Доход семьи
+              </button>
+            </div>
+            <select id="txType" onchange="onTxTypeChange()" style="display: none;">
               <option value="EXPENSE">Расход семьи</option>
-
               <option value="INCOME">Доход семьи</option>
-
             </select>
-
           </div>
 
           <!-- Выпадающее меню выбора категории (Category Dropdown Menu) -->
@@ -7505,6 +7605,56 @@ self.addEventListener('fetch', (event) => {
 
       });
 
+    }
+
+    // Open New Transaction Modal / Screen with active type indicator
+    function openNewTxModal(type = 'EXPENSE') {
+      type = (type || 'EXPENSE').toUpperCase();
+      switchTab('tab-tx');
+      setTxTypeSegment(type);
+      setTimeout(() => {
+        const amountEl = document.getElementById('txAmount');
+        if (amountEl) {
+          amountEl.focus();
+        } else {
+          const quickEl = document.getElementById('txQuickInput');
+          if (quickEl) quickEl.focus();
+        }
+      }, 120);
+    }
+
+    function setTxTypeSegment(type = 'EXPENSE') {
+      type = (type || 'EXPENSE').toUpperCase();
+      const sel = document.getElementById('txType');
+      if (sel) {
+        sel.value = type;
+      }
+      const btnExp = document.getElementById('segBtnExpense');
+      const btnInc = document.getElementById('segBtnIncome');
+      if (btnExp && btnInc) {
+        if (type === 'EXPENSE') {
+          btnExp.classList.add('active-expense');
+          btnInc.classList.remove('active-income');
+        } else {
+          btnInc.classList.add('active-income');
+          btnExp.classList.remove('active-expense');
+        }
+      }
+      // Also highlight Hero buttons if visible
+      const heroExp = document.getElementById('heroBtnExpense');
+      const heroInc = document.getElementById('heroBtnIncome');
+      if (heroExp && heroInc) {
+        if (type === 'EXPENSE') {
+          heroExp.classList.add('active-expense');
+          heroInc.classList.remove('active-income');
+        } else {
+          heroInc.classList.add('active-income');
+          heroExp.classList.remove('active-expense');
+        }
+      }
+      if (typeof onTxTypeChange === 'function') {
+        onTxTypeChange();
+      }
     }
 
     function switchTab(tabId) {
