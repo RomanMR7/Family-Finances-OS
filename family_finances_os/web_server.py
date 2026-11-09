@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v10';
+const CACHE_NAME = 'ffos-shell-v11';
 
 const STATIC_SHELL = [
 
@@ -3511,27 +3511,27 @@ self.addEventListener('fetch', (event) => {
   <style>
     /* Appetite UI Design System Tokens */
     :root, [data-theme="dark"] {
-      --bg: #080808;
-      --card-bg: #121417;
-      --card-hover: #181b20;
-      --border: rgba(255, 255, 255, 0.08);
-      --border-focus: #1d68f6;
+      --bg: #090a0f;
+      --card-bg: #11131a;
+      --card-hover: #171a24;
+      --border: rgba(255, 255, 255, 0.09);
+      --border-focus: #2563eb;
       --text: #ffffff;
-      --text-muted: #7e8590;
-      --text-soft: #a0a5ad;
-      --primary: #1d68f6;
-      --primary-hover: #1858d4;
-      --primary-gradient: linear-gradient(135deg, #1765f6 0%, #1f71f9 45%, #0d52db 100%);
+      --text-muted: #8b929e;
+      --text-soft: #b0b6c2;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
       --accent-purple: #8b5cf6;
-      --success: #16a34a;
-      --danger: #dc2626;
+      --success: #10b981;
+      --danger: #ef4444;
       --warning: #f59e0b;
       --purple: #8b5cf6;
-      --input-bg: #16181b;
-      --modal-bg: #121417;
-      --box-bg: rgba(255, 255, 255, 0.03);
-      --shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.5);
-      --shadow-lg: 0 16px 40px -4px rgba(0, 0, 0, 0.75);
+      --input-bg: #0d0f15;
+      --modal-bg: #11131a;
+      --box-bg: rgba(255, 255, 255, 0.025);
+      --shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.65);
+      --shadow-lg: 0 20px 48px -6px rgba(0, 0, 0, 0.85);
       --card-radius: 20px;
     }
 
@@ -3824,6 +3824,7 @@ self.addEventListener('fetch', (event) => {
     /* Appetite UI Cards & Grids */
     .card {
       background: var(--card-bg);
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0) 100%);
       border: 1px solid var(--border);
       border-radius: var(--card-radius);
       padding: 22px;
@@ -3833,7 +3834,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     .card:hover {
-      border-color: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.16);
     }
 
     [data-theme="light"] .card:hover {
@@ -4095,28 +4096,82 @@ self.addEventListener('fetch', (event) => {
       top: calc(100% + 6px);
       left: 0;
       right: 0;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-lg);
-      border-radius: 16px;
+      background: #11131a;
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 20px 48px -6px rgba(0, 0, 0, 0.85);
+      border-radius: 18px;
       z-index: 1000;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      max-height: 400px;
-      min-width: 290px;
+      max-height: 420px;
+      min-width: 300px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
 
     .category-dropdown-search {
-      padding: 12px;
-      background: var(--card-hover);
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.02);
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .category-dropdown-search input {
       width: 100%;
-      padding: 8px 12px;
-      border-radius: 8px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: #0d0f15;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .category-dropdown-list {
+      flex: 1 1 auto;
+      overflow-y: auto !important;
+      max-height: 300px;
+      padding: 6px 0;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.04);
+    }
+
+    .category-dropdown-list::-webkit-scrollbar {
+      width: 6px;
+      display: block;
+    }
+
+    .category-dropdown-list::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .category-dropdown-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.28);
+      border-radius: 9999px;
+    }
+
+    .category-dropdown-list::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+
+    [data-theme="light"] .category-dropdown-menu {
+      background: #ffffff;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+      border: 1px solid #e2e8f0;
+    }
+
+    [data-theme="light"] .category-dropdown-list {
+      scrollbar-color: rgba(0, 0, 0, 0.3) rgba(0, 0, 0, 0.04);
+    }
+
+    [data-theme="light"] .category-dropdown-list::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    [data-theme="light"] .category-dropdown-list::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.25);
     }
 
     .cat-filter-btn {
@@ -4138,14 +4193,17 @@ self.addEventListener('fetch', (event) => {
     }
 
     .cat-group-header {
-      padding: 8px 14px;
+      padding: 8px 14px 4px 14px;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: var(--text-muted);
-      background: var(--card-hover);
-      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
 
     .cat-dropdown-item {
@@ -4156,13 +4214,20 @@ self.addEventListener('fetch', (event) => {
       gap: 10px;
       font-size: 13px;
       font-weight: 500;
-      border-bottom: 1px solid var(--border);
-      transition: background 0.15s;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .cat-dropdown-item:hover {
-      background: var(--card-hover);
-      color: var(--primary);
+      background: rgba(255, 255, 255, 0.06);
+      color: #ffffff;
+      padding-left: 18px;
+    }
+
+    .cat-dropdown-item.active {
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
+      font-weight: 600;
     }
 
     /* Debt Type Buttons */
