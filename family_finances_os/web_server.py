@@ -3282,16 +3282,17 @@ self.addEventListener('fetch', (event) => {
       --purple: #8b5cf6;
       --input-bg: #121419;
       --modal-bg: #181a20;
+      --box-bg: rgba(0, 0, 0, 0.35);
       --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
       --card-radius: 16px;
     }
 
     [data-theme="light"] {
-      --bg: #f3f4f7;
+      --bg: #f4f6fa;
       --card-bg: #ffffff;
-      --card-hover: #f8fafc;
-      --border: rgba(0, 0, 0, 0.08);
-      --text: #111827;
+      --card-hover: #f1f5f9;
+      --border: rgba(0, 0, 0, 0.09);
+      --text: #0f172a;
       --text-muted: #64748b;
       --primary: #ff6433;
       --primary-hover: #e85526;
@@ -3303,8 +3304,53 @@ self.addEventListener('fetch', (event) => {
       --purple: #8b5cf6;
       --input-bg: #ffffff;
       --modal-bg: #ffffff;
-      --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      --box-bg: #f8fafc;
+      --shadow: 0 4px 20px rgba(100, 116, 139, 0.12);
       --card-radius: 16px;
+    }
+
+    [data-theme="light"] input,
+    [data-theme="light"] select,
+    [data-theme="light"] textarea {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      border: 1px solid #cbd5e1 !important;
+    }
+    [data-theme="light"] input::placeholder,
+    [data-theme="light"] textarea::placeholder {
+      color: #94a3b8 !important;
+    }
+    [data-theme="light"] .btn-secondary {
+      background: #f1f5f9 !important;
+      color: #0f172a !important;
+      border: 1px solid #cbd5e1 !important;
+    }
+    [data-theme="light"] .btn-secondary:hover {
+      background: #e2e8f0 !important;
+    }
+    [data-theme="light"] .badge {
+      background: rgba(37, 99, 235, 0.1) !important;
+      color: #2563eb !important;
+      border-color: rgba(37, 99, 235, 0.25) !important;
+    }
+    [data-theme="light"] .stat-val:not(.primary):not(.success):not(.warning):not(.danger):not(.purple) {
+      color: #0f172a !important;
+    }
+    [data-theme="light"] th {
+      color: #64748b !important;
+    }
+    [data-theme="light"] td {
+      color: #0f172a !important;
+    }
+    [data-theme="light"] .tab-btn {
+      color: #64748b;
+    }
+    [data-theme="light"] .tab-btn:hover {
+      color: #0f172a;
+      background: #f1f5f9;
+    }
+    [data-theme="light"] .tab-btn.active {
+      color: #ffffff !important;
     }
 
     [data-theme="dark"] {
@@ -3324,6 +3370,7 @@ self.addEventListener('fetch', (event) => {
       --purple: #8b5cf6;
       --input-bg: #121419;
       --modal-bg: #181a20;
+      --box-bg: rgba(0, 0, 0, 0.35);
       --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
       --card-radius: 16px;
     }
@@ -3366,6 +3413,198 @@ self.addEventListener('fetch', (event) => {
     .progress-bar-bg { background: rgba(148, 163, 184, 0.2); border-radius: 9999px; overflow: hidden; }
     .progress-bar-fill { border-radius: 9999px; transition: width 0.3s ease; }
     .hidden { display: none !important; }
+
+    /* Custom Category Dropdown System */
+    .category-dropdown-trigger {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .category-dropdown-trigger:hover {
+      border-color: var(--primary);
+      background: var(--card-hover);
+    }
+    .category-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-radius: 14px;
+      z-index: 1000;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 400px;
+      min-width: 290px;
+    }
+    .category-dropdown-search {
+      padding: 10px 12px;
+      background: var(--card-hover);
+      border-bottom: 1px solid var(--border);
+    }
+    .category-dropdown-search input {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .category-dropdown-search input:focus {
+      border-color: var(--primary);
+    }
+    .category-dropdown-list {
+      overflow-y: auto;
+      max-height: 290px;
+      padding: 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .cat-group-header {
+      padding: 8px 10px 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cat-dropdown-item {
+      padding: 9px 12px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      transition: background 0.15s, color 0.15s;
+    }
+    .cat-dropdown-item:hover {
+      background: var(--card-hover);
+    }
+    .cat-dropdown-item.active {
+      background: rgba(255, 100, 51, 0.15) !important;
+      color: var(--primary) !important;
+      font-weight: 700;
+    }
+    .cat-filter-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .cat-filter-btn:hover {
+      background: var(--card-hover);
+      color: var(--text);
+    }
+    .cat-filter-btn.active {
+      background: var(--primary) !important;
+      color: #ffffff !important;
+      border-color: var(--primary) !important;
+    }
+
+    /* Mobile Responsive Layout */
+    @media (max-width: 680px) {
+      body {
+        padding: calc(10px + env(safe-area-inset-top)) 10px calc(80px + env(safe-area-inset-bottom)) 10px !important;
+      }
+      .container {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        padding-bottom: 10px !important;
+      }
+      .header > div:last-child {
+        width: 100% !important;
+        justify-content: flex-start !important;
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        padding-bottom: 4px !important;
+        -webkit-overflow-scrolling: touch;
+      }
+      .nav-tabs {
+        gap: 4px !important;
+        padding-bottom: 8px !important;
+      }
+      .tab-btn {
+        padding: 6px 12px !important;
+        font-size: 12px !important;
+      }
+      .card {
+        padding: 14px !important;
+        border-radius: 14px !important;
+      }
+      .grid-3 {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+      }
+      [style*="grid-template-columns: 1fr 1fr"],
+      [style*="grid-template-columns: 2fr 1fr"],
+      [style*="grid-template-columns: 2fr 1fr 1fr"],
+      [style*="grid-template-columns: 1fr 1fr 1fr"],
+      [style*="grid-template-columns: repeat(3, 1fr)"] {
+        grid-template-columns: 1fr !important;
+        gap: 8px !important;
+      }
+      .quick-input-bar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+      }
+      .quick-input-bar > * {
+        width: 100% !important;
+        min-width: 0 !important;
+      }
+      .quick-input-bar button {
+        justify-content: center !important;
+      }
+      .category-dropdown-menu {
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 20px 20px 0 0 !important;
+        max-height: 75vh !important;
+        z-index: 99999 !important;
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5) !important;
+      }
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+      table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
   </style>
 
 </head>
@@ -3415,7 +3654,7 @@ self.addEventListener('fetch', (event) => {
 
         <div style="font-size: 32px; margin-bottom: 6px;">📱</div>
 
-        <h3 style="font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 6px;">Подключение смартфона</h3>
+        <h3 style="font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Подключение смартфона</h3>
 
         <p style="color: #94a3b8; font-size: 13px; margin-bottom: 16px; line-height: 1.4;">
 
@@ -3433,7 +3672,7 @@ self.addEventListener('fetch', (event) => {
 
         <!-- Pairing URL with copy button -->
 
-        <div style="margin-bottom: 14px; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+        <div style="margin-bottom: 14px; background: var(--card-hover); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
 
           <input type="text" id="qrPairUrlInput" readonly style="background: transparent; border: none; color: #38bdf8; font-family: monospace; font-size: 12px; flex: 1; outline: none;" value="..." />
 
@@ -3445,11 +3684,11 @@ self.addEventListener('fetch', (event) => {
 
         <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; margin-bottom: 14px; text-align: left; font-size: 12px;">
 
-          <div style="color: #cbd5e1; font-weight: 600; margin-bottom: 4px;">Сетевой адрес компьютера:</div>
+          <div style="color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Сетевой адрес компьютера:</div>
 
           <div style="display: flex; gap: 6px; align-items: center;">
 
-            <input type="text" id="qrPairOverrideIp" placeholder="192.168.1.XX" style="background: var(--bg); border: 1px solid var(--border); color: #fff; border-radius: 6px; padding: 6px 10px; flex: 1; font-family: monospace; font-size: 12px;" />
+            <input type="text" id="qrPairOverrideIp" placeholder="192.168.1.XX" style="background: var(--input-bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; flex: 1; font-family: monospace; font-size: 12px;" />
 
             <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px;" onclick="regenerateQrPair()">Обновить QR</button>
 
@@ -3461,7 +3700,7 @@ self.addEventListener('fetch', (event) => {
 
         <div style="text-align: left; font-size: 12px; color: #94a3b8; border-top: 1px solid var(--border); padding-top: 12px; line-height: 1.5;">
 
-          <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">Инструкция по установке (PWA):</div>
+          <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">Инструкция по установке (PWA):</div>
 
           <div>1. Наведите камеру телефона на QR-код и откройте ссылку.</div>
 
@@ -3483,7 +3722,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closeEnvelopeModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 id="envelopeModalTitle" style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+        <h3 id="envelopeModalTitle" style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
 
           <span>✉️</span> <span>Новый конверт-копилка</span>
 
@@ -3613,7 +3852,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closeEnvelopeDepositModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
 
           <span>💰</span> <span id="envDepositTitle">Положить в конверт-копилку</span>
 
@@ -3681,7 +3920,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closeEnvelopeWithdrawModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
 
           <span>📤</span> <span id="envWithdrawTitle">Взять из конверта-копилки</span>
 
@@ -3747,7 +3986,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closeEnvelopeTransferModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
 
           <span>🔄</span> <span>Переложить между конвертами</span>
 
@@ -3811,7 +4050,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closeGoalModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 id="goalModalTitle" style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+        <h3 id="goalModalTitle" style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
 
           <span>🎯</span> <span>Новая цель накоплений</span>
 
@@ -3925,7 +4164,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closeContributeGoalModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
 
           <span>💰</span> <span id="contribGoalTitle">Пополнить цель</span>
 
@@ -3993,7 +4232,7 @@ self.addEventListener('fetch', (event) => {
 
         <button onclick="closePayDebtModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
-        <h3 style="font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+        <h3 style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
 
           <span>💳</span> <span>Погашение задолженности</span>
 
@@ -4073,14 +4312,14 @@ self.addEventListener('fetch', (event) => {
         </div>
 
         <!-- Live Payoff Forecast Box -->
-        <div id="payDebtForecastBox" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
+        <div id="payDebtForecastBox" style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
           <div style="font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
             <span>🚀 Прогноз погашения при таком платеже:</span>
             <span id="payDebtForecastStatus" style="font-size: 11px; color: #94a3b8;"></span>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: #cbd5e1; line-height: 1.4;">
-            <div>Срок до закрытия: <strong id="payDebtForecastDays" style="color: #fff;">—</strong></div>
-            <div>Дата погашения: <strong id="payDebtForecastDate" style="color: #fff;">—</strong></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: var(--text-muted); line-height: 1.4;">
+            <div>Срок до закрытия: <strong id="payDebtForecastDays" style="color: var(--text);">—</strong></div>
+            <div>Дата погашения: <strong id="payDebtForecastDate" style="color: var(--text);">—</strong></div>
             <div>Переплата банку: <strong id="payDebtForecastInterest" style="color: #fca5a5;">—</strong></div>
             <div>Экономия семейного бюджета: <strong id="payDebtForecastSavings" style="color: #34d399;">—</strong></div>
           </div>
@@ -4120,7 +4359,7 @@ self.addEventListener('fetch', (event) => {
 
       <div style="font-size: 42px; margin-bottom: 10px;">🔒</div>
 
-      <h2 style="font-size: 19px; color: #fff; margin-bottom: 6px;">База данных заблокирована</h2>
+      <h2 style="font-size: 19px; color: var(--text); margin-bottom: 6px;">База данных заблокирована</h2>
 
       <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.4;">
 
@@ -4134,7 +4373,7 @@ self.addEventListener('fetch', (event) => {
 
         <div style="display: flex; justify-content: space-between; align-items: center;">
 
-          <code style="font-family: monospace; font-size: 14px; font-weight: 700; color: #34d399; background: #0f172a; padding: 2px 8px; border-radius: 4px;">Family2026!</code>
+          <code style="font-family: monospace; font-size: 14px; font-weight: 700; color: #34d399; background: var(--card-hover); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">Family2026!</code>
 
           <button type="button" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" onclick="document.getElementById('masterUnlockPassword').value='Family2026!'">Вставить</button>
 
@@ -4182,7 +4421,7 @@ self.addEventListener('fetch', (event) => {
 
           <span style="color: #94a3b8;">Логин:</span>
 
-          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #38bdf8; background: #0f172a; padding: 2px 8px; border-radius: 4px;">admin</span>
+          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #38bdf8; background: var(--card-hover); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">admin</span>
 
         </div>
 
@@ -4190,7 +4429,7 @@ self.addEventListener('fetch', (event) => {
 
           <span style="color: #94a3b8;">Мастер-пароль:</span>
 
-          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #34d399; background: #0f172a; padding: 2px 8px; border-radius: 4px;">Family2026!</span>
+          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #34d399; background: var(--card-hover); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">Family2026!</span>
 
         </div>
 
@@ -4242,7 +4481,7 @@ self.addEventListener('fetch', (event) => {
 
           <span style="color: #94a3b8;">Логин:</span>
 
-          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #38bdf8; background: #0f172a; padding: 2px 8px; border-radius: 4px;">admin</span>
+          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #38bdf8; background: var(--card-hover); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">admin</span>
 
         </div>
 
@@ -4250,7 +4489,7 @@ self.addEventListener('fetch', (event) => {
 
           <span style="color: #94a3b8;">Пароль:</span>
 
-          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #34d399; background: #0f172a; padding: 2px 8px; border-radius: 4px;">Family2026!</span>
+          <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #34d399; background: var(--card-hover); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">Family2026!</span>
 
         </div>
 
@@ -4284,7 +4523,7 @@ self.addEventListener('fetch', (event) => {
     <button onclick="closeEditTxModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
       <span style="font-size: 22px;">✏️</span>
-      <h3 style="font-size: 18px; font-weight: 700; color: #fff; margin: 0;">Редактирование операции</h3>
+      <h3 style="font-size: 18px; font-weight: 700; color: var(--text); margin: 0;">Редактирование операции</h3>
     </div>
     <div id="editTxMsg"></div>
     <input type="hidden" id="editTxId">
@@ -4344,7 +4583,7 @@ self.addEventListener('fetch', (event) => {
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
             <span style="font-size: 26px;">➕</span>
             <div>
-              <h3 style="font-size: 18px; color: #fff; margin: 0;">Добавление задолженности или кредита</h3>
+              <h3 style="font-size: 18px; color: var(--text); margin: 0;">Добавление задолженности или кредита</h3>
               <p style="font-size: 12px; color: var(--text-muted); margin: 2px 0 0 0;">Выберите тип и укажите условия банка или договора</p>
             </div>
           </div>
@@ -4360,7 +4599,7 @@ self.addEventListener('fetch', (event) => {
           </div>
           <input type="hidden" id="newDebtSubtype" value="CREDIT_CARD">
 
-          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; background: var(--card-hover); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
             <span>📂 Категория учета:</span> <strong id="newDebtCategoryLabel" style="color: #60a5fa;">💳 Погашение кредитных карт</strong>
           </div>
 
@@ -4381,7 +4620,7 @@ self.addEventListener('fetch', (event) => {
           </div>
 
           <!-- Credit Card Banking Conditions Block (visible for CREDIT_CARD) -->
-          <div id="groupCreditCardBanking" style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+          <div id="groupCreditCardBanking" style="background: var(--card-hover); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
             <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
               <span>🏦</span> <span>Банковские условия и грейс-период (договор Сбербанка / стандарт банков РФ)</span>
             </div>
@@ -4421,7 +4660,7 @@ self.addEventListener('fetch', (event) => {
           </div>
 
           <!-- Recurring Obligation Option -->
-          <div style="background: rgba(15,23,42,0.6); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.15); margin-bottom: 12px;">
+          <div style="background: var(--card-hover); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px;">
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
               <input type="checkbox" id="chkCreateObligation" onchange="toggleDebtObligationFields(this.checked)">
               <span>Создать ежемесячный обязательный платеж в календаре</span>
@@ -4439,7 +4678,7 @@ self.addEventListener('fetch', (event) => {
           </div>
 
           <!-- Received funds option (for loans) -->
-          <div id="groupReceiveMoney" style="background: rgba(15,23,42,0.6); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.15); margin-bottom: 12px;">
+          <div id="groupReceiveMoney" style="background: var(--card-hover); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px;">
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
               <input type="checkbox" id="chkReceiveMoney" onchange="toggleDebtReceiveAccount(this.checked)">
               <span>Зачислить полученные заёмные деньги на текущий счет семьи</span>
@@ -4472,7 +4711,7 @@ self.addEventListener('fetch', (event) => {
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
             <span style="font-size: 24px;">⚙️</span>
             <div>
-              <h3 id="cardSettingsTitle" style="font-size: 17px; color: #fff; margin: 0;">Условия кредитной карты</h3>
+              <h3 id="cardSettingsTitle" style="font-size: 17px; color: var(--text); margin: 0;">Условия кредитной карты</h3>
               <p style="font-size: 12px; color: var(--text-muted); margin: 2px 0 0 0;">Текущий долг: <strong id="cardSettingsDebtBal" style="color:#f87171;">0.00 ₽</strong></p>
             </div>
           </div>
@@ -4527,13 +4766,13 @@ self.addEventListener('fetch', (event) => {
 <!-- Month Selector & Period Navigator Bar -->
 <div class="month-navigator-bar" style="background: rgba(30, 41, 59, 0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
   <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-    <span style="font-weight: 600; font-size: 14px; color: #cbd5e1; display: flex; align-items: center; gap: 6px;">
+    <span style="font-weight: 600; font-size: 14px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
       <span style="font-size: 18px;">📅</span>
       <span>Период учёта:</span>
     </span>
     <div style="display: flex; align-items: center; gap: 6px;">
       <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(-1)" title="Предыдущий месяц">◀</button>
-      <select id="globalMonthSelect" onchange="onGlobalMonthSelectChange(this.value)" style="padding: 6px 14px; font-size: 14px; font-weight: 600; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 8px; cursor: pointer; min-width: 170px;">
+      <select id="globalMonthSelect" onchange="onGlobalMonthSelectChange(this.value)" style="padding: 6px 14px; font-size: 14px; font-weight: 600; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; min-width: 170px;">
         <!-- Filled dynamically -->
       </select>
       <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(1)" title="Следующий месяц">▶</button>
@@ -4584,7 +4823,7 @@ self.addEventListener('fetch', (event) => {
 
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
 
-            <h3 style="font-size: 15px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px;">
+            <h3 style="font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px;">
 
               <span>⚡</span> <span>Умный быстрый ввод</span>
 
@@ -4602,7 +4841,7 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; position: relative;">
+          <div class="quick-input-bar" style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; position: relative;">
 
             <!-- Dropdown selector for category directly on dashboard -->
 
@@ -4610,7 +4849,7 @@ self.addEventListener('fetch', (event) => {
 
               <button type="button" id="dashCatDropdownBtn" class="btn btn-secondary" 
 
-                      style="padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; height: 44px; border-radius: 8px; background: rgba(0,0,0,0.35); border-color: var(--border);" 
+                      style="padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; height: 44px; border-radius: 8px; background: var(--input-bg); color: var(--text); border: 1px solid var(--border);" 
 
                       onclick="toggleCategoryDropdown('dashCatMenu')">
 
@@ -4625,6 +4864,11 @@ self.addEventListener('fetch', (event) => {
               <div id="dashCatMenu" class="category-dropdown-menu hidden" style="left: 0; min-width: 290px;">
 
                 <div class="category-dropdown-search">
+
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 13px; font-weight: 700; color: var(--text);">🏷️ Выберите категорию</span>
+                    <button type="button" onclick="document.getElementById('dashCatMenu').classList.add('hidden')" style="background: transparent; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">✕</button>
+                  </div>
 
                   <input type="text" id="dashCatSearchInput" placeholder="🔍 Поиск категории..." 
 
@@ -4650,7 +4894,7 @@ self.addEventListener('fetch', (event) => {
 
             <input type="text" id="dashQuickInput" placeholder="Например: 500 кофе, 1500 продукты, 850 аптека..." 
 
-                   style="font-size: 15px; padding: 11px 14px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 8px; color: #fff; flex: 1;"
+                   style="font-size: 15px; padding: 11px 14px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); flex: 1;"
 
                    oninput="onQuickInputLive(this.value, 'dashQuickPreview')" 
 
@@ -4718,9 +4962,9 @@ self.addEventListener('fetch', (event) => {
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px;">
 
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+            <div style="background: var(--card-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
 
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">1. Текущие остатки на дебетовых картах (₽)</h4>
+              <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text);">1. Текущие остатки на дебетовых картах (₽)</h4>
 
               <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Основная карта (1010):</label><input type="number" id="obMainCard" placeholder="0" value="0"></div>
 
@@ -4730,9 +4974,9 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+            <div style="background: var(--card-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
 
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">2. Кредитная карта (2020)</h4>
+              <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text);">2. Кредитная карта (2020)</h4>
 
               <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Кредитный лимит (₽):</label><input type="number" id="obCreditLimit" placeholder="0" value="0"></div>
 
@@ -4740,9 +4984,9 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+            <div style="background: var(--card-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
 
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">3. Главный обязательный платеж месяца</h4>
+              <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text);">3. Главный обязательный платеж месяца</h4>
 
               <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Название (Аренда / Ипотека / ЖКХ):</label><input type="text" id="obOblName" placeholder="Например: Аренда жилья"></div>
 
@@ -4886,7 +5130,7 @@ self.addEventListener('fetch', (event) => {
 
               <span style="font-size: 20px;">✉️</span>
 
-              <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Конверты-копилки</h3>
+              <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">Конверты-копилки</h3>
 
             </div>
 
@@ -4952,7 +5196,7 @@ self.addEventListener('fetch', (event) => {
 
             <div>
 
-              <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <h3 style="font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 8px;">
 
                 <span>🎯</span> <span>Семейные цели накоплений</span>
 
@@ -4990,7 +5234,7 @@ self.addEventListener('fetch', (event) => {
 
             <div>
 
-              <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <h3 style="font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 8px;">
 
                 <span>✉️</span> <span>Конверты-копилки семьи</span>
 
@@ -5062,7 +5306,7 @@ self.addEventListener('fetch', (event) => {
       <div id="tab-debts" class="hidden">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
           <div>
-            <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <h3 style="font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 8px;">
               <span>💳</span> <span>Задолженности и кредитные карты семьи</span>
             </h3>
             <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
@@ -5308,7 +5552,7 @@ self.addEventListener('fetch', (event) => {
 
           <!-- Forecast Stats Strip -->
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; background: rgba(0,0,0,0.25); border-radius: 8px; padding: 12px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; background: var(--card-hover); border-radius: 8px; padding: 12px;">
 
             <div>
 
@@ -5374,9 +5618,9 @@ self.addEventListener('fetch', (event) => {
 
           <!-- Express 1-Line Input -->
 
-          <div style="border-left: 4px solid var(--primary); background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
+          <div style="border-left: 4px solid var(--primary); background: var(--card-hover); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
 
-            <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px; color: #fff;">⚡ Экспресс-запись в 1 строку:</div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px; color: var(--text);">⚡ Экспресс-запись в 1 строку:</div>
 
             <div style="display: flex; gap: 8px;">
 
@@ -5459,7 +5703,7 @@ self.addEventListener('fetch', (event) => {
 
                 <div style="text-align: left; line-height: 1.25;">
 
-                  <div id="txCatSelectedName" style="font-size: 14px; font-weight: 600; color: #fff;">Продукты и супермаркеты</div>
+                  <div id="txCatSelectedName" style="font-size: 14px; font-weight: 600; color: var(--text);">Продукты и супермаркеты</div>
 
                   <div id="txCatSelectedParent" style="font-size: 11px; color: var(--text-muted);">Нажмите для выбора из меню категорий</div>
 
@@ -5478,6 +5722,11 @@ self.addEventListener('fetch', (event) => {
             <div id="txCatMenu" class="category-dropdown-menu hidden">
 
               <div class="category-dropdown-search">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span style="font-size: 13px; font-weight: 700; color: var(--text);">🏷️ Выберите статью / категорию</span>
+                  <button type="button" onclick="document.getElementById('txCatMenu').classList.add('hidden')" style="background: transparent; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">✕</button>
+                </div>
 
                 <input type="text" id="txCatSearchInput" placeholder="🔍 Найти категорию (еда, бензин, аптека...)" 
 
@@ -5579,7 +5828,7 @@ self.addEventListener('fetch', (event) => {
 
           <!-- Add Obligation Form -->
 
-          <div id="divNewObligation" class="card hidden" style="background: rgba(15,23,42,0.8); border-color: var(--primary);">
+          <div id="divNewObligation" class="card hidden" style="background: var(--card-hover); border-color: var(--primary);">
 
             <h4 style="margin-bottom: 12px;">Новый обязательный платеж</h4>
 
@@ -5745,7 +5994,7 @@ self.addEventListener('fetch', (event) => {
 
           <!-- Add Category Form -->
 
-          <div id="divNewCategory" class="card hidden" style="background: rgba(15,23,42,0.8); border-color: var(--primary);">
+          <div id="divNewCategory" class="card hidden" style="background: var(--card-hover); border-color: var(--primary);">
 
             <h4 style="margin-bottom: 12px;">Создать категорию</h4>
 
@@ -5900,7 +6149,7 @@ self.addEventListener('fetch', (event) => {
 
             <label>Или вставьте текст CSV выписки напрямую:</label>
 
-            <textarea id="importRawText" rows="6" style="width:100%; font-family:monospace; font-size:12px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#fff; padding:8px;" placeholder="Дата;Описание;Сумма&#10;09.11.2026;Супермаркет Перекресток;-1450.00&#10;08.11.2026;Зарплата от работодателя;+85000.00"></textarea>
+            <textarea id="importRawText" rows="6" style="width:100%; font-family:monospace; font-size:12px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px;" placeholder="Дата;Описание;Сумма&#10;09.11.2026;Супермаркет Перекресток;-1450.00&#10;08.11.2026;Зарплата от работодателя;+85000.00"></textarea>
 
           </div>
 
@@ -6749,11 +6998,11 @@ self.addEventListener('fetch', (event) => {
 
             return `
 
-              <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:6px 12px; white-space:nowrap; font-size:12px;">
+              <div style="background:var(--card-hover); border:1px solid var(--border); border-radius:8px; padding:6px 12px; white-space:nowrap; font-size:12px;">
 
                 <div style="color:#60a5fa; font-weight:600;">${dStr} (через ${m.day} дн.)</div>
 
-                <div style="color:#f8fafc; margin-top:2px;">${m.label}</div>
+                <div style="color:var(--text); margin-top:2px;">${m.label}</div>
 
               </div>
 
@@ -8738,7 +8987,7 @@ self.addEventListener('fetch', (event) => {
         const safeDesc = encodeURIComponent(t.description || '');
         tr.innerHTML = `
           <td><strong>${t.tx_date}</strong></td>
-          <td><span class="badge" style="background:#1e293b; border:1px solid #475569;">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
+          <td><span class="badge" style="background:var(--card-bg); border:1px solid var(--border);">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
           <td>${t.description}</td>
           <td style="font-size: 13px;">${postingSummary}</td>
           <td style="font-weight: 700; color: ${t.tx_type === 'EXPENSE' ? '#f87171' : '#34d399'};">${mainAmount}</td>
@@ -8784,24 +9033,36 @@ self.addEventListener('fetch', (event) => {
 
     function populateEditTxCategories(txType, selectedCatId) {
       const catSelect = document.getElementById('editTxCategory');
+      if (!catSelect) return;
       catSelect.innerHTML = '';
-      if (!categoryData) return;
-      const cats = (txType === 'INCOME') ? categoryData.income : categoryData.expense;
-      if (!cats) return;
+      if (!categoryData || !categoryData.tree) return;
+      const targetRoots = categoryData.tree.filter(root => !txType || root.type === txType);
 
-      function addNodes(nodes, depth) {
-        nodes.forEach(n => {
+      targetRoots.forEach(root => {
+        if (root.subcategories && root.subcategories.length > 0) {
+          const grp = document.createElement('optgroup');
+          grp.label = `${root.icon || ''} ${root.name}`;
+          const rootOpt = document.createElement('option');
+          rootOpt.value = root.id;
+          rootOpt.innerText = `${root.icon || ''} ${root.name} (Основная)`;
+          if (root.id === selectedCatId) rootOpt.selected = true;
+          grp.appendChild(rootOpt);
+          root.subcategories.forEach(sub => {
+            const opt = document.createElement('option');
+            opt.value = sub.id;
+            opt.innerText = `${sub.icon || ''} ${sub.name}`;
+            if (sub.id === selectedCatId) opt.selected = true;
+            grp.appendChild(opt);
+          });
+          catSelect.appendChild(grp);
+        } else {
           const opt = document.createElement('option');
-          opt.value = n.id;
-          opt.innerText = '  '.repeat(depth) + (n.icon ? n.icon + ' ' : '') + n.name;
-          if (n.id === selectedCatId) opt.selected = true;
+          opt.value = root.id;
+          opt.innerText = `${root.icon || ''} ${root.name}`;
+          if (root.id === selectedCatId) opt.selected = true;
           catSelect.appendChild(opt);
-          if (n.children && n.children.length > 0) {
-            addNodes(n.children, depth + 1);
-          }
-        });
-      }
-      addNodes(cats, 0);
+        }
+      });
     }
 
     function onEditTxTypeChange() {
@@ -9225,7 +9486,7 @@ self.addEventListener('fetch', (event) => {
 
           <td>
 
-            <select id="importCatSelect_${idx}" style="padding:4px; font-size:12px; background:var(--card-bg); color:#fff; border:1px solid var(--border); border-radius:4px;" onchange="currentPreviewItems[${idx}].category_id = this.value">
+            <select id="importCatSelect_${idx}" style="padding:4px; font-size:12px; background:var(--card-bg); color:var(--text); border:1px solid var(--border); border-radius:4px;" onchange="currentPreviewItems[${idx}].category_id = this.value">
 
               <option value="">Без категории</option>
 
@@ -9573,7 +9834,7 @@ self.addEventListener('fetch', (event) => {
 
               <div style="font-size: 36px; margin-bottom: 8px;">🎯</div>
 
-              <div style="font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px;">У вас пока нет активных финансовых целей</div>
+              <div style="font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px;">У вас пока нет активных финансовых целей</div>
 
               <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
 
@@ -9635,7 +9896,7 @@ self.addEventListener('fetch', (event) => {
 
                     <div>
 
-                      <div style="font-weight: 700; font-size: 16px; color: #fff;">${g.name}</div>
+                      <div style="font-weight: 700; font-size: 16px; color: var(--text);">${g.name}</div>
 
                       ${dateText}
 
@@ -9651,9 +9912,9 @@ self.addEventListener('fetch', (event) => {
 
                   <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
 
-                    <span style="color: var(--text-muted);">Накоплено: <strong style="color: #fff;">${g.current_amount_rub} ₽</strong></span>
+                    <span style="color: var(--text-muted);">Накоплено: <strong style="color: var(--text);">${g.current_amount_rub} ₽</strong></span>
 
-                    <span style="color: var(--text-muted);">Цель: <strong style="color: #fff;">${g.target_amount_rub} ₽</strong></span>
+                    <span style="color: var(--text-muted);">Цель: <strong style="color: var(--text);">${g.target_amount_rub} ₽</strong></span>
 
                   </div>
 
@@ -9767,7 +10028,7 @@ self.addEventListener('fetch', (event) => {
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
 
-              <span style="font-size: 13px; font-weight: 600; color: #fff;">${g.icon || '🎯'} ${g.name}</span>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text);">${g.icon || '🎯'} ${g.name}</span>
 
               <div style="display: flex; align-items: center; gap: 8px;">
 
@@ -10216,14 +10477,14 @@ self.addEventListener('fetch', (event) => {
             const statusBadge = `<span class="badge" style="background:${statusBg}; color:${statusColor}; border:1px solid ${statusColor}; font-weight:700; font-size:11px; padding:3px 8px;">${b.status_label}</span>`;
 
             cardBankingBlock = `
-              <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; margin-top: 10px;">
+              <div style="background: var(--card-hover); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; margin-top: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
                   <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 14px; font-weight: 700; color: #fff;">🏦 Банковский контроль</span>
+                    <span style="font-size: 14px; font-weight: 700; color: var(--text);">🏦 Банковский контроль</span>
                     ${statusBadge}
                   </div>
                   <div style="font-size: 12px; color: var(--text-muted);">
-                    ${b.grace_due_date ? `Дата платежа: <strong style="color: #fff;">${b.grace_due_date}</strong>` : '<span style="color:#f59e0b;">Дата платежа не задана</span>'}
+                    ${b.grace_due_date ? `Дата платежа: <strong style="color: var(--text);">${b.grace_due_date}</strong>` : '<span style="color:#f59e0b;">Дата платежа не задана</span>'}
                   </div>
                 </div>
 
@@ -10233,17 +10494,17 @@ self.addEventListener('fetch', (event) => {
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px;">
-                  <div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px;">
+                  <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Обязательный мин. платеж:</div>
                     <div style="font-size: 15px; font-weight: 700; color: #fbbf24;">${b.min_payment_formatted || b.min_payment_rub} ₽</div>
                     <div style="font-size: 10px; color: var(--text-muted);">${b.min_payment_percent}% от суммы долга</div>
                   </div>
-                  <div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px;">
+                  <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Ставка банка вне грейса:</div>
                     <div style="font-size: 15px; font-weight: 700; color: #94a3b8;">${b.interest_rate_percent}% <span style="font-size: 11px;">годовых</span></div>
                     <div style="font-size: 10px; color: var(--text-muted);">0.0% в льготный период</div>
                   </div>
-                  <div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px;">
+                  <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Неустойка за просрочку:</div>
                     <div style="font-size: 15px; font-weight: 700; color: #f87171;">${b.late_penalty_rate_percent}% <span style="font-size: 11px;">годовых</span></div>
                     <div style="font-size: 10px; color: var(--text-muted);">по договору Сбербанка</div>
@@ -10257,7 +10518,7 @@ self.addEventListener('fetch', (event) => {
                       <span>⚠️ Расчет банковских штрафов при просрочке на 30 дней:</span>
                       <span style="font-size: 13px; color: #ef4444; font-weight: 800;">+${b.simulation_30d_extra_rub} ₽ переплаты</span>
                     </div>
-                    <div style="font-size: 11px; color: #cbd5e1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; line-height: 1.4;">
+                    <div style="font-size: 11px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; line-height: 1.4;">
                       <div>• Проценты по ставке (${b.interest_rate_percent}%): <strong style="color:#f87171;">+${b.simulation_30d_interest_rub} ₽</strong></div>
                       <div>• Неустойка банка (${b.late_penalty_rate_percent}%): <strong style="color:#f87171;">+${b.simulation_30d_penalty_rub} ₽</strong></div>
                     </div>
@@ -10313,7 +10574,7 @@ self.addEventListener('fetch', (event) => {
             const accSc = sc.accelerated_scenarios || [];
 
             payoffAcceleratorsHtml = `
-              <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px;">
+              <div style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px;">
                 <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
                   <span>🚀 Стратегии: сколько платить, чтобы закрыть долг быстрее</span>
                   <span style="font-size: 11px; color: var(--text-muted);">Расчет по договору Сбербанка (24.8% APR)</span>
@@ -10325,8 +10586,8 @@ self.addEventListener('fetch', (event) => {
                     <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
                       <div>
                         <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 2px;">💎 В льготный период (0% переплаты)</div>
-                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">
-                          Срок: <strong style="color: #fff;">${graceSc.days_left} дн.</strong> (до ${graceSc.due_date || 'конца грейса'})<br>
+                        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
+                          Срок: <strong style="color: var(--text);">${graceSc.days_left} дн.</strong> (до ${graceSc.due_date || 'конца грейса'})<br>
                           Переплата: <strong style="color: #34d399;">0.00 ₽</strong> (100% экономия)
                         </div>
                       </div>
@@ -10340,7 +10601,7 @@ self.addEventListener('fetch', (event) => {
                   <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                       <div style="font-size: 11px; font-weight: 700; color: #fca5a5; margin-bottom: 2px;">⚠️ Мин. платеж (3% от долга)</div>
-                      <div style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">
+                      <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
                         Платеж: <strong style="color: #fbbf24;">${minSc.first_payment_rub} ₽/мес</strong> (3.0%)<br>
                         Срок: <strong style="color: #f87171;">${minSc.days_to_payoff} дн.</strong> (${minSc.months_to_payoff} мес.)<br>
                         Переплата: <strong style="color: #ef4444;">+${minSc.total_interest_rub} ₽</strong>
@@ -10356,8 +10617,8 @@ self.addEventListener('fetch', (event) => {
                     <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
                       <div>
                         <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 2px;">⚡ ${a.label}</div>
-                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">
-                          Платеж: <strong style="color: #fff;">${a.monthly_payment_rub} ₽/мес</strong> (${a.monthly_payment_percent}%)<br>
+                        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
+                          Платеж: <strong style="color: var(--text);">${a.monthly_payment_rub} ₽/мес</strong> (${a.monthly_payment_percent}%)<br>
                           Срок: <strong style="color: #38bdf8;">${a.days} дн.</strong> (${a.months} мес.)<br>
                           Экономия: <strong style="color: #34d399;">+${a.interest_savings_rub} ₽</strong>
                         </div>
@@ -10380,7 +10641,7 @@ self.addEventListener('fetch', (event) => {
                 <div>
                   <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <span style="font-size: 18px;">${cfg.icon}</span>
-                    <strong style="font-size: 16px; color: #fff;">${d.name}</strong>
+                    <strong style="font-size: 16px; color: var(--text);">${d.name}</strong>
                     ${typeBadge}
                     ${scopeBadge}
                     <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">${d.code}</span>
@@ -11042,7 +11303,7 @@ self.addEventListener('fetch', (event) => {
 
               <div style="font-size: 36px; margin-bottom: 8px;">✉️</div>
 
-              <div style="font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px;">У вас пока нет конвертов-копилок</div>
+              <div style="font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px;">У вас пока нет конвертов-копилок</div>
 
               <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
 
@@ -11120,7 +11381,7 @@ self.addEventListener('fetch', (event) => {
 
                   <div>
 
-                    <strong style="font-size: 16px; color: #fff;">${e.name}</strong>
+                    <strong style="font-size: 16px; color: var(--text);">${e.name}</strong>
 
                     <div style="font-size: 11px; color: var(--text-muted);">${e.category_name || 'Без категории'}</div>
 
@@ -11220,7 +11481,7 @@ self.addEventListener('fetch', (event) => {
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
 
-              <span style="font-size: 13px; font-weight: 600; color: #fff;">${e.icon || '✉️'} ${e.name}</span>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text);">${e.icon || '✉️'} ${e.name}</span>
 
               <span style="font-size: 13px; font-weight: 700; color: #34d399;">${e.current_amount_rub} ₽</span>
 
