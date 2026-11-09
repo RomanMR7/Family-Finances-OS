@@ -62,3 +62,8 @@ class handler(FamilyFinancesHandler):
         _ensure_initialized()
         self._normalize_vercel_path()
         return super().do_POST()
+
+    def do_OPTIONS(self):
+        _ensure_initialized()
+        self._normalize_vercel_path()
+        return super().do_OPTIONS()

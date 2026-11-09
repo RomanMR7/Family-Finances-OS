@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v7';
+const CACHE_NAME = 'ffos-shell-v8';
 
 const STATIC_SHELL = [
 
@@ -1372,6 +1372,13 @@ self.addEventListener('fetch', (event) => {
         html = self._render_app_html()
 
         self._send_html(html)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.end_headers()
 
     def do_POST(self):
 
@@ -3765,7 +3772,8 @@ self.addEventListener('fetch', (event) => {
       .mobile-bottom-nav {
         display: none !important;
       }
-      #mainDashboard:not(.hidden) ~ .mobile-bottom-nav {
+      .mobile-bottom-nav:not(.hidden),
+      #mobileBottomNav:not(.hidden) {
         display: flex !important;
         position: fixed;
         bottom: 0;
@@ -4726,6 +4734,32 @@ self.addEventListener('fetch', (event) => {
           <button class="btn btn-secondary" onclick="closePayDebtModal()">Отмена</button>
 
         </div>
+
+      </div>
+
+    </div>
+
+    <!-- 0. Error / Offline Recovery Screen -->
+
+    <div id="errorScreen" class="card hidden" style="max-width: 440px; margin: 30px auto; border-color: #ef4444; text-align: center;">
+
+      <div style="font-size: 42px; margin-bottom: 10px;">⚠️</div>
+
+      <h2 style="font-size: 19px; color: var(--text); margin-bottom: 6px;" id="errorScreenTitle">Ошибка загрузки</h2>
+
+      <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.4;" id="errorScreenMsg">
+        Не удалось связаться с сервером Family Finances OS.
+      </p>
+
+      <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+
+        <button class="btn btn-primary" onclick="retryLoadApp()" style="padding: 9px 18px; font-size: 13px;">
+          🔄 Повторить загрузку
+        </button>
+
+        <button class="btn btn-secondary" onclick="showLoginFallback()" style="padding: 9px 16px; font-size: 13px;">
+          🔑 Форма входа
+        </button>
 
       </div>
 
@@ -6587,7 +6621,7 @@ self.addEventListener('fetch', (event) => {
 
   <!-- Mobile Bottom Navigation Bar -->
 
-  <div class="mobile-bottom-nav">
+  <div id="mobileBottomNav" class="mobile-bottom-nav hidden">
 
     <button class="mobile-nav-item active" onclick="switchTab('tab-overview')">
 
@@ -7580,182 +7614,140 @@ self.addEventListener('fetch', (event) => {
 
     }
 
+    // --- Centralized Screen Management & Fault-Tolerance ---
+
+    function hideAllScreens() {
+      ['errorScreen', 'lockScreen', 'setupScreen', 'loginScreen', 'mainDashboard'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+      const nav = document.getElementById('mobileBottomNav');
+      if (nav) nav.classList.add('hidden');
+      const btnLock = document.getElementById('btnHeaderLock');
+      if (btnLock) btnLock.classList.add('hidden');
+      const btnLogout = document.getElementById('btnLogout');
+      if (btnLogout) btnLogout.classList.add('hidden');
+      const btnQr = document.getElementById('btnHeaderQrPair');
+      if (btnQr) btnQr.classList.add('hidden');
+    }
+
+    function showScreen(screenId) {
+      hideAllScreens();
+      const target = document.getElementById(screenId);
+      if (target) target.classList.remove('hidden');
+      if (screenId === 'mainDashboard') {
+        const nav = document.getElementById('mobileBottomNav');
+        if (nav) nav.classList.remove('hidden');
+        const btnLock = document.getElementById('btnHeaderLock');
+        if (btnLock) btnLock.classList.remove('hidden');
+        const btnLogout = document.getElementById('btnLogout');
+        if (btnLogout) btnLogout.classList.remove('hidden');
+      }
+    }
+
+    function showErrorScreen(title, message) {
+      hideAllScreens();
+      const errEl = document.getElementById('errorScreen');
+      if (errEl) {
+        const titleEl = document.getElementById('errorScreenTitle');
+        if (titleEl && title) titleEl.innerText = title;
+        const msgEl = document.getElementById('errorScreenMsg');
+        if (msgEl && message) msgEl.innerText = message;
+        errEl.classList.remove('hidden');
+      }
+    }
+
+    function retryLoadApp() {
+      hideAllScreens();
+      loadStatus();
+    }
+
+    function showLoginFallback() {
+      showScreen('loginScreen');
+    }
+
     async function loadStatus() {
-
       try {
-
         const res = await fetch('/api/status');
-
+        if (!res.ok) {
+          showErrorScreen('Сервер недоступен (HTTP ' + res.status + ')', 'Не удалось связаться с сервером Family Finances OS. Попробуйте повторить запрос.');
+          return;
+        }
         const data = await res.json();
 
         // 1. If database is encrypted and locked
-
         if (data.is_locked) {
-
-          document.getElementById('lockScreen').classList.remove('hidden');
-
-          document.getElementById('setupScreen').classList.add('hidden');
-
-          document.getElementById('loginScreen').classList.add('hidden');
-
-          document.getElementById('mainDashboard').classList.add('hidden');
-
-          document.getElementById('btnHeaderLock').classList.add('hidden');
-
-          document.getElementById('btnLogout').classList.add('hidden');
-
-          document.getElementById('btnHeaderQrPair').classList.add('hidden');
-
-          document.getElementById('storageBadge').innerText = '🔒 Заблокировано';
-
-          document.getElementById('storageBadge').style.background = '#dc2626';
-
-          document.getElementById('masterUnlockPassword').focus();
-
+          showScreen('lockScreen');
+          const badge = document.getElementById('storageBadge');
+          if (badge) {
+            badge.innerText = '🔒 Заблокировано';
+            badge.style.background = '#dc2626';
+          }
+          document.getElementById('masterUnlockPassword')?.focus();
           return;
-
         }
 
         // Database is unlocked
-
-        document.getElementById('lockScreen').classList.add('hidden');
-
-        document.getElementById('storageBadge').innerText = 'AES-256-GCM / Память';
-
-        document.getElementById('storageBadge').style.background = '#10b981';
+        const badge = document.getElementById('storageBadge');
+        if (badge) {
+          badge.innerText = 'AES-256-GCM / Память';
+          badge.style.background = '#10b981';
+        }
 
         // 2. Check if owner exists
-
         if (!data.has_owner) {
           const restored = await LocalDatabaseVault.autoRestoreIfEmpty();
           if (restored) {
             return loadStatus();
           }
-
-          document.getElementById('setupScreen').classList.remove('hidden');
-
-          document.getElementById('loginScreen').classList.add('hidden');
-
-          document.getElementById('mainDashboard').classList.add('hidden');
-
-          document.getElementById('btnHeaderLock').classList.add('hidden');
-
-          document.getElementById('btnLogout').classList.add('hidden');
-
-          document.getElementById('btnHeaderQrPair').classList.add('hidden');
-
+          showScreen('setupScreen');
           return;
-
         }
 
         // 3. Check authentication & URL QR pair token
-
         if (!sessionToken) {
-
           const paired = await checkPairTokenInUrl();
-
           if (paired) {
-
             sessionToken = sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
-
           }
-
         }
 
         if (!sessionToken) {
-
           const manualLogout = sessionStorage.getItem('ffos_manual_logout') === 'true';
-
           let autoLoggedIn = false;
-
           if (!manualLogout && document.getElementById('loginUsername') && document.getElementById('loginPassword')) {
-
             try {
-
               autoLoggedIn = await submitLogin();
-
             } catch (loginErr) {
-
               console.warn('Auto-login skipped:', loginErr);
-
             }
-
           }
 
-          if (!autoLoggedIn && !sessionToken) {
-
-            document.getElementById('setupScreen').classList.add('hidden');
-
-            document.getElementById('loginScreen').classList.remove('hidden');
-
-            document.getElementById('mainDashboard').classList.add('hidden');
-
-            document.getElementById('btnHeaderLock').classList.add('hidden');
-
-            document.getElementById('btnLogout').classList.add('hidden');
-
-            document.getElementById('btnHeaderQrPair').classList.add('hidden');
-
+          if (!autoLoggedIn || !sessionToken) {
+            showScreen('loginScreen');
           }
-
         } else {
-
           let ok = false;
-
           try {
-
             ok = await loadDashboard();
-
           } catch (dashErr) {
-
             console.error('loadDashboard error:', dashErr);
-
             ok = false;
-
           }
 
           if (!ok) {
-
             sessionToken = null;
-
             sessionStorage.removeItem('ffos_session_token');
-
             localStorage.removeItem('ffos_session_token');
-
-            document.getElementById('setupScreen').classList.add('hidden');
-
-            document.getElementById('loginScreen').classList.remove('hidden');
-
-            document.getElementById('mainDashboard').classList.add('hidden');
-
-            document.getElementById('btnHeaderLock').classList.add('hidden');
-
-            document.getElementById('btnLogout').classList.add('hidden');
-
-            document.getElementById('btnHeaderQrPair').classList.add('hidden');
-
+            showScreen('loginScreen');
           } else {
-
-            document.getElementById('setupScreen').classList.add('hidden');
-
-            document.getElementById('loginScreen').classList.add('hidden');
-
-            document.getElementById('mainDashboard').classList.remove('hidden');
-
-            document.getElementById('btnHeaderLock').classList.remove('hidden');
-
-            document.getElementById('btnLogout').classList.remove('hidden');
-
+            showScreen('mainDashboard');
           }
-
         }
-
       } catch (e) {
-
         console.error('loadStatus error:', e);
-
+        showErrorScreen('Ошибка связи с сервером', 'Не удалось загрузить статус системы: ' + (e.message || 'Ошибка сети') + '. Пожалуйста, проверьте интернет-соединение.');
       }
-
     }
 
     function togglePasswordVisibility(inputId, btn) {
@@ -7943,111 +7935,78 @@ self.addEventListener('fetch', (event) => {
     }
 
     async function submitLogin() {
-
       const usernameEl = document.getElementById('loginUsername');
-
       const passwordEl = document.getElementById('loginPassword');
-
       if (!usernameEl || !passwordEl) return false;
 
       const username = usernameEl.value.trim();
-
       const password = passwordEl.value;
-
       if (!username || !password) return false;
 
       const btn = document.getElementById('btnLogin');
-
       if (btn) btn.disabled = true;
 
       try {
-
         const res = await fetch('/api/login', {
-
           method: 'POST',
-
           headers: { 'Content-Type': 'application/json' },
-
           body: JSON.stringify({ username, password })
-
         });
-
         const data = await res.json();
 
-        if (data.status === 'success') {
-
+        if (data.status === 'success' && data.user) {
           sessionStorage.removeItem('ffos_manual_logout');
-
           sessionToken = data.user.session_token;
-
           sessionStorage.setItem('ffos_session_token', sessionToken);
-
           localStorage.setItem('ffos_session_token', sessionToken);
-
           LocalDatabaseVault.syncAfterMutation();
 
           const ok = await loadDashboard();
-
           if (ok) {
-
-            document.getElementById('setupScreen').classList.add('hidden');
-
-            document.getElementById('loginScreen').classList.add('hidden');
-
-            document.getElementById('mainDashboard').classList.remove('hidden');
-
-            document.getElementById('btnHeaderLock').classList.remove('hidden');
-
-            document.getElementById('btnLogout').classList.remove('hidden');
-
+            showScreen('mainDashboard');
+            return true;
+          } else {
+            console.error('loadDashboard returned false after successful login');
+            sessionToken = null;
+            sessionStorage.removeItem('ffos_session_token');
+            localStorage.removeItem('ffos_session_token');
+            showScreen('loginScreen');
+            const msgEl = document.getElementById('loginMsg');
+            if (msgEl) {
+              msgEl.innerHTML = '<div class="alert alert-error">Вход выполнен, но данные дашборда не получены от сервера</div>';
+            }
+            return false;
           }
-
-          return true;
-
         } else {
-
           const msgEl = document.getElementById('loginMsg');
-
           if (msgEl) {
-
-            msgEl.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
-
+            msgEl.innerHTML = `<div class="alert alert-error">${data.message || 'Неверное имя пользователя или пароль'}</div>`;
           }
-
+          showScreen('loginScreen');
           return false;
-
         }
-
       } catch (e) {
-
         console.error('submitLogin error:', e);
-
+        const msgEl = document.getElementById('loginMsg');
+        if (msgEl) {
+          msgEl.innerHTML = `<div class="alert alert-error">Ошибка сети при входе: ${e.message}</div>`;
+        }
+        showScreen('loginScreen');
         return false;
-
       } finally {
-
         if (btn) btn.disabled = false;
-
       }
-
     }
 
     async function logout() {
-
       try {
-
         await fetch('/api/logout', { method: 'POST', headers: authHeaders() });
-
       } catch (e) {}
-
       sessionToken = null;
-
-      sessionStorage.removeItem('ffos_session_token'); localStorage.removeItem('ffos_session_token');
-
+      sessionStorage.removeItem('ffos_session_token');
+      localStorage.removeItem('ffos_session_token');
       sessionStorage.setItem('ffos_manual_logout', 'true');
-
-      loadStatus();
-
+      showScreen('loginScreen');
     }
 
     async function loadDashboard() {
@@ -11149,7 +11108,7 @@ self.addEventListener('fetch', (event) => {
 
     function parseMobileFloat(val, fallback = 0) {
       if (val === null || val === undefined) return fallback;
-      const s = String(val).replace(/[ \t\r\n\u00a0]+/g, '').replace('₽', '').replace(',', '.').trim();
+      const s = String(val).replace(/[\\s\\u00a0]+/g, '').replace('₽', '').replace(',', '.').trim();
       if (!s) return fallback;
       const n = parseFloat(s);
       return isNaN(n) ? fallback : n;
@@ -12944,6 +12903,29 @@ self.addEventListener('fetch', (event) => {
       loadStatus();
 
     }
+
+
+    window.addEventListener('error', (event) => {
+      console.error('[Global Window Error]', event.error || event.message);
+      const anyScreenVisible = ['errorScreen', 'lockScreen', 'setupScreen', 'loginScreen', 'mainDashboard'].some(id => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+      if (!anyScreenVisible) {
+        showErrorScreen('Сбой отображения', 'Произошла непредвиденная ошибка в браузере: ' + (event.message || 'Неизвестная ошибка'));
+      }
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('[Unhandled Rejection]', event.reason);
+      const anyScreenVisible = ['errorScreen', 'lockScreen', 'setupScreen', 'loginScreen', 'mainDashboard'].some(id => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+      if (!anyScreenVisible) {
+        showErrorScreen('Сбой загрузки данных', 'Не удалось завершить операцию: ' + (event.reason?.message || event.reason || 'Ошибка запроса'));
+      }
+    });
 
     window.addEventListener('load', loadStatus);
 

@@ -292,6 +292,7 @@ class SessionManager:
         self.ttl_seconds = ttl_seconds
         self._hmac_secret = hmac_secret
         self._sessions: Dict[str, Dict[str, Any]] = {}
+        self._revoked_tokens: set = set()
         self._pairing_tokens: Dict[str, Dict[str, Any]] = {}
 
     def create_session(self, user_info: Dict[str, Any]) -> str:
@@ -309,7 +310,7 @@ class SessionManager:
         return token
 
     def validate_session(self, token: Optional[str]) -> Optional[Dict[str, Any]]:
-        if not token:
+        if not token or token in self._revoked_tokens:
             return None
 
         # 1. Fast in-memory cache check
@@ -340,10 +341,13 @@ class SessionManager:
         return None
 
     def invalidate_session(self, token: Optional[str]) -> bool:
-        if token and token in self._sessions:
+        if not token:
+            return False
+        self._revoked_tokens.add(token)
+        if token in self._sessions:
             del self._sessions[token]
             return True
-        return False
+        return True
 
     def create_pairing_token(self, user_info: Dict[str, Any], ttl_seconds: int = 600) -> str:
         token = secrets.token_hex(SESSION_TOKEN_SIZE)
