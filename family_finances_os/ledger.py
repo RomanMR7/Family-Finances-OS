@@ -4030,6 +4030,207 @@ class LedgerEngine:
 
 
     @staticmethod
+    def calculate_credit_payoff_scenarios(
+        debt_cents: int,
+        interest_rate_percent: float = 24.8,
+        min_payment_percent: float = 3.0,
+        grace_period_days: int = 120,
+        grace_due_date: Optional[str] = None,
+        as_of_date: Optional[str] = None,
+        custom_payment_cents: Optional[int] = None,
+        custom_payment_percent: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculate payoff timelines (days and months), total overpayment, and accelerated scenarios
+        based on credit card contract rules (Sberbank TP-1001 / Russian banking rules).
+        Provides:
+        1. Grace period payoff (0% overpayment, days left)
+        2. Minimum mandatory payment (3% / min 150 rub) timeline & total bank interest
+        3. Accelerated horizons (3, 6, 12 months) with required payments in RUB and % of debt + savings
+        4. Custom payment simulation (both in RUB and % of debt)
+        """
+        from datetime import date, timedelta
+        today = date.fromisoformat(as_of_date) if as_of_date else date.today()
+        debt_cents = max(0, int(debt_cents))
+        interest_rate_percent = max(0.0, float(interest_rate_percent))
+        min_payment_percent = max(0.1, float(min_payment_percent))
+        monthly_rate = (interest_rate_percent / 100.0) / 12.0
+
+        days_left = None
+        if grace_due_date and str(grace_due_date).strip():
+            try:
+                due_clean = str(grace_due_date).strip()[:10]
+                due_dt = date.fromisoformat(due_clean)
+                days_left = (due_dt - today).days
+            except Exception:
+                days_left = grace_period_days
+        else:
+            days_left = grace_period_days
+
+        grace_active = (days_left is not None and days_left >= 0) if debt_cents > 0 else False
+
+        if debt_cents == 0:
+            return {
+                "debt_cents": 0,
+                "debt_rub": "0.00",
+                "interest_rate_percent": interest_rate_percent,
+                "min_payment_percent": min_payment_percent,
+                "grace_scenario": {
+                    "days_left": 0,
+                    "due_date": grace_due_date,
+                    "is_active": False,
+                    "required_full_payment_rub": "0.00",
+                    "total_interest_cents": 0,
+                    "total_interest_rub": "0.00",
+                    "savings_rub": "0.00",
+                    "note": "Задолженность отсутствует."
+                },
+                "minimum_scenario": {
+                    "first_payment_cents": 0,
+                    "first_payment_rub": "0.00",
+                    "payment_percent": min_payment_percent,
+                    "months_to_payoff": 0,
+                    "days_to_payoff": 0,
+                    "payoff_date": today.isoformat(),
+                    "total_paid_rub": "0.00",
+                    "total_interest_cents": 0,
+                    "total_interest_rub": "0.00"
+                },
+                "accelerated_scenarios": [],
+                "custom_scenario": None
+            }
+
+        # 1. Minimum payment simulation
+        first_min_cents = max(15000, round(debt_cents * (min_payment_percent / 100.0)))
+        first_min_cents = min(debt_cents, first_min_cents)
+
+        d_sim = debt_cents
+        min_months = 0
+        min_total_interest = 0
+        max_months = 360
+
+        while d_sim > 0 and min_months < max_months:
+            min_months += 1
+            interest = round(d_sim * monthly_rate)
+            min_total_interest += interest
+            calc_pay = max(15000, round(d_sim * (min_payment_percent / 100.0)))
+            if calc_pay < interest + 100:
+                calc_pay = interest + 100
+            principal = min(d_sim, calc_pay - interest)
+            d_sim -= principal
+
+        min_days = min_months * 30
+        min_payoff_date = (today + timedelta(days=min_days)).isoformat()
+
+        # Grace scenario
+        grace_scenario = {
+            "days_left": max(0, days_left) if days_left is not None else 0,
+            "due_date": grace_due_date,
+            "is_active": grace_active,
+            "required_full_payment_rub": cents_to_rubles(debt_cents),
+            "total_interest_cents": 0,
+            "total_interest_rub": "0.00",
+            "savings_rub": cents_to_rubles(min_total_interest),
+            "note": "Погашение до окончания льготного периода — 0.00 ₽ переплаты банку (100% экономия)"
+        }
+
+        # 2. Accelerated target horizons (3, 6, 12 months)
+        accelerated = []
+        for n in (3, 6, 12):
+            if interest_rate_percent > 0:
+                i = monthly_rate
+                factor = (1.0 + i) ** n
+                p_val = debt_cents * (i * factor) / (factor - 1.0)
+                p_cents = round(p_val)
+            else:
+                p_cents = round(debt_cents / n)
+            tot_paid = p_cents * n
+            tot_int = max(0, tot_paid - debt_cents)
+            savings = max(0, min_total_interest - tot_int)
+            days_n = n * 30
+            target_dt = (today + timedelta(days=days_n)).isoformat()
+            pct_n = round((p_cents / debt_cents) * 100.0, 1)
+
+            labels = {3: "Спринт за 3 месяца", 6: "Оптимально за 6 месяцев", 12: "Комфортно за 1 год"}
+            accelerated.append({
+                "months": n,
+                "days": days_n,
+                "target_date": target_dt,
+                "monthly_payment_cents": p_cents,
+                "monthly_payment_rub": cents_to_rubles(p_cents),
+                "monthly_payment_percent": pct_n,
+                "total_interest_cents": tot_int,
+                "total_interest_rub": cents_to_rubles(tot_int),
+                "interest_savings_cents": savings,
+                "interest_savings_rub": cents_to_rubles(savings),
+                "days_saved": max(0, min_days - days_n),
+                "label": labels.get(n, f"За {n} месяцев")
+            })
+
+        # 3. Custom scenario (if requested)
+        custom_sc = None
+        if custom_payment_cents or custom_payment_percent:
+            if custom_payment_cents is None and custom_payment_percent is not None:
+                c_cents = round(debt_cents * (float(custom_payment_percent) / 100.0))
+                c_pct = float(custom_payment_percent)
+            else:
+                c_cents = max(100, int(custom_payment_cents))
+                c_pct = round((c_cents / debt_cents) * 100.0, 1)
+
+            d_cust = debt_cents
+            c_months = 0
+            c_tot_int = 0
+            while d_cust > 0 and c_months < max_months:
+                c_months += 1
+                intr = round(d_cust * monthly_rate)
+                c_tot_int += intr
+                p_eff = min(d_cust + intr, c_cents)
+                if p_eff <= intr and d_cust > 0:
+                    c_months = 999
+                    break
+                princ = min(d_cust, p_eff - intr)
+                d_cust -= princ
+
+            c_days = c_months * 30
+            c_dt = (today + timedelta(days=c_days)).isoformat()
+            c_savings = max(0, min_total_interest - c_tot_int)
+
+            custom_sc = {
+                "monthly_payment_cents": c_cents,
+                "monthly_payment_rub": cents_to_rubles(c_cents),
+                "payment_percent": c_pct,
+                "months_to_payoff": c_months,
+                "days_to_payoff": c_days,
+                "payoff_date": c_dt,
+                "total_interest_cents": c_tot_int,
+                "total_interest_rub": cents_to_rubles(c_tot_int),
+                "interest_savings_cents": c_savings,
+                "interest_savings_rub": cents_to_rubles(c_savings),
+                "days_saved": max(0, min_days - c_days)
+            }
+
+        return {
+            "debt_cents": debt_cents,
+            "debt_rub": cents_to_rubles(debt_cents),
+            "interest_rate_percent": interest_rate_percent,
+            "min_payment_percent": min_payment_percent,
+            "grace_scenario": grace_scenario,
+            "minimum_scenario": {
+                "first_payment_cents": first_min_cents,
+                "first_payment_rub": cents_to_rubles(first_min_cents),
+                "payment_percent": min_payment_percent,
+                "months_to_payoff": min_months,
+                "days_to_payoff": min_days,
+                "payoff_date": min_payoff_date,
+                "total_paid_rub": cents_to_rubles(debt_cents + min_total_interest),
+                "total_interest_cents": min_total_interest,
+                "total_interest_rub": cents_to_rubles(min_total_interest)
+            },
+            "accelerated_scenarios": accelerated,
+            "custom_scenario": custom_sc
+        }
+
+    @staticmethod
     def calculate_credit_card_banking_metrics(
         debt_cents: int,
         credit_limit_cents: int = 0,
@@ -4172,7 +4373,15 @@ class LedgerEngine:
             "simulation_30d_extra_cents": sim_30d_extra_cents,
             "simulation_30d_extra_rub": float(cents_to_rubles(sim_30d_extra_cents)),
             "simulation_30d_total_cents": sim_30d_total_cents,
-            "simulation_30d_total_rub": float(cents_to_rubles(sim_30d_total_cents))
+            "simulation_30d_total_rub": float(cents_to_rubles(sim_30d_total_cents)),
+            "payoff_scenarios": LedgerEngine.calculate_credit_payoff_scenarios(
+                debt_cents=debt_cents,
+                interest_rate_percent=interest_rate_percent,
+                min_payment_percent=min_payment_percent,
+                grace_period_days=grace_period_days,
+                grace_due_date=grace_due_date,
+                as_of_date=as_of_date
+            )
         }
 
     def create_debt(

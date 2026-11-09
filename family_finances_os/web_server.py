@@ -1156,6 +1156,73 @@ self.addEventListener('fetch', (event) => {
 
         # Stage 9 Debts Summary Endpoint
 
+        elif path == "/api/debts/calculate-payoff":
+            user = self._require_auth()
+            if not user:
+                return
+            try:
+                ledger = LedgerEngine(conn_or_path=self.storage.get_connection() if self.storage.is_unlocked() else None)
+                parsed = urllib.parse.urlparse(self.path)
+                qs = urllib.parse.parse_qs(parsed.query)
+                liability_acc_id = qs.get("liability_account_id", [None])[0]
+                custom_rub = qs.get("custom_payment_rub", [None])[0]
+                custom_pct = qs.get("custom_payment_percent", [None])[0]
+
+                debt_cents = 0
+                apr = 24.8
+                grace_days = 120
+                grace_due = None
+                min_pct = 3.0
+
+                if liability_acc_id:
+                    conn = ledger._get_conn()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT a.id, a.subtype, a.credit_limit_cents, a.description,
+                            COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) -
+                            COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) as balance_cents
+                        FROM accounts a
+                        LEFT JOIN postings p ON a.id = p.account_id
+                        LEFT JOIN transactions t ON p.transaction_id = t.id AND t.is_voided = 0
+                        WHERE a.id = ?
+                        GROUP BY a.id;
+                    """, (liability_acc_id,))
+                    row = cur.fetchone()
+                    if row:
+                        debt_cents = max(0, row["balance_cents"])
+                        raw_desc = row["description"] or ""
+                        if raw_desc.strip().startswith("{"):
+                            try:
+                                parsed_meta = json.loads(raw_desc)
+                                apr = float(parsed_meta.get("interest_rate_percent", 24.8))
+                                grace_days = int(parsed_meta.get("grace_period_days", 120))
+                                grace_due = parsed_meta.get("grace_due_date")
+                                min_pct = float(parsed_meta.get("min_payment_percent", 3.0))
+                            except Exception:
+                                pass
+                else:
+                    debt_rub = qs.get("debt_rub", [0])[0]
+                    debt_cents = rubles_to_cents(debt_rub)
+                    apr = float(qs.get("interest_rate_percent", [24.8])[0])
+                    min_pct = float(qs.get("min_payment_percent", [3.0])[0])
+
+                c_cents = rubles_to_cents(custom_rub) if custom_rub else None
+                c_pct = float(custom_pct) if custom_pct else None
+
+                res = ledger.calculate_credit_payoff_scenarios(
+                    debt_cents=debt_cents,
+                    interest_rate_percent=apr,
+                    min_payment_percent=min_pct,
+                    grace_period_days=grace_days,
+                    grace_due_date=grace_due,
+                    custom_payment_cents=c_cents,
+                    custom_payment_percent=c_pct
+                )
+                self._send_json(res)
+            except Exception as e:
+                self._send_json({"status": "error", "message": str(e)}, status=400)
+            return
+
         elif path == "/api/debts":
 
             user = self._require_auth()
@@ -2645,7 +2712,37 @@ self.addEventListener('fetch', (event) => {
 
                 idempotency_key = body.get("idempotency_key")
 
-                amount_cents = rubles_to_cents(amount_rub)
+                amount_percent = body.get("amount_percent")
+
+                if (amount_rub is None or str(amount_rub).strip() == "") and amount_percent is not None:
+                    pct = float(amount_percent)
+                    if pct <= 0:
+                        raise ValueError("Процент погашения должен быть больше нуля.")
+                    conn = ledger._get_conn()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT 
+                            COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) -
+                            COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) as balance_cents
+                        FROM accounts a
+                        LEFT JOIN postings p ON a.id = p.account_id
+                        LEFT JOIN transactions t ON p.transaction_id = t.id AND t.is_voided = 0
+                        WHERE a.id = ?
+                        GROUP BY a.id;
+                    """, (liability_acc_id,))
+                    row = cur.fetchone()
+                    cur_debt = row["balance_cents"] if row else 0
+                    amount_cents = round(cur_debt * (pct / 100.0))
+                    if not desc or desc.strip() == "Погашение задолженности":
+                        desc = f"Погашение ({pct:.1f}% / {cents_to_rubles(amount_cents)} ₽)"
+                    else:
+                        desc = f"{desc} ({pct:.1f}% / {cents_to_rubles(amount_cents)} ₽)"
+                else:
+                    amount_cents = rubles_to_cents(amount_rub)
+                    if amount_percent is not None:
+                        pct = float(amount_percent)
+                        if desc and "%" not in desc:
+                            desc = f"{desc} ({pct:.1f}%)"
 
                 tx_id = ledger.record_debt_repayment(
 
@@ -4278,24 +4375,47 @@ self.addEventListener('fetch', (event) => {
 
         </div>
 
-        <div class="form-group">
-
-          <label>Сумма погашения (₽):</label>
-
-          <input type="number" step="0.01" id="payDebtAmount" placeholder="0.00" style="font-size: 18px; font-weight: 700; color: #60a5fa;">
-
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 12px;">Сумма в рублях (₽):</label>
+            <input type="number" step="0.01" id="payDebtAmount" placeholder="0.00" style="font-size: 17px; font-weight: 700; color: #60a5fa;" oninput="onPayDebtAmountRubChanged()">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 12px;">Или в процентах (% от долга):</label>
+            <div style="position: relative;">
+              <input type="number" step="0.1" id="payDebtAmountPercent" placeholder="0.0" style="font-size: 17px; font-weight: 700; color: #34d399; padding-right: 28px;" oninput="onPayDebtAmountPercentChanged()">
+              <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: 700;">%</span>
+            </div>
+          </div>
         </div>
 
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; border-color: rgba(251,191,36,0.4); color: #fbbf24;" onclick="setPayDebtPercent(3.0)">3% (Мин. платеж)</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(5.0)">5%</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(10.0)">10%</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(25.0)">25%</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(50.0)">50%</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; color: #34d399; border-color: rgba(52,211,153,0.4);" onclick="setPayDebtPercent(100.0)">100% (Весь долг)</button>
+        </div>
 
-          <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="setPayDebtFull()">Погасить полностью</button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="addPayDebtAmount(1000)">+1 000 ₽</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="addPayDebtAmount(5000)">+5 000 ₽</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="addPayDebtAmount(10000)">+10 000 ₽</button>
+        </div>
 
-          <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="addPayDebtAmount(1000)">+1 000 ₽</button>
-
-          <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="addPayDebtAmount(5000)">+5 000 ₽</button>
-
-          <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="addPayDebtAmount(10000)">+10 000 ₽</button>
-
+        <!-- Live Payoff Forecast Box -->
+        <div id="payDebtForecastBox" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
+          <div style="font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span>🚀 Прогноз погашения при таком платеже:</span>
+            <span id="payDebtForecastStatus" style="font-size: 11px; color: #94a3b8;"></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: #cbd5e1; line-height: 1.4;">
+            <div>Срок до закрытия: <strong id="payDebtForecastDays" style="color: #fff;">—</strong></div>
+            <div>Дата погашения: <strong id="payDebtForecastDate" style="color: #fff;">—</strong></div>
+            <div>Переплата банку: <strong id="payDebtForecastInterest" style="color: #fca5a5;">—</strong></div>
+            <div>Экономия семейного бюджета: <strong id="payDebtForecastSavings" style="color: #34d399;">—</strong></div>
+          </div>
         </div>
 
         <div class="form-group">
@@ -10488,6 +10608,73 @@ self.addEventListener('fetch', (event) => {
               ? '<span class="badge" style="background: rgba(236,72,153,0.15); color: #f472b6; font-size:11px;">Жена</span>'
               : '';
 
+                    let payoffAcceleratorsHtml = '';
+          if (isCard && d.banking && d.banking.payoff_scenarios && d.debt_cents > 0) {
+            const sc = d.banking.payoff_scenarios;
+            const minSc = sc.minimum_scenario;
+            const graceSc = sc.grace_scenario;
+            const accSc = sc.accelerated_scenarios || [];
+
+            payoffAcceleratorsHtml = `
+              <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px;">
+                <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                  <span>🚀 Стратегии: сколько платить, чтобы закрыть долг быстрее</span>
+                  <span style="font-size: 11px; color: var(--text-muted);">Расчет по договору Сбербанка (24.8% APR)</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-bottom: 8px;">
+                  <!-- Grace Period -->
+                  ${graceSc && graceSc.is_active ? `
+                    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                      <div>
+                        <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 2px;">💎 В льготный период (0% переплаты)</div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">
+                          Срок: <strong style="color: #fff;">${graceSc.days_left} дн.</strong> (до ${graceSc.due_date || 'конца грейса'})<br>
+                          Переплата: <strong style="color: #34d399;">0.00 ₽</strong> (100% экономия)
+                        </div>
+                      </div>
+                      <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #34d399; border-color: rgba(52,211,153,0.4);" onclick="openPayDebtModal('${d.id}', ${fullDebtNum}, 100)">
+                        Закрыть без процентов (${d.debt_rub} ₽)
+                      </button>
+                    </div>
+                  ` : ''}
+
+                  <!-- Minimum Payment Warning -->
+                  <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                      <div style="font-size: 11px; font-weight: 700; color: #fca5a5; margin-bottom: 2px;">⚠️ Мин. платеж (3% от долга)</div>
+                      <div style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">
+                        Платеж: <strong style="color: #fbbf24;">${minSc.first_payment_rub} ₽/мес</strong> (3.0%)<br>
+                        Срок: <strong style="color: #f87171;">${minSc.days_to_payoff} дн.</strong> (${minSc.months_to_payoff} мес.)<br>
+                        Переплата: <strong style="color: #ef4444;">+${minSc.total_interest_rub} ₽</strong>
+                      </div>
+                    </div>
+                    <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #fbbf24; border-color: rgba(251,191,36,0.4);" onclick="openPayDebtModal('${d.id}', ${minSc.first_payment_cents / 100}, 3.0)">
+                      Мин. платеж (${minSc.first_payment_rub} ₽)
+                    </button>
+                  </div>
+
+                  <!-- Accelerated Horizons -->
+                  ${accSc.map(a => `
+                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                      <div>
+                        <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 2px;">⚡ ${a.label}</div>
+                        <div style="font-size: 11px; color: #cbd5e1; line-height: 1.3;">
+                          Платеж: <strong style="color: #fff;">${a.monthly_payment_rub} ₽/мес</strong> (${a.monthly_payment_percent}%)<br>
+                          Срок: <strong style="color: #38bdf8;">${a.days} дн.</strong> (${a.months} мес.)<br>
+                          Экономия: <strong style="color: #34d399;">+${a.interest_savings_rub} ₽</strong>
+                        </div>
+                      </div>
+                      <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #38bdf8; border-color: rgba(56,189,248,0.4);" onclick="openPayDebtModal('${d.id}', ${a.monthly_payment_cents / 100}, ${a.monthly_payment_percent})">
+                        Платить ${a.monthly_payment_rub} ₽/мес
+                      </button>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }
+
           const safeName = encodeURIComponent(d.name || '');
 
           return `
@@ -10513,6 +10700,7 @@ self.addEventListener('fetch', (event) => {
               </div>
               ${limitInfo}
               ${cardBankingBlock}
+              ${payoffAcceleratorsHtml}
               ${obInfo}
             </div>
           `;
@@ -10863,30 +11051,37 @@ self.addEventListener('fetch', (event) => {
       }
     }
 
-    function openPayDebtModal(targetLiabilityId, presetAmount) {
+    function openPayDebtModal(targetLiabilityId, presetAmount, presetPercent) {
       if (!allDebtsData) {
         try {
           fetch('/api/debts', { headers: authHeaders() }).then(r => r.json()).then(d => {
             allDebtsData = d;
             populatePayDebtSelects(targetLiabilityId);
             onDebtLiabilityChanged();
-            if (presetAmount !== undefined && presetAmount !== null) {
-              document.getElementById('payDebtAmount').value = presetAmount;
-            }
+            applyPresetPayDebt(presetAmount, presetPercent);
           });
         } catch (e) {}
       } else {
         populatePayDebtSelects(targetLiabilityId);
         onDebtLiabilityChanged();
-        if (presetAmount !== undefined && presetAmount !== null) {
-          document.getElementById('payDebtAmount').value = presetAmount;
-        }
-      }
-      if (presetAmount === undefined || presetAmount === null) {
-        document.getElementById('payDebtAmount').value = '';
+        applyPresetPayDebt(presetAmount, presetPercent);
       }
       document.getElementById('payDebtMsg').innerHTML = '';
       document.getElementById('modalPayDebt').classList.remove('hidden');
+    }
+
+    function applyPresetPayDebt(presetAmount, presetPercent) {
+      if (presetAmount !== undefined && presetAmount !== null && parseFloat(presetAmount) > 0) {
+        document.getElementById('payDebtAmount').value = presetAmount;
+        onPayDebtAmountRubChanged();
+      } else if (presetPercent !== undefined && presetPercent !== null && parseFloat(presetPercent) > 0) {
+        document.getElementById('payDebtAmountPercent').value = presetPercent;
+        onPayDebtAmountPercentChanged();
+      } else {
+        document.getElementById('payDebtAmount').value = '';
+        document.getElementById('payDebtAmountPercent').value = '';
+        updatePayDebtForecast();
+      }
     }
 
     function closePayDebtModal() {
@@ -10916,31 +11111,156 @@ self.addEventListener('fetch', (event) => {
           'LOAN': 'cat_debts_consumer'
         };
         const targetCatId = subtypeCatMap[d.subtype] || 'cat_debts';
-        if (catSel.querySelector(`option[value="${targetCatId}"]`)) {
+        if (catSel.querySelector('option[value="' + targetCatId + '"]')) {
           catSel.value = targetCatId;
         }
+      }
+      onPayDebtAmountRubChanged();
+    }
+
+    function onPayDebtAmountRubChanged() {
+      const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
+      const d = (allDebtsData && allDebtsData.debts) ? allDebtsData.debts.find(x => x.id === liabId) : null;
+      const debtRub = d ? (parseFloat(d.debt_rub) || 0) : 0;
+      const rubVal = parseFloat(document.getElementById('payDebtAmount')?.value) || 0;
+      const pctEl = document.getElementById('payDebtAmountPercent');
+      if (pctEl) {
+        if (debtRub > 0 && rubVal > 0) {
+          pctEl.value = ((rubVal / debtRub) * 100).toFixed(1);
+        } else {
+          pctEl.value = '';
+        }
+      }
+      updatePayDebtForecast();
+    }
+
+    function onPayDebtAmountPercentChanged() {
+      const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
+      const d = (allDebtsData && allDebtsData.debts) ? allDebtsData.debts.find(x => x.id === liabId) : null;
+      const debtRub = d ? (parseFloat(d.debt_rub) || 0) : 0;
+      const pctVal = parseFloat(document.getElementById('payDebtAmountPercent')?.value) || 0;
+      const rubEl = document.getElementById('payDebtAmount');
+      if (rubEl) {
+        if (debtRub > 0 && pctVal > 0) {
+          rubEl.value = ((debtRub * pctVal) / 100).toFixed(2);
+        } else {
+          rubEl.value = '';
+        }
+      }
+      updatePayDebtForecast();
+    }
+
+    function setPayDebtPercent(pct) {
+      const pctEl = document.getElementById('payDebtAmountPercent');
+      if (pctEl) {
+        pctEl.value = pct.toFixed(1);
+        onPayDebtAmountPercentChanged();
       }
     }
 
     function setPayDebtFull() {
-      const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
-      if (!allDebtsData || !allDebtsData.debts) return;
-      const d = allDebtsData.debts.find(x => x.id === liabId);
-      if (d) {
-        document.getElementById('payDebtAmount').value = parseFloat(d.debt_rub) || 0;
-      }
+      setPayDebtPercent(100.0);
     }
 
     function addPayDebtAmount(delta) {
       const el = document.getElementById('payDebtAmount');
       const cur = parseFloat(el.value) || 0;
       el.value = (cur + delta).toFixed(2);
+      onPayDebtAmountRubChanged();
+    }
+
+    function updatePayDebtForecast() {
+      const box = document.getElementById('payDebtForecastBox');
+      if (!box) return;
+      const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
+      const d = (allDebtsData && allDebtsData.debts) ? allDebtsData.debts.find(x => x.id === liabId) : null;
+      const debtRub = d ? (parseFloat(d.debt_rub) || 0) : 0;
+      const payRub = parseFloat(document.getElementById('payDebtAmount')?.value) || 0;
+
+      const daysEl = document.getElementById('payDebtForecastDays');
+      const dateEl = document.getElementById('payDebtForecastDate');
+      const intEl = document.getElementById('payDebtForecastInterest');
+      const savEl = document.getElementById('payDebtForecastSavings');
+      const statusEl = document.getElementById('payDebtForecastStatus');
+
+      if (debtRub <= 0 || payRub <= 0) {
+        if (daysEl) daysEl.innerText = '—';
+        if (dateEl) dateEl.innerText = '—';
+        if (intEl) intEl.innerText = '—';
+        if (savEl) savEl.innerText = '—';
+        if (statusEl) statusEl.innerText = '';
+        return;
+      }
+
+      const apr = (d && d.banking && d.banking.interest_rate_percent) ? parseFloat(d.banking.interest_rate_percent) : 24.8;
+      const monthlyRate = (apr / 100.0) / 12.0;
+
+      let baseInterest = 0;
+      let dBase = debtRub;
+      let mBase = 0;
+      while (dBase > 0 && mBase < 360) {
+        mBase++;
+        const intr = dBase * monthlyRate;
+        baseInterest += intr;
+        const minP = Math.max(150, dBase * 0.03);
+        const effP = Math.min(dBase + intr, minP < intr + 10 ? intr + 10 : minP);
+        dBase -= (effP - intr);
+      }
+
+      if (payRub >= debtRub) {
+        if (daysEl) daysEl.innerText = '0 дней (полное погашение)';
+        if (dateEl) dateEl.innerText = 'Сегодня';
+        if (intEl) intEl.innerText = '0.00 ₽ (0%)';
+        if (savEl) savEl.innerText = '+' + baseInterest.toFixed(2) + ' ₽ (100% экономия)';
+        if (statusEl) statusEl.innerHTML = '<span style="color:#34d399; font-weight:700;">✅ Полное закрытие</span>';
+        return;
+      }
+
+      let dSim = debtRub;
+      let months = 0;
+      let totalInt = 0;
+      let maxMonths = 360;
+      let isTrapped = false;
+
+      while (dSim > 0 && months < maxMonths) {
+        months++;
+        const intr = dSim * monthlyRate;
+        totalInt += intr;
+        if (payRub <= intr && dSim > 0) {
+          isTrapped = true;
+          break;
+        }
+        const princ = Math.min(dSim, payRub - intr);
+        dSim -= princ;
+      }
+
+      if (isTrapped) {
+        if (daysEl) daysEl.innerText = 'Бесконечно ⚠️';
+        if (dateEl) dateEl.innerText = 'Платеж меньше ежемесячных процентов!';
+        if (intEl) intEl.innerText = 'Долг не закроется';
+        if (savEl) savEl.innerText = 'Увеличьте сумму платежа';
+        if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444; font-weight:700;">⚠️ Ловушка</span>';
+        return;
+      }
+
+      const days = months * 30;
+      const now = new Date();
+      now.setDate(now.getDate() + days);
+      const targetDateStr = now.toISOString().slice(0, 10);
+      const savings = Math.max(0, baseInterest - totalInt);
+
+      if (daysEl) daysEl.innerText = days + ' дн. (' + months + ' мес.)';
+      if (dateEl) dateEl.innerText = targetDateStr;
+      if (intEl) intEl.innerText = totalInt.toFixed(2) + ' ₽';
+      if (savEl) savEl.innerText = '+' + savings.toFixed(2) + ' ₽';
+      if (statusEl) statusEl.innerHTML = '<span style="color:#38bdf8; font-weight:700;">⚡ Расчет готов</span>';
     }
 
     async function submitPayDebt() {
       const liability_account_id = document.getElementById('payDebtLiabilityAccount').value;
       const source_account_id = document.getElementById('payDebtSourceAccount').value;
       const amount_rub = document.getElementById('payDebtAmount').value;
+      const amount_percent = document.getElementById('payDebtAmountPercent')?.value || null;
       const description = document.getElementById('payDebtDesc').value.trim();
       const msgEl = document.getElementById('payDebtMsg');
 
@@ -10966,6 +11286,7 @@ self.addEventListener('fetch', (event) => {
             liability_account_id,
             source_account_id,
             amount_rub,
+            amount_percent: amount_percent ? parseFloat(amount_percent) : null,
             description,
             category_id
           })
