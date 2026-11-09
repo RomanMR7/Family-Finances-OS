@@ -3030,7 +3030,11 @@ self.addEventListener('fetch', (event) => {
 
                 target_rub = body.get("target_amount_rub")
 
-                target_cents = rubles_to_cents(target_rub) if target_rub is not None else None
+                target_cents = rubles_to_cents(target_rub) if target_rub is not None and str(target_rub).strip() != "" else None
+
+                curr_rub = body.get("current_amount_rub")
+
+                curr_cents = rubles_to_cents(curr_rub) if curr_rub is not None and str(curr_rub).strip() != "" else None
 
                 icon = body.get("icon")
 
@@ -3058,7 +3062,9 @@ self.addEventListener('fetch', (event) => {
 
                     category_id=cat_id,
 
-                    note=note
+                    note=note,
+
+                    current_amount_cents=curr_cents
 
                 )
 
@@ -3259,448 +3265,107 @@ self.addEventListener('fetch', (event) => {
   <title>Family Finances OS</title>
 
   <style>
-
     :root {
-
-      --bg: #0b1120;
-
-      --card-bg: #1e293b;
-
-      --card-hover: #24334a;
-
-      --border: #334155;
-
-      --text: #f8fafc;
-
+      --bg: #101216;
+      --card-bg: #181a20;
+      --card-hover: #21242d;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #ffffff;
       --text-muted: #94a3b8;
-
-      --primary: #3b82f6;
-
-      --primary-hover: #2563eb;
-
+      --primary: #ff6433;
+      --primary-hover: #e85526;
+      --primary-gradient: linear-gradient(135deg, #ff6433 0%, #ff8244 100%);
+      --accent-purple: #8b5cf6;
       --success: #10b981;
-
       --danger: #ef4444;
-
       --warning: #f59e0b;
-
       --purple: #8b5cf6;
+      --input-bg: #121419;
+      --modal-bg: #181a20;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+      --card-radius: 16px;
+    }
 
+    [data-theme="light"] {
+      --bg: #f3f4f7;
+      --card-bg: #ffffff;
+      --card-hover: #f8fafc;
+      --border: rgba(0, 0, 0, 0.08);
+      --text: #111827;
+      --text-muted: #64748b;
+      --primary: #ff6433;
+      --primary-hover: #e85526;
+      --primary-gradient: linear-gradient(135deg, #ff6433 0%, #ff8244 100%);
+      --accent-purple: #8b5cf6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --purple: #8b5cf6;
+      --input-bg: #ffffff;
+      --modal-bg: #ffffff;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      --card-radius: 16px;
+    }
+
+    [data-theme="dark"] {
+      --bg: #101216;
+      --card-bg: #181a20;
+      --card-hover: #21242d;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #ffffff;
+      --text-muted: #94a3b8;
+      --primary: #ff6433;
+      --primary-hover: #e85526;
+      --primary-gradient: linear-gradient(135deg, #ff6433 0%, #ff8244 100%);
+      --accent-purple: #8b5cf6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --purple: #8b5cf6;
+      --input-bg: #121419;
+      --modal-bg: #181a20;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+      --card-radius: 16px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-
-    body { background-color: var(--bg); color: var(--text); min-height: 100vh; padding: calc(16px + env(safe-area-inset-top)) 16px calc(80px + env(safe-area-inset-bottom)) 16px; }
-
+    body { background-color: var(--bg); color: var(--text); min-height: 100vh; padding: calc(16px + env(safe-area-inset-top)) 16px calc(80px + env(safe-area-inset-bottom)) 16px; transition: background-color 0.25s, color 0.25s; }
     .container { max-width: 1050px; margin: 0 auto; }
-
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px; }
-
-    .title { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
-
-    .badge { background: #1e3a8a; color: #93c5fd; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
-
-    .nav-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; overflow-x: auto; }
-
-    .tab-btn { background: transparent; color: var(--text-muted); border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
-
-    .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
-
-    .tab-btn.active { color: #fff; background: var(--primary); }
-
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    .title { font-size: 20px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .badge { background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .nav-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-btn { background: transparent; color: var(--text-muted); border: 1px solid transparent; padding: 8px 16px; border-radius: 9999px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
+    .tab-btn:hover { color: var(--text); background: var(--card-hover); }
+    .tab-btn.active { color: #ffffff !important; background: var(--primary-gradient) !important; box-shadow: 0 4px 12px rgba(255, 100, 51, 0.35); border-color: transparent; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--card-radius); padding: 18px; margin-bottom: 18px; box-shadow: var(--shadow); transition: background 0.2s, border-color 0.2s, box-shadow 0.2s; }
     .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
-
     .stat-label { color: var(--text-muted); font-size: 12px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-
-    .stat-val { font-size: 22px; font-weight: 700; color: #fff; }
-
-    .stat-val.primary { color: #60a5fa; }
-
-    .stat-val.success { color: #34d399; }
-
+    .stat-val { font-size: 22px; font-weight: 700; color: var(--text); }
+    .stat-val.primary { color: #ff6433; }
+    .stat-val.success { color: #10b981; }
     .stat-val.warning { color: #fbbf24; }
-
     .stat-val.danger { color: #f87171; }
-
-    .stat-val.purple { color: #c084fc; }
-
-    .btn { background: var(--primary); color: #fff; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-
+    .stat-val.purple { color: #a855f7; }
+    .btn { background: var(--primary); color: #fff; border: none; padding: 10px 16px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.1s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
     .btn:hover { background: var(--primary-hover); }
-
     .btn:disabled { background: #475569; cursor: not-allowed; opacity: 0.7; }
-
-    .btn-secondary { background: #334155; }
-
-    .btn-secondary:hover { background: #475569; }
-
-    .btn-success { background: #059669; }
-
+    .btn-secondary { background: var(--card-hover); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .btn-success { background: #059669; color: #fff; }
     .btn-success:hover { background: #10b981; }
-
-    .btn-danger { background: #dc2626; }
-
+    .btn-danger { background: #dc2626; color: #fff; }
     .btn-danger:hover { background: #b91c1c; }
-
     .form-group { margin-bottom: 14px; }
-
     label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--text-muted); }
-
-    input, select { width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 14px; }
-
+    input, select { width: 100%; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 14px; transition: border-color 0.2s, background-color 0.2s; }
     input:focus, select:focus { outline: none; border-color: var(--primary); }
-
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-
-    th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
-
-    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
-
-    .alert-info { background: rgba(59, 130, 246, 0.15); border: 1px solid #3b82f6; color: #93c5fd; }
-
-    .alert-success { background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #6ee7b7; }
-
-    .alert-error { background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #fca5a5; }
-
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .progress-bar-bg { background: rgba(148, 163, 184, 0.2); border-radius: 9999px; overflow: hidden; }
+    .progress-bar-fill { border-radius: 9999px; transition: width 0.3s ease; }
     .hidden { display: none !important; }
-
-    /* Modern Custom Category Dropdown Picker */
-
-    .category-dropdown-trigger {
-
-      display: flex;
-
-      justify-content: space-between;
-
-      align-items: center;
-
-      padding: 10px 14px;
-
-      background: rgba(15, 23, 42, 0.7);
-
-      border: 1px solid var(--border);
-
-      border-radius: 8px;
-
-      cursor: pointer;
-
-      transition: all 0.2s ease;
-
-      user-select: none;
-
-    }
-
-    .category-dropdown-trigger:hover {
-
-      border-color: var(--primary);
-
-      background: rgba(30, 41, 59, 0.9);
-
-    }
-
-    .category-dropdown-menu {
-
-      position: absolute;
-
-      top: calc(100% + 4px);
-
-      left: 0;
-
-      right: 0;
-
-      background: #1e293b;
-
-      border: 1px solid var(--border);
-
-      border-radius: 10px;
-
-      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
-
-      z-index: 1000;
-
-      max-height: 380px;
-
-      overflow: hidden;
-
-      display: flex;
-
-      flex-direction: column;
-
-    }
-
-    .category-dropdown-search {
-
-      padding: 8px 10px;
-
-      border-bottom: 1px solid var(--border);
-
-      position: sticky;
-
-      top: 0;
-
-      background: #1e293b;
-
-      z-index: 2;
-
-    }
-
-    .category-dropdown-search input {
-
-      width: 100%;
-
-      font-size: 13px;
-
-      padding: 7px 10px;
-
-      border-radius: 6px;
-
-      background: rgba(0,0,0,0.3);
-
-      border: 1px solid var(--border);
-
-      color: #fff;
-
-    }
-
-    .category-dropdown-list {
-
-      overflow-y: auto;
-
-      max-height: 300px;
-
-      padding: 4px 0;
-
-      -webkit-overflow-scrolling: touch;
-
-    }
-
-    .cat-group-header {
-
-      padding: 8px 14px 4px 14px;
-
-      font-size: 11px;
-
-      font-weight: 700;
-
-      text-transform: uppercase;
-
-      letter-spacing: 0.5px;
-
-      color: #94a3b8;
-
-      background: rgba(255, 255, 255, 0.03);
-
-      display: flex;
-
-      align-items: center;
-
-      gap: 6px;
-
-    }
-
-    .cat-dropdown-item {
-
-      display: flex;
-
-      align-items: center;
-
-      justify-content: space-between;
-
-      padding: 8px 16px;
-
-      font-size: 13px;
-
-      color: #f1f5f9;
-
-      cursor: pointer;
-
-      transition: background 0.15s, color 0.15s;
-
-    }
-
-    .cat-dropdown-item:hover {
-
-      background: rgba(59, 130, 246, 0.18);
-
-      color: #60a5fa;
-
-    }
-
-    .cat-dropdown-item.active {
-
-      background: rgba(59, 130, 246, 0.25);
-
-      color: #93c5fd;
-
-      font-weight: 600;
-
-    }
-
-    .cat-filter-btn {
-
-      transition: all 0.15s ease;
-
-    }
-
-    .cat-filter-btn.active {
-
-      background: var(--primary) !important;
-
-      color: #fff !important;
-
-      font-weight: 600;
-
-    }
-
-    /* Category Chips for fast touch input (Fallback/Compact) */
-
-    .chips-container { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 14px; -webkit-overflow-scrolling: touch; }
-
-    .chip { background: #0f172a; border: 1px solid var(--border); border-radius: 9999px; padding: 6px 14px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
-
-    .chip:hover { border-color: var(--primary); color: #fff; }
-
-    .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
-
-    /* Mobile Bottom Navigation Bar */
-
-    .mobile-bottom-nav {
-
-      display: none;
-
-      position: fixed;
-
-      bottom: 0;
-
-      left: 0;
-
-      right: 0;
-
-      background: #0f172a;
-
-      border-top: 1px solid var(--border);
-
-      padding: 6px 8px env(safe-area-inset-bottom, 8px) 8px;
-
-      z-index: 1000;
-
-      justify-content: space-around;
-
-      align-items: center;
-
-      box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
-
-    }
-
-    .mobile-nav-item {
-
-      display: flex;
-
-      flex-direction: column;
-
-      align-items: center;
-
-      gap: 3px;
-
-      color: var(--text-muted);
-
-      background: none;
-
-      border: none;
-
-      font-size: 11px;
-
-      padding: 6px;
-
-      cursor: pointer;
-
-      flex: 1;
-
-      transition: color 0.15s;
-
-    }
-
-    .mobile-nav-item .icon { font-size: 20px; }
-
-    .mobile-nav-item.active { color: var(--primary); font-weight: 600; }
-
-    /* Tree View */
-
-    .tree-node { margin-bottom: 10px; border-left: 2px solid var(--border); padding-left: 12px; margin-left: 8px; }
-
-    .tree-parent { font-weight: 600; font-size: 15px; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
-
-    .tree-children { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
-
-    .tree-child { font-size: 13px; color: var(--text-muted); padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
-
-    /* Stage 7 Analytics & Forecast Styles */
-
-    .period-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-
-    .pill-btn { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-weight: 500; }
-
-    .pill-btn:hover { color: #fff; border-color: var(--primary); }
-
-    .pill-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
-
-    .progress-bar-bg { background: #0f172a; border-radius: 9999px; height: 6px; overflow: hidden; width: 100%; margin-top: 5px; }
-
-    .progress-bar-fill { height: 100%; border-radius: 9999px; background: var(--primary); transition: width 0.3s ease; }
-
-    .chart-box { background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-
-    .legend-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
-
-    .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-
-    @media (max-width: 640px) {
-
-      body { padding: 12px 12px 75px 12px; }
-
-      .nav-tabs { display: none; }
-
-      .mobile-bottom-nav { display: flex; }
-
-      .header .title { font-size: 18px; }
-
-      .grid-3 { grid-template-columns: 1fr; gap: 10px; }
-
-      table { display: block; overflow-x: auto; font-size: 13px; }
-
-      .stat-val { font-size: 20px; }
-
-    }
-
-      .debt-type-btn {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      padding: 10px 8px;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: #94a3b8;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .debt-type-btn:hover {
-      background: rgba(30, 41, 59, 0.9);
-      color: #fff;
-      border-color: #64748b;
-    }
-    .debt-type-btn.active {
-      background: rgba(59, 130, 246, 0.2);
-      border-color: #3b82f6;
-      color: #60a5fa;
-      box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
-    }
   </style>
 
 </head>
@@ -3721,6 +3386,9 @@ self.addEventListener('fetch', (event) => {
 
       <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
 
+        <button id="themeToggleBtn" class="btn btn-secondary" onclick="toggleTheme()" title="Переключить тему оформления" style="padding: 4px 12px; font-size: 12px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+          <span id="themeToggleIcon">☀️</span> <span id="themeToggleText">Светлая</span>
+        </button>
         <span class="badge" id="storageBadge">Шифрование: AES-256-GCM</span>
 
         <span class="badge hidden" id="syncBadge" style="background:#047857; cursor:pointer;" onclick="triggerLanSync()" title="Нажмите для синхронизации в домашней сети">📡 P2P: 0 пиров</span>
@@ -3901,7 +3569,7 @@ self.addEventListener('fetch', (event) => {
 
           <div class="form-group">
 
-            <label>Начальный баланс (₽):</label>
+            <label id="envelopeInitialLabel">Начальный баланс (₽):</label>
 
             <input type="number" step="0.01" id="envelopeInputInitial" placeholder="0.00" value="0">
 
@@ -6347,6 +6015,35 @@ self.addEventListener('fetch', (event) => {
         .split(String.fromCharCode(34)).join('&quot;')
         .split(String.fromCharCode(39)).join('&#039;');
     }
+
+    function initTheme() {
+      const saved = localStorage.getItem('ffos_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      applyTheme(saved);
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('ffos_theme', theme);
+      const iconEl = document.getElementById('themeToggleIcon');
+      const textEl = document.getElementById('themeToggleText');
+      if (iconEl && textEl) {
+        if (theme === 'light') {
+          iconEl.innerText = '🌙';
+          textEl.innerText = 'Тёмная';
+        } else {
+          iconEl.innerText = '☀️';
+          textEl.innerText = 'Светлая';
+        }
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = (current === 'light') ? 'dark' : 'light';
+      applyTheme(next);
+    }
+
+    initTheme();
 
     let sessionToken = sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
 
@@ -11545,6 +11242,8 @@ self.addEventListener('fetch', (event) => {
 
               <button class="btn btn-secondary" style="flex: 1; padding: 2px 6px; font-size: 11px;" onclick="openEnvelopeWithdrawModal('${e.id}')">- Взять</button>
 
+              <button class="btn btn-secondary" style="padding: 2px 7px; font-size: 11px;" onclick="openEditEnvelopeModal('${e.id}')" title="Редактировать конверт">✏️</button>
+
             </div>
 
           </div>
@@ -11588,59 +11287,47 @@ self.addEventListener('fetch', (event) => {
     }
 
     function openNewEnvelopeModal() {
-
       document.getElementById('envelopeEditId').value = '';
-
       document.getElementById('envelopeModalTitle').innerHTML = '<span>✉️</span> <span>Новый конверт-копилка</span>';
-
       document.getElementById('envelopeInputName').value = '';
-
       document.getElementById('envelopeInputTarget').value = '';
-
       document.getElementById('envelopeInputIcon').value = '✉️';
-
       document.getElementById('envelopeInputColor').value = '#3b82f6';
-
       document.getElementById('envelopeInputInitial').value = '0';
-
+      const lbl = document.getElementById('envelopeInitialLabel');
+      if (lbl) lbl.innerText = 'Начальный баланс (₽):';
       document.getElementById('envelopeInputNote').value = '';
-
       document.getElementById('envelopeModalMsg').innerHTML = '';
-
       populateEnvelopeAccountSelect(null);
-
       document.getElementById('modalEnvelope').classList.remove('hidden');
-
     }
 
-    function openEditEnvelopeModal(envId) {
-
-      const env = allEnvelopesData.find(e => e.id === envId);
-
-      if (!env) return;
-
+    async function openEditEnvelopeModal(envId) {
+      if (!allEnvelopesData || allEnvelopesData.length === 0) {
+        try {
+          const res = await fetch('/api/envelopes', { headers: authHeaders() });
+          const d = await res.json();
+          allEnvelopesData = (d.summary && d.summary.envelopes) ? d.summary.envelopes : (d.envelopes || []);
+        } catch (e) {}
+      }
+      const env = (allEnvelopesData || []).find(e => e.id === envId);
+      if (!env) {
+        alert('Конверт-копилка не найден');
+        return;
+      }
       document.getElementById('envelopeEditId').value = env.id;
-
       document.getElementById('envelopeModalTitle').innerHTML = '<span>✏️</span> <span>Редактировать конверт-копилку</span>';
-
-      document.getElementById('envelopeInputName').value = env.name;
-
-      document.getElementById('envelopeInputTarget').value = env.target_amount_cents > 0 ? env.target_amount_rub : '';
-
+      document.getElementById('envelopeInputName').value = env.name || '';
+      document.getElementById('envelopeInputTarget').value = (env.target_amount_cents && env.target_amount_cents > 0) ? (env.target_amount_rub || '') : '';
       document.getElementById('envelopeInputIcon').value = env.icon || '✉️';
-
       document.getElementById('envelopeInputColor').value = env.color || '#3b82f6';
-
-      document.getElementById('envelopeInputInitial').value = env.current_amount_rub;
-
+      document.getElementById('envelopeInputInitial').value = env.current_amount_rub || '0';
+      const lbl = document.getElementById('envelopeInitialLabel');
+      if (lbl) lbl.innerText = 'Текущий баланс накоплений (₽):';
       document.getElementById('envelopeInputNote').value = env.note || '';
-
       document.getElementById('envelopeModalMsg').innerHTML = '';
-
       populateEnvelopeAccountSelect(env.linked_account_id);
-
       document.getElementById('modalEnvelope').classList.remove('hidden');
-
     }
 
     function closeEnvelopeModal() {
@@ -11679,11 +11366,13 @@ self.addEventListener('fetch', (event) => {
 
       const endpoint = envId ? '/api/envelopes/update' : '/api/envelopes/create';
 
+      const amount_rub = document.getElementById('envelopeInputInitial').value || '0';
+
       const payload = envId
 
-        ? { envelope_id: envId, name, target_amount_rub, icon, color, linked_account_id, note }
+        ? { envelope_id: envId, name, target_amount_rub, icon, color, current_amount_rub: amount_rub, linked_account_id, note }
 
-        : { name, target_amount_rub, icon, color, initial_amount_rub, linked_account_id, note };
+        : { name, target_amount_rub, icon, color, initial_amount_rub: amount_rub, linked_account_id, note };
 
       try {
 

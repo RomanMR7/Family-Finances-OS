@@ -5394,108 +5394,117 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
-    def update_envelope(
-
-        self,
-
-        envelope_id: str,
-
-        name: Optional[str] = None,
-
-        target_amount_cents: Optional[int] = None,
-
-        icon: Optional[str] = None,
-
-        color: Optional[str] = None,
-
-        linked_account_id: Optional[str] = None,
-
-        category_id: Optional[str] = None,
-
-        note: Optional[str] = None
-
-    ) -> bool:
-
-        """Update envelope parameters."""
-
+    def get_envelope(self, envelope_id: str) -> Optional[Dict[str, Any]]:
+        """Get single envelope by id."""
         conn = self._get_conn()
-
         cursor = conn.cursor()
-
         try:
+            cursor.execute("""
+            SELECT e.*, a.name as linked_account_name, a.code as linked_account_code, c.name as category_name
+            FROM envelopes e
+            LEFT JOIN accounts a ON e.linked_account_id = a.id
+            LEFT JOIN categories c ON e.category_id = c.id
+            WHERE e.id = ? AND e.is_active = 1;
+            """, (envelope_id,))
+            r = cursor.fetchone()
+            if not r:
+                return None
+            target_cents = r["target_amount_cents"]
+            current_cents = r["current_amount_cents"]
+            rem_cents = max(0, target_cents - current_cents)
+            pct = round((current_cents / target_cents) * 100, 1) if target_cents > 0 else (100.0 if current_cents > 0 else 0.0)
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "target_amount_cents": target_cents,
+                "target_amount_rub": cents_to_rubles(target_cents),
+                "current_amount_cents": current_cents,
+                "current_amount_rub": cents_to_rubles(current_cents),
+                "remaining_cents": rem_cents,
+                "remaining_rub": cents_to_rubles(rem_cents),
+                "progress_percent": min(100.0, pct),
+                "icon": r["icon"],
+                "color": r["color"],
+                "linked_account_id": r["linked_account_id"],
+                "linked_account_name": r["linked_account_name"],
+                "category_id": r["category_id"],
+                "category_name": r["category_name"],
+                "note": r["note"]
+            }
+        finally:
+            self._close_if_local(conn)
+
+    def update_envelope(
+        self,
+        envelope_id: str,
+        name: Optional[str] = None,
+        target_amount_cents: Optional[int] = None,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        linked_account_id: Optional[str] = None,
+        category_id: Optional[str] = None,
+        note: Optional[str] = None,
+        current_amount_cents: Optional[int] = None
+    ) -> bool:
+        """Update envelope parameters and optionally adjust balance."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM envelopes WHERE id = ? AND is_active = 1;", (envelope_id,))
+            env_row = cursor.fetchone()
+            if not env_row:
+                return False
 
             updates = []
-
             params = []
-
             if name is not None:
-
                 updates.append("name = ?")
-
                 params.append(name.strip())
-
             if target_amount_cents is not None:
-
                 updates.append("target_amount_cents = ?")
-
-                params.append(target_amount_cents)
-
+                params.append(max(0, int(target_amount_cents)))
             if icon is not None:
-
                 updates.append("icon = ?")
-
                 params.append(icon)
-
             if color is not None:
-
                 updates.append("color = ?")
-
                 params.append(color)
-
             if linked_account_id is not None:
-
                 updates.append("linked_account_id = ?")
-
                 params.append(linked_account_id or None)
-
             if category_id is not None:
-
                 updates.append("category_id = ?")
-
                 params.append(category_id or None)
-
             if note is not None:
-
                 updates.append("note = ?")
+                params.append(note.strip() if note else None)
 
-                params.append(note or None)
+            if current_amount_cents is not None:
+                new_bal = max(0, int(current_amount_cents))
+                old_bal = env_row["current_amount_cents"]
+                if new_bal != old_bal:
+                    updates.append("current_amount_cents = ?")
+                    params.append(new_bal)
+                    diff = new_bal - old_bal
+                    op_type = "DEPOSIT" if diff > 0 else "WITHDRAW"
+                    op_id = generate_uuid()
+                    cursor.execute("""
+                        INSERT INTO envelope_operations (id, envelope_id, operation_type, amount_cents, note)
+                        VALUES (?, ?, ?, ?, 'Корректировка баланса конверта');
+                    """, (op_id, envelope_id, op_type, abs(diff)))
 
-            if not updates:
-
-                return True
-
-            params.append(envelope_id)
-
-            cursor.execute(f"UPDATE envelopes SET {', '.join(updates)} WHERE id = ? AND is_active = 1;", tuple(params))
-
-            if cursor.rowcount > 0:
-
+            if updates:
+                params.append(envelope_id)
+                cursor.execute(f"UPDATE envelopes SET {', '.join(updates)} WHERE id = ? AND is_active = 1;", tuple(params))
                 cursor.execute("SELECT * FROM envelopes WHERE id = ?;", (envelope_id,))
-
                 row = cursor.fetchone()
-
                 if row:
-
                     self._get_sync_engine().record_change_event("ENVELOPE", envelope_id, "UPDATE", dict(row), cursor=cursor)
 
             conn.commit()
-
             self._save_if_encrypted()
-
-            return cursor.rowcount > 0
-
+            return True
         finally:
-
             self._close_if_local(conn)
 
     def archive_envelope(self, envelope_id: str) -> bool:
