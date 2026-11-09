@@ -4074,6 +4074,215 @@ class LedgerEngine:
 
     # ---------------------------------------------------------
 
+
+    def create_debt(
+        self,
+        name: str,
+        subtype: str = "CONSUMER_LOAN",
+        ownership_scope: str = "COMMON",
+        credit_limit_cents: int = 0,
+        initial_debt_cents: int = 0,
+        monthly_payment_cents: int = 0,
+        due_day: Optional[int] = None,
+        receive_money: bool = False,
+        destination_account_id: Optional[str] = None,
+        description: Optional[str] = None,
+        owner_member_id: Optional[str] = None,
+        tx_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new debt / liability account of any supported subtype:
+        - CREDIT_CARD (Кредитная карта)
+        - MORTGAGE (Ипотека)
+        - CONSUMER_LOAN (Потребительский кредит)
+        - AUTO_LOAN (Автокредит)
+        - PERSONAL_DEBT (Долг человеку / частный заём)
+        - INSTALLMENT_BNPL (Рассрочка / Долями / Сплит)
+        - LOAN (Кредит / заём)
+
+        Maintains strict double-entry balance:
+        - If receive_money is True:
+          DEBIT: destination_account_id (+funds)
+          CREDIT: new_liability_account (+debt)
+        - If receive_money is False and initial_debt_cents > 0:
+          DEBIT: Equity account 3010
+          CREDIT: new_liability_account (+debt)
+
+        Optionally creates a linked recurring monthly obligation if monthly_payment_cents > 0 and due_day is provided.
+        """
+        if not name or not name.strip():
+            raise ValueError("Название задолженности не может быть пустым.")
+
+        valid_subtypes = {
+            "CREDIT_CARD", "MORTGAGE", "CONSUMER_LOAN", "AUTO_LOAN",
+            "PERSONAL_DEBT", "INSTALLMENT_BNPL", "LOAN"
+        }
+        if subtype not in valid_subtypes:
+            raise ValueError(f"Недопустимый тип задолженности: {subtype}")
+
+        if credit_limit_cents < 0:
+            raise ValueError("Кредитный лимит не может быть меньше нуля.")
+        if initial_debt_cents < 0:
+            raise ValueError("Сумма долга не может быть меньше нуля.")
+        if monthly_payment_cents < 0:
+            raise ValueError("Ежемесячный платеж не может быть меньше нуля.")
+
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            # Determine next accounting code in 2000-2999 range
+            cursor.execute("""
+            SELECT code FROM accounts 
+            WHERE account_type = 'LIABILITY' AND code GLOB '2[0-9][0-9][0-9]'
+            ORDER BY code DESC LIMIT 1;
+            """)
+            row = cursor.fetchone()
+            if row and row["code"].isdigit():
+                next_code = str(int(row["code"]) + 10)
+            else:
+                next_code = "2030"
+
+            account_id = f"acc_liab_{generate_uuid()[:8]}"
+            date_str = tx_date or current_iso_time()[:10]
+
+            # Insert account
+            cursor.execute("""
+            INSERT INTO accounts (
+                id, code, name, account_type, subtype, currency,
+                ownership_scope, owner_member_id, description,
+                credit_limit_cents, initial_balance_cents, is_active
+            ) VALUES (?, ?, ?, 'LIABILITY', ?, 'RUB', ?, ?, ?, ?, ?, 1);
+            """, (
+                account_id,
+                next_code,
+                name.strip(),
+                subtype,
+                ownership_scope,
+                owner_member_id,
+                description.strip() if description else None,
+                credit_limit_cents,
+                initial_debt_cents
+            ))
+
+            # Record CDC event for account creation
+            cursor.execute("SELECT * FROM accounts WHERE id = ?;", (account_id,))
+            acc_row = cursor.fetchone()
+            self._get_sync_engine().record_change_event("ACCOUNT", account_id, "INSERT", dict(acc_row), cursor=cursor)
+
+            # Double-entry transaction for initial debt balance
+            tx_id = None
+            if initial_debt_cents > 0:
+                tx_id = generate_uuid()
+                if receive_money and destination_account_id:
+                    # Received money on account right now
+                    dest_acc = self.get_account_by_id(destination_account_id)
+                    if not dest_acc:
+                        raise ValueError(f"Счет зачисления {destination_account_id} не найден.")
+                    tx_desc = f"Получение кредита / займа '{name.strip()}'"
+                    postings = [
+                        Posting(
+                            id=generate_uuid(),
+                            transaction_id=tx_id,
+                            account_id=destination_account_id,
+                            amount_cents=initial_debt_cents,
+                            posting_type="DEBIT",
+                            ownership_scope=ownership_scope,
+                            purpose_allocation="SAFE_TO_SPEND",
+                            note="Зачисление заёмных средств на счет"
+                        ),
+                        Posting(
+                            id=generate_uuid(),
+                            transaction_id=tx_id,
+                            account_id=account_id,
+                            amount_cents=initial_debt_cents,
+                            posting_type="CREDIT",
+                            ownership_scope=ownership_scope,
+                            purpose_allocation="SAFE_TO_SPEND",
+                            note="Образование обязательства (долга)"
+                        )
+                    ]
+                else:
+                    # Existing opening debt
+                    cursor.execute("SELECT id FROM accounts WHERE code = '3010';")
+                    eq_row = cursor.fetchone()
+                    equity_id = eq_row["id"] if eq_row else "acc_core_3010"
+                    tx_desc = f"Фиксация начального остатка долга '{name.strip()}'"
+                    postings = [
+                        Posting(
+                            id=generate_uuid(),
+                            transaction_id=tx_id,
+                            account_id=equity_id,
+                            amount_cents=initial_debt_cents,
+                            posting_type="DEBIT",
+                            ownership_scope=ownership_scope,
+                            purpose_allocation="SAFE_TO_SPEND",
+                            note="Уменьшение начального капитала на сумму долга"
+                        ),
+                        Posting(
+                            id=generate_uuid(),
+                            transaction_id=tx_id,
+                            account_id=account_id,
+                            amount_cents=initial_debt_cents,
+                            posting_type="CREDIT",
+                            ownership_scope=ownership_scope,
+                            purpose_allocation="SAFE_TO_SPEND",
+                            note="Начальный остаток задолженности"
+                        )
+                    ]
+
+                cursor.execute("""
+                INSERT INTO transactions (id, tx_date, tx_type, description, is_voided, created_by_member_id)
+                VALUES (?, ?, 'ADJUSTMENT', ?, 0, ?);
+                """, (tx_id, date_str, tx_desc, owner_member_id))
+
+                for p in postings:
+                    cursor.execute("""
+                    INSERT INTO postings (id, transaction_id, account_id, amount_cents, posting_type, ownership_scope, purpose_allocation, note)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                    """, (p.id, p.transaction_id, p.account_id, p.amount_cents, p.posting_type, p.ownership_scope, p.purpose_allocation, p.note))
+
+                # CDC for transaction
+                cursor.execute("SELECT * FROM transactions WHERE id = ?;", (tx_id,))
+                self._get_sync_engine().record_change_event("TRANSACTION", tx_id, "INSERT", dict(cursor.fetchone()), cursor=cursor)
+
+            # Optional recurring monthly obligation creation
+            obligation_id = None
+            if monthly_payment_cents > 0 and due_day:
+                obligation_id = generate_uuid()
+                day_val = max(1, min(31, int(due_day)))
+                cursor.execute("""
+                INSERT INTO obligations (
+                    id, name, amount_cents, due_day, payment_account_id,
+                    note, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, 1);
+                """, (
+                    obligation_id,
+                    f"Платеж: {name.strip()}",
+                    monthly_payment_cents,
+                    day_val,
+                    account_id,
+                    f"Автоматический ежемесячный платеж по долгу '{name.strip()}'"
+                ))
+                cursor.execute("SELECT * FROM obligations WHERE id = ?;", (obligation_id,))
+                self._get_sync_engine().record_change_event("OBLIGATION", obligation_id, "INSERT", dict(cursor.fetchone()), cursor=cursor)
+
+            conn.commit()
+            self._save_if_encrypted()
+
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "code": next_code,
+                "name": name.strip(),
+                "subtype": subtype,
+                "initial_debt_rub": cents_to_rubles(initial_debt_cents),
+                "credit_limit_rub": cents_to_rubles(credit_limit_cents),
+                "transaction_id": tx_id,
+                "obligation_id": obligation_id
+            }
+        finally:
+            self._close_if_local(conn)
+
     def get_debts_summary(self) -> Dict[str, Any]:
 
         """

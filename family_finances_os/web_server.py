@@ -2512,6 +2512,66 @@ self.addEventListener('fetch', (event) => {
 
         # --- Stage 9 Debt Repayment Endpoints ---
 
+        elif path == "/api/debts/create":
+            user = self._require_auth()
+            if not user:
+                return
+            try:
+                ledger = self._get_ledger()
+                name = body.get("name", "").strip()
+                subtype = body.get("subtype", "CONSUMER_LOAN")
+                ownership_scope = body.get("ownership_scope", "COMMON")
+                credit_limit_rub = float(body.get("credit_limit_rub") or 0)
+                initial_debt_rub = float(body.get("initial_debt_rub") or 0)
+                monthly_payment_rub = float(body.get("monthly_payment_rub") or 0)
+                due_day = body.get("due_day")
+                if due_day is not None and str(due_day).strip():
+                    due_day = int(due_day)
+                else:
+                    due_day = None
+                receive_money = bool(body.get("receive_money", False))
+                destination_account_id = body.get("destination_account_id")
+                description = body.get("description", "").strip() or None
+
+                res = ledger.create_debt(
+                    name=name,
+                    subtype=subtype,
+                    ownership_scope=ownership_scope,
+                    credit_limit_cents=rubles_to_cents(credit_limit_rub),
+                    initial_debt_cents=rubles_to_cents(initial_debt_rub),
+                    monthly_payment_cents=rubles_to_cents(monthly_payment_rub),
+                    due_day=due_day,
+                    receive_money=receive_money,
+                    destination_account_id=destination_account_id,
+                    description=description,
+                    owner_member_id=user.get("member_id")
+                )
+                self._send_json({"status": "success", "account": {"id": res["account_id"], "name": res["name"], "code": res["code"]}, "debt": res})
+            except Exception as e:
+                self._send_json({"status": "error", "message": str(e)}, 400)
+            return
+
+        elif path == "/api/debts/archive":
+            user = self._require_auth()
+            if not user:
+                return
+            account_id = body.get("account_id")
+            if not account_id:
+                self._send_json({"status": "error", "message": "Не указан ID задолженности"}, 400)
+                return
+            ledger = self._get_ledger()
+            success = ledger.archive_account(account_id)
+            conn = ledger._get_conn()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("UPDATE obligations SET is_active = 0 WHERE payment_account_id = ?", (account_id,))
+                conn.commit()
+                ledger._save_if_encrypted()
+            finally:
+                ledger._close_if_local(conn)
+            self._send_json({"status": "success", "archived": success})
+            return
+
         elif path == "/api/debts/pay":
 
             user = self._require_auth()
@@ -3468,6 +3528,31 @@ self.addEventListener('fetch', (event) => {
 
     }
 
+      .debt-type-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 10px 8px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .debt-type-btn:hover {
+      background: rgba(30, 41, 59, 0.9);
+      color: #fff;
+      border-color: #64748b;
+    }
+    .debt-type-btn.active {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: #3b82f6;
+      color: #60a5fa;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+    }
   </style>
 
 </head>
@@ -4402,567 +4487,29 @@ self.addEventListener('fetch', (event) => {
   </div>
 </div>
 
-<!-- 4. App Main Body -->
-
-    <div id="mainDashboard" class="hidden">
-
-<!-- Month Selector & Period Navigator Bar -->
-<div class="month-navigator-bar" style="background: rgba(30, 41, 59, 0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-    <span style="font-weight: 600; font-size: 14px; color: #cbd5e1; display: flex; align-items: center; gap: 6px;">
-      <span style="font-size: 18px;">📅</span>
-      <span>Период учёта:</span>
-    </span>
-    <div style="display: flex; align-items: center; gap: 6px;">
-      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(-1)" title="Предыдущий месяц">◀</button>
-      <select id="globalMonthSelect" onchange="onGlobalMonthSelectChange(this.value)" style="padding: 6px 14px; font-size: 14px; font-weight: 600; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 8px; cursor: pointer; min-width: 170px;">
-        <!-- Filled dynamically -->
-      </select>
-      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(1)" title="Следующий месяц">▶</button>
-    </div>
-    <button type="button" id="btnCurrentMonthReset" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; display: none;" onclick="resetToCurrentMonth()">🔄 Текущий месяц</button>
-  </div>
-  <div id="pastMonthNotice" style="display: none; align-items: center; gap: 8px; font-size: 13px; color: #fbbf24; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 6px 14px;">
-    <span>⚠️ <strong>Архивный режим:</strong> <span id="pastMonthNoticeLabel"></span>. Все операции и бюджеты фильтруются за этот месяц.</span>
-  </div>
-</div>
-
-<!-- Desktop Navigation Tabs -->
-<div class="nav-tabs">
-
-        <button class="tab-btn active" onclick="switchTab('tab-overview')">📊 Сводный дашборд</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-goals')">🎯 Цели накоплений</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-envelopes')">✉️ Конверты-копилки</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-debts')">💳 Долги и кредиты</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-analytics')">📈 Аналитика и прогноз</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-tx')">➕ Новая операция</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-obligations')">📅 Обязательные платежи</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-accounts')">💳 Счета семьи</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-categories')">📂 Категории</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-transfer')">🔄 Внутренний перевод</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-ledger')">📜 Журнал проводок</button>
-
-        <button class="tab-btn" onclick="switchTab('tab-import')">📥 Импорт выписок</button>
-
-      </div>
-
-      <!-- Tab 1: Overview -->
-
-      <div id="tab-overview">
-
-        <!-- Quick Actions & Smart Entry Bar -->
-
-        <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%); margin-bottom: 20px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-
-            <h3 style="font-size: 15px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px;">
-
-              <span>⚡</span> <span>Умный быстрый ввод</span>
-
-            </h3>
-
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-
-              <button class="btn btn-secondary" onclick="openPayDebtModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5;">💳 Погасить долг</button>
-
-              <button class="btn btn-secondary" onclick="openNewGoalModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #6ee7b7;">🎯 Новая цель</button>
-
-            </div>
-
-          </div>
-
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; position: relative;">
-
-            <!-- Dropdown selector for category directly on dashboard -->
-
-            <div style="position: relative;">
-
-              <button type="button" id="dashCatDropdownBtn" class="btn btn-secondary" 
-
-                      style="padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; height: 44px; border-radius: 8px; background: rgba(0,0,0,0.35); border-color: var(--border);" 
-
-                      onclick="toggleCategoryDropdown('dashCatMenu')">
-
-                <span id="dashCatSelectedIcon">🏷️</span>
-
-                <span id="dashCatSelectedName">Категория</span>
-
-                <span style="font-size: 10px; opacity: 0.7;">▼</span>
-
-              </button>
-
-              <div id="dashCatMenu" class="category-dropdown-menu hidden" style="left: 0; min-width: 290px;">
-
-                <div class="category-dropdown-search">
-
-                  <input type="text" id="dashCatSearchInput" placeholder="🔍 Поиск категории..." 
-
-                         oninput="filterCategoryDropdown('dashCatMenu', this.value)">
-
-                  <div style="display: flex; gap: 4px; margin-top: 6px;">
-
-                    <button type="button" class="btn btn-secondary cat-filter-btn active" onclick="setCatMenuFilter('dashCatMenu', 'ALL', this)" style="padding: 2px 8px; font-size: 11px;">Все</button>
-
-                    <button type="button" class="btn btn-secondary cat-filter-btn" onclick="setCatMenuFilter('dashCatMenu', 'EXPENSE', this)" style="padding: 2px 8px; font-size: 11px;">🔴 Расход</button>
-
-                    <button type="button" class="btn btn-secondary cat-filter-btn" onclick="setCatMenuFilter('dashCatMenu', 'INCOME', this)" style="padding: 2px 8px; font-size: 11px;">🟢 Доход</button>
-
-                  </div>
-
-                </div>
-
-                <div id="dashCatList" class="category-dropdown-list"></div>
-
-              </div>
-
-            </div>
-
-            <input type="text" id="dashQuickInput" placeholder="Например: 500 кофе, 1500 продукты, 850 аптека..." 
-
-                   style="font-size: 15px; padding: 11px 14px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 8px; color: #fff; flex: 1;"
-
-                   oninput="onQuickInputLive(this.value, 'dashQuickPreview')" 
-
-                   onkeydown="if(event.key==='Enter')submitQuickInput('dashQuickInput', 'dashQuickMsg')">
-
-            <button class="btn" style="padding: 11px 18px; font-size: 14px; font-weight: 600; white-space: nowrap;" onclick="submitQuickInput('dashQuickInput', 'dashQuickMsg')">
-
-              ⚡ Записать
-
-            </button>
-
-          </div>
-
-          <!-- Live recognition preview badge -->
-
-          <div id="dashQuickPreview" class="alert alert-info hidden" style="margin-bottom: 8px; padding: 8px 12px; font-size: 12px;"></div>
-
-          <div id="dashQuickMsg"></div>
-
-          <!-- 1-Tap Quick presets -->
-
-          <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px;">
-
-            <span style="font-size: 11px; color: var(--text-muted); margin-right: 4px;">Быстрые кнопки:</span>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('1000 продукты')">🛒 Продукты 1000 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('300 кофе')">☕ Кофе 300 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('500 такси')">🚖 Такси 500 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('2000 бензин')">⛽ Бензин 2000 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('500 аптека')">💊 Аптека 500 ₽</button>
-
-          </div>
-
-        </div>
-
-        <!-- Quick Onboarding Wizard Banner for Manual Zero-State Setup -->
-
-        <div id="onboardingBanner" class="card hidden" style="border: 2px solid #3b82f6; background: rgba(59, 130, 246, 0.08); margin-bottom: 20px;">
-
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-
-            <div>
-
-              <h3 style="font-size: 17px; color: #60a5fa; display:flex; align-items:center; gap: 8px;">
-
-                <span>✨</span> Мастер начальной настройки семейного бюджета
-
-              </h3>
-
-              <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">
-
-                Система чиста и готова к заполнению с нуля. Введите текущие остатки на картах семьи и главное обязательство, чтобы запустить расчет Safe-to-Spend.
-
-              </p>
-
-            </div>
-
-            <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="document.getElementById('onboardingBanner').classList.add('hidden')">✕ Закрыть</button>
-
-          </div>
-
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px;">
-
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">1. Текущие остатки на дебетовых картах (₽)</h4>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Основная карта (1010):</label><input type="number" id="obMainCard" placeholder="0" value="0"></div>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Вторая карта / карта жены (1012):</label><input type="number" id="obWifeCard" placeholder="0" value="0"></div>
-
-              <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">Наличные деньги семьи (1020):</label><input type="number" id="obCash" placeholder="0" value="0"></div>
-
-            </div>
-
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">2. Кредитная карта (2020)</h4>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Кредитный лимит (₽):</label><input type="number" id="obCreditLimit" placeholder="0" value="0"></div>
-
-              <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">Текущий долг по кредитке на сегодня (₽):</label><input type="number" id="obCreditDebt" placeholder="0" value="0"></div>
-
-            </div>
-
-            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: #fff;">3. Главный обязательный платеж месяца</h4>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Название (Аренда / Ипотека / ЖКХ):</label><input type="text" id="obOblName" placeholder="Например: Аренда жилья"></div>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Сумма платежа (₽):</label><input type="number" id="obOblAmount" placeholder="0"></div>
-
-              <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">День списания (1-31):</label><input type="number" id="obOblDay" value="15"></div>
-
-            </div>
-
-          </div>
-
-          <button class="btn" style="width: 100%; padding: 11px; font-size: 14px; font-weight: 600;" onclick="submitOnboarding()">
-
-            🚀 Зафиксировать стартовый бюджет семьи и рассчитать Safe-to-Spend
-
-          </button>
-
-        </div>
-
-        <!-- Multidimensional Financial Metrics Grid -->
-
-        <div class="grid-3">
-
-          <div class="card">
-
-            <div class="stat-label">Доступно к тратам (Safe-to-Spend)</div>
-
-            <div class="stat-val primary" id="valSafeToSpend">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="valSafeToSpendNote">Ликвидные активы минус платежи и кредитки</p>
-
-          </div>
-
-          <div class="card">
-
-            <div class="stat-label">Обязательные платежи месяца</div>
-
-            <div class="stat-val purple" id="valObligations">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="valObligationsDetail">Осталось оплатить до конца месяца</p>
-
-          </div>
-
-          <div class="card">
-
-            <div class="stat-label">Общие ликвидные активы</div>
-
-            <div class="stat-val success" id="valLiquid">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Все карты + Наличные семьи</p>
-
-          </div>
-
-        </div>
-
-        <div class="grid-3">
-
-          <div class="card">
-
-            <div class="stat-label">Подушка безопасности (Резерв)</div>
-
-            <div class="stat-val warning" id="valReserve">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Накопительные счета / Вклады</p>
-
-          </div>
-
-          <div class="card">
-
-            <div class="stat-label">Чистый капитал семьи</div>
-
-            <div class="stat-val" style="color: #60a5fa;" id="valNetWorth">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Все активы семьи минус обязательства</p>
-
-          </div>
-
-          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
-
-            <div>
-
-              <div class="stat-label">Кредитные карты и долги</div>
-
-              <div class="stat-val danger" id="valCreditSummary">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="valCreditDetail">Доступно: 0.00 ₽</p>
-
-            </div>
-
-            <div style="margin-top: 10px;">
-
-              <button class="btn btn-secondary" style="width: 100%; font-size: 12px; padding: 5px 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #fca5a5;" onclick="openPayDebtModal()">
-
-                💳 Погасить задолженность
-
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        <!-- Goals Progress Widget on Dashboard -->
-
-        <div class="card" style="margin-bottom: 18px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-
-            <h3 style="font-size: 16px; display: flex; align-items: center; gap: 6px;">
-
-              <span>🎯</span> <span>Семейные цели накоплений</span>
-
-            </h3>
-
-            <div style="display: flex; gap: 8px;">
-
-              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="openNewGoalModal()">➕ Новая цель</button>
-
-              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="switchTab('tab-goals')">Все цели →</button>
-
-            </div>
-
-          </div>
-
-          <div id="dashGoalsContainer" style="display: flex; flex-direction: column; gap: 10px;">
-
-            <div style="color: var(--text-muted); font-size: 13px;">Загрузка целей...</div>
-
-          </div>
-
-        </div>
-
-        <!-- Dashboard Envelopes & Piggy Banks Widget -->
-
-        <div class="card" style="margin-bottom: 20px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-
-            <div style="display: flex; align-items: center; gap: 8px;">
-
-              <span style="font-size: 20px;">✉️</span>
-
-              <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Конверты-копилки</h3>
-
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 8px;">
-
-              <span id="dashEnvelopesTotalBadge" class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; font-size: 12px;">0.00 ₽</span>
-
-              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="switchTab('tab-envelopes')">Все конверты →</button>
-
-            </div>
-
-          </div>
-
-          <div id="dashEnvelopesContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;">
-
-            <div style="color: var(--text-muted); font-size: 13px;">Загрузка конвертов...</div>
-
-          </div>
-
-        </div>
-
-        <!-- Accounts Overview Table -->
-
-        <div class="card">
-
-          <h3 style="margin-bottom: 12px; font-size: 16px;">Балансы всех счетов семьи</h3>
-
-          <table>
-
-            <thead>
-
-              <tr>
-
-                <th>Код</th>
-
-                <th>Счет</th>
-
-                <th>Тип</th>
-
-                <th>Принадлежность</th>
-
-                <th>Текущий остаток</th>
-
-              </tr>
-
-            </thead>
-
-            <tbody id="overviewAccountsBody"></tbody>
-
-          </table>
-
-        </div>
-
-      </div>
-
-      <!-- Tab: Financial Goals (Цели накоплений) -->
-
-      <div id="tab-goals" class="hidden">
-
-        <div class="card">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
-
-            <div>
-
+<!-- Modal: Add New Debt / Loan / Liability -->
+<div id="modalNewDebt" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+  <div class="card" style="max-width: 580px; width: 100%; border-color: var(--primary); position: relative; max-height: 90vh; overflow-y: auto;">
+    <button onclick="closeNewDebtModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
+    
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+      <span style="font-size: 26px;">💳</span>
+                  <div>
               <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
-
-                <span>🎯</span> <span>Семейные цели накоплений</span>
-
-              </h3>
-
-              <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
-
-                Ставьте финансовые цели, откладывайте средства и отслеживайте прогресс накоплений.
-
-              </p>
-
-            </div>
-
-            <button class="btn btn-success" onclick="openNewGoalModal()">➕ Создать цель</button>
-
-          </div>
-
-          <div id="goalsListContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-
-            <div style="color: var(--text-muted); font-size: 13px;">Загрузка целей...</div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <!-- Tab: Envelopes / Piggy Banks (Конверты-копилки) -->
-
-      <div id="tab-envelopes" class="hidden">
-
-        <div class="card">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
-
-            <div>
-
-              <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
-
-                <span>✉️</span> <span>Конверты-копилки семьи</span>
-
-              </h3>
-
-              <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
-
-                Метод конвертов: откладывайте деньги по виртуальным конвертам-копилкам на мечты, отпуск, резервы и подарки.
-
-              </p>
-
-            </div>
-
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-
-              <button class="btn btn-success" onclick="openNewEnvelopeModal()">➕ Создать конверт</button>
-
-              <button class="btn btn-secondary" onclick="openEnvelopeTransferModal()">🔄 Переложить между конвертами</button>
-
-            </div>
-
-          </div>
-
-          <div class="grid-3" style="margin-bottom: 18px;">
-
-            <div class="card" style="margin-bottom: 0;">
-
-              <div class="stat-label">Всего отложено в конвертах</div>
-
-              <div class="stat-val success" id="envelopesTotalSaved">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Зарезервировано в копилках</p>
-
-            </div>
-
-            <div class="card" style="margin-bottom: 0;">
-
-              <div class="stat-label">Активных конвертов</div>
-
-              <div class="stat-val" style="color: #60a5fa;" id="envelopesCount">0</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Направления сбережений</p>
-
-            </div>
-
-            <div class="card" style="margin-bottom: 0;">
-
-              <div class="stat-label">Целевой объём накоплений</div>
-
-              <div class="stat-val warning" id="envelopesTotalTarget">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Сумма целей всех копилок</p>
-
-            </div>
-
-          </div>
-
-          <div id="envelopesListContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
-
-            <div style="color: var(--text-muted); font-size: 13px;">Загрузка конвертов...</div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <!-- Tab: Debts & Liabilities (Долги и кредиты) -->
-
-      <div id="tab-debts" class="hidden">
-
-        <div class="card">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
-
-            <div>
-
-              <h3 style="font-size: 18px; color: #fff; display: flex; align-items: center; gap: 8px;">
-
                 <span>💳</span> <span>Задолженности и кредиты семьи</span>
-
               </h3>
-
               <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
-
-                Контроль кредитных карт, потребительских кредитов, ипотек и удобное погашение задолженностей.
-
+                Контроль кредитных карт, потребительских кредитов, ипотек, долгов и рассрочек.
               </p>
-
             </div>
-
-            <button class="btn btn-danger" onclick="openPayDebtModal()">💳 Погасить задолженность</button>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn" onclick="openNewDebtModal()" style="display: flex; align-items: center; gap: 6px;">
+                <span>➕</span> <span>Добавить долг или кредит</span>
+              </button>
+              <button class="btn btn-danger" onclick="openPayDebtModal()" style="display: flex; align-items: center; gap: 6px;">
+                <span>💳</span> <span>Погасить задолженность</span>
+              </button>
+            </div>
 
           </div>
 
@@ -9998,393 +9545,425 @@ self.addEventListener('fetch', (event) => {
 
     let allDebtsData = null;
 
+    const DEBT_SUBTYPE_CONFIG = {
+      CREDIT_CARD: { icon: '💳', name: 'Кредитная карта', badgeBg: '#be185d', badgeColor: '#fbcfe8' },
+      MORTGAGE: { icon: '🏠', name: 'Ипотека', badgeBg: '#4338ca', badgeColor: '#c7d2fe' },
+      CONSUMER_LOAN: { icon: '💰', name: 'Потребкредит', badgeBg: '#b45309', badgeColor: '#fde68a' },
+      AUTO_LOAN: { icon: '🚗', name: 'Автокредит', badgeBg: '#047857', badgeColor: '#a7f3d0' },
+      PERSONAL_DEBT: { icon: '🤝', name: 'Долг человеку', badgeBg: '#6d28d9', badgeColor: '#ddd6fe' },
+      INSTALLMENT_BNPL: { icon: '🛍️', name: 'Рассрочка / Сплит', badgeBg: '#0e7490', badgeColor: '#a5f3fc' },
+      LOAN: { icon: '📋', name: 'Кредит / Займ', badgeBg: '#b45309', badgeColor: '#fde68a' }
+    };
+
     async function loadDebts() {
-
       const container = document.getElementById('debtsListContainer');
-
       if (!container) return;
-
       try {
-
         const res = await fetch('/api/debts', { headers: authHeaders() });
-
         if (res.status === 401 || res.status === 423) return;
-
         allDebtsData = await res.json();
-
+        
         // Update KPI summary cards
-
         document.getElementById('debtsTabTotal').innerText = allDebtsData.total_debt_rub + ' ₽';
-
         document.getElementById('debtsTabCards').innerText = allDebtsData.credit_cards_debt_rub + ' ₽';
-
         document.getElementById('debtsTabLoans').innerText = allDebtsData.loans_debt_rub + ' ₽';
 
         const debts = allDebtsData.debts || [];
-
         if (debts.length === 0) {
-
           container.innerHTML = `
-
-            <div style="text-align: center; padding: 32px 16px; background: rgba(16,185,129,0.05); border-radius: 12px; border: 1px dashed rgba(16,185,129,0.3);">
-
-              <div style="font-size: 36px; margin-bottom: 8px;">🎉</div>
-
-              <div style="font-size: 16px; font-weight: 700; color: #34d399; margin-bottom: 4px;">Задолженностей нет!</div>
-
-              <div style="font-size: 13px; color: var(--text-muted);">
-
-                У семьи нет открытых долгов по кредитным картам или займам. Весь ликвидный капитал полностью свободен (Safe-to-Spend).
-
+            <div style="text-align: center; padding: 36px 16px; background: rgba(16,185,129,0.05); border-radius: 12px; border: 1px dashed rgba(16,185,129,0.3);">
+              <div style="font-size: 40px; margin-bottom: 8px;">🎉</div>
+              <div style="font-size: 18px; font-weight: 700; color: #34d399; margin-bottom: 6px;">У семьи нет открытых долгов!</div>
+              <div style="font-size: 13px; color: var(--text-muted); max-width: 480px; margin: 0 auto 16px auto; line-height: 1.4;">
+                Кредиты, кредитные карты и займы не зафиксированы. Если у вас есть кредитка, ипотека, рассрочка или долг человеку — добавьте их для точного контроля финансов и расчета Safe-to-Spend.
               </div>
-
+              <button class="btn" onclick="openNewDebtModal()">➕ Добавить долг или кредит</button>
             </div>
-
           `;
-
           return;
-
         }
 
         container.innerHTML = debts.map(d => {
-
+          const cfg = DEBT_SUBTYPE_CONFIG[d.subtype] || DEBT_SUBTYPE_CONFIG.LOAN;
           const isCard = d.subtype === 'CREDIT_CARD';
-
-          const typeBadge = isCard
-
-            ? '<span class="badge" style="background:#be185d; color:#fbcfe8;">Кредитная карта</span>'
-
-            : '<span class="badge" style="background:#b45309; color:#fde68a;">Кредит / Займ</span>';
-
+          const typeBadge = `<span class="badge" style="background:${cfg.badgeBg}; color:${cfg.badgeColor}; display: inline-flex; align-items: center; gap: 4px;">${cfg.icon} ${cfg.name}</span>`;
           const hasDebt = d.debt_cents > 0;
-
+          
           let limitInfo = '';
-
           if (isCard && d.credit_limit_cents > 0) {
-
             const usedPct = Math.min(100, Math.round((d.debt_cents / d.credit_limit_cents) * 100));
-
             limitInfo = `
-
               <div style="margin-top: 8px;">
-
                 <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
-
-                  <span>Использовано: ${usedPct}%</span>
-
+                  <span>Использовано лимита: ${usedPct}%</span>
                   <span>Лимит: ${d.credit_limit_rub} ₽ | Доступно: ${d.available_rub} ₽</span>
-
                 </div>
-
                 <div class="progress-bar-bg" style="height: 6px;">
-
                   <div class="progress-bar-fill" style="width: ${usedPct}%; background: ${usedPct > 80 ? '#ef4444' : '#f59e0b'}; height: 100%;"></div>
-
                 </div>
-
               </div>
-
             `;
-
           }
 
           const obInfo = d.linked_obligation ? `
-
-            <div style="font-size: 12px; color: #60a5fa; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
-
-              <span>📅 Привязан обязательный ежемесячный платеж: <strong>${d.linked_obligation.amount_rub} ₽</strong> (до ${d.linked_obligation.due_day}-го числа)</span>
-
+            <div style="font-size: 12px; color: #60a5fa; margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(59,130,246,0.1); padding: 6px 12px; border-radius: 6px;">
+              <span>📅 Привязан регулярный платеж: <strong>${d.linked_obligation.amount_rub} ₽</strong> (до ${d.linked_obligation.due_day}-го числа)</span>
               ${d.linked_obligation.is_paid ? '<span class="badge" style="background:#065f46; color:#6ee7b7; font-size:10px;">Оплачен в этом месяце</span>' : '<span class="badge" style="background:#991b1b; color:#fca5a5; font-size:10px;">Ожидает оплаты</span>'}
-
             </div>
-
           ` : '';
 
-          return `
-
-            <div class="card" style="margin-bottom: 0; border-left: 4px solid ${hasDebt ? '#ef4444' : '#10b981'};">
-
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
-
-                <div>
-
-                  <div style="display: flex; align-items: center; gap: 8px;">
-
-                    <span style="font-family: monospace; color: var(--text-muted); font-size: 12px;">${d.code}</span>
-
-                    <strong style="font-size: 16px; color: #fff;">${d.name}</strong>
-
-                    ${typeBadge}
-
-                  </div>
-
-                  <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
-
-                    Текущая задолженность: <strong style="color: ${hasDebt ? '#f87171' : '#34d399'}; font-size: 16px;">${d.debt_rub} ₽</strong>
-
-                  </div>
-
-                </div>
-
-                <div>
-
-                  ${hasDebt ? `<button class="btn btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="openPayDebtModal('${d.id}')">💳 Погасить задолженность</button>` : '<span style="font-size: 12px; color: #34d399;">✅ Задолженности нет</span>'}
-
-                </div>
-
-              </div>
-
-              ${limitInfo}
-
-              ${obInfo}
-
+          const descInfo = d.description ? `
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 6px;">
+              📝 <em>${d.description}</em>
             </div>
+          ` : '';
 
+          const scopeBadge = (d.ownership_scope === 'PERSONAL_HUSBAND') 
+            ? '<span class="badge" style="background: rgba(59,130,246,0.15); color: #93c5fd; font-size:11px;">Муж</span>' 
+            : (d.ownership_scope === 'PERSONAL_WIFE')
+              ? '<span class="badge" style="background: rgba(236,72,153,0.15); color: #f472b6; font-size:11px;">Жена</span>'
+              : '';
+
+          const safeName = encodeURIComponent(d.name || '');
+
+          return `
+            <div class="card" style="margin-bottom: 0; border-left: 4px solid ${hasDebt ? '#ef4444' : '#10b981'};">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 18px;">${cfg.icon}</span>
+                    <strong style="font-size: 16px; color: #fff;">${d.name}</strong>
+                    ${typeBadge}
+                    ${scopeBadge}
+                    <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">${d.code}</span>
+                  </div>
+                  <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                    Остаток задолженности: <strong style="color: ${hasDebt ? '#f87171' : '#34d399'}; font-size: 17px;">${d.debt_rub} ₽</strong>
+                  </div>
+                  ${descInfo}
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  ${hasDebt ? `<button class="btn btn-danger" style="padding: 6px 14px; font-size: 13px;" onclick="openPayDebtModal('${d.id}')">💳 Погасить</button>` : '<span style="font-size: 12px; color: #34d399; font-weight: 600;">✅ Выплачен</span>'}
+                  <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 12px; color: var(--text-muted);" onclick="archiveDebt('${d.id}', '${safeName}')" title="Убрать в архив">📦 В архив</button>
+                </div>
+              </div>
+              ${limitInfo}
+              ${obInfo}
+            </div>
           `;
-
         }).join('');
-
       } catch (e) {
-
         console.error('loadDebts error:', e);
+      }
+    }
 
+    function openNewDebtModal() {
+      document.getElementById('newDebtName').value = '';
+      document.getElementById('newDebtCurrentAmount').value = '';
+      document.getElementById('newDebtCreditLimit').value = '';
+      document.getElementById('newDebtMonthlyPayment').value = '';
+      document.getElementById('newDebtDueDay').value = '15';
+      document.getElementById('newDebtNotes').value = '';
+      document.getElementById('newDebtMsg').innerHTML = '';
+      
+      const chkOb = document.getElementById('chkCreateObligation');
+      if (chkOb) {
+        chkOb.checked = true;
+        toggleDebtObligationFields(true);
+      }
+      const chkRec = document.getElementById('chkReceiveMoney');
+      if (chkRec) {
+        chkRec.checked = false;
+        toggleDebtReceiveAccount(false);
       }
 
+      const recAccSel = document.getElementById('newDebtReceiveAccount');
+      if (recAccSel && overviewData && overviewData.accounts) {
+        recAccSel.innerHTML = '';
+        overviewData.accounts.filter(a => a.type === 'ASSET' && (a.subtype === 'CHECKING' || a.subtype === 'CASH' || a.subtype === 'DEBIT_CARD')).forEach(a => {
+          const opt = document.createElement('option');
+          opt.value = a.id;
+          opt.innerText = `${a.name} (${a.balance_rub} ₽)`;
+          recAccSel.appendChild(opt);
+        });
+      }
+
+      selectDebtType('CREDIT_CARD');
+      document.getElementById('modalNewDebt').classList.remove('hidden');
+    }
+
+    function closeNewDebtModal() {
+      document.getElementById('modalNewDebt').classList.add('hidden');
+    }
+
+    function selectDebtType(subtype) {
+      document.querySelectorAll('.debt-type-btn').forEach(btn => {
+        if (btn.getAttribute('data-type') === subtype) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      document.getElementById('newDebtSubtype').value = subtype;
+
+      const lblName = document.getElementById('lblDebtName');
+      const inputName = document.getElementById('newDebtName');
+      const lblAmount = document.getElementById('lblDebtAmount');
+      const groupLimit = document.getElementById('groupCreditLimit');
+      const inputNotes = document.getElementById('newDebtNotes');
+
+      if (subtype === 'CREDIT_CARD') {
+        lblName.innerText = 'Название карты / банк:';
+        inputName.placeholder = 'Например: Тинькофф Платинум, СберКарта...';
+        lblAmount.innerText = 'Текущий долг по карте (₽):';
+        groupLimit.style.display = 'block';
+        inputNotes.placeholder = 'Грейс-период 55 дней, кэшбэк...';
+      } else if (subtype === 'MORTGAGE') {
+        lblName.innerText = 'Название ипотеки (банк / объект):';
+        inputName.placeholder = 'Например: Семейная ипотека Сбер (Квартира)...';
+        lblAmount.innerText = 'Остаток основного долга (₽):';
+        groupLimit.style.display = 'none';
+        inputNotes.placeholder = 'Ставка 6%, договор №...';
+      } else if (subtype === 'CONSUMER_LOAN') {
+        lblName.innerText = 'Название кредита (банк / цель):';
+        inputName.placeholder = 'Например: Потребкредит ВТБ на ремонт...';
+        lblAmount.innerText = 'Остаток долга (₽):';
+        groupLimit.style.display = 'none';
+        inputNotes.placeholder = 'Ставка 14%, 36 месяцев...';
+      } else if (subtype === 'AUTO_LOAN') {
+        lblName.innerText = 'Название автокредита (автомобиль / банк):';
+        inputName.placeholder = 'Например: Автокредит Geely, Кредит Совкомбанк...';
+        lblAmount.innerText = 'Остаток долга за автомобиль (₽):';
+        groupLimit.style.display = 'none';
+        inputNotes.placeholder = 'КАСКО, договор №...';
+      } else if (subtype === 'PERSONAL_DEBT') {
+        lblName.innerText = 'Кому должны (имя / контакт):';
+        inputName.placeholder = 'Например: Долг брату Олегу, Займ у друга...';
+        lblAmount.innerText = 'Сумма долга (₽):';
+        groupLimit.style.display = 'none';
+        inputNotes.placeholder = 'Без процентов, вернуть до конца года...';
+      } else if (subtype === 'INSTALLMENT_BNPL') {
+        lblName.innerText = 'Название рассрочки (магазин / товар):';
+        inputName.placeholder = 'Например: Яндекс Сплит (Ноутбук), Долями...';
+        lblAmount.innerText = 'Остаток рассрочки (₽):';
+        groupLimit.style.display = 'none';
+        inputNotes.placeholder = '4 платежа каждые 2 недели...';
+      } else {
+        lblName.innerText = 'Название задолженности:';
+        inputName.placeholder = 'Например: Кредит...';
+        lblAmount.innerText = 'Сумма долга (₽):';
+        groupLimit.style.display = 'none';
+      }
+    }
+
+    function toggleDebtObligationFields(checked) {
+      const el = document.getElementById('debtObligationFields');
+      if (el) el.style.display = checked ? 'grid' : 'none';
+    }
+
+    function toggleDebtReceiveAccount(checked) {
+      const el = document.getElementById('debtReceiveAccountField');
+      if (el) el.style.display = checked ? 'block' : 'none';
+    }
+
+    async function submitNewDebt() {
+      const name = document.getElementById('newDebtName').value.trim();
+      const subtype = document.getElementById('newDebtSubtype').value;
+      const initial_debt_rub = parseFloat(document.getElementById('newDebtCurrentAmount').value) || 0;
+      const credit_limit_rub = (subtype === 'CREDIT_CARD') ? (parseFloat(document.getElementById('newDebtCreditLimit').value) || 0) : 0;
+      const ownership_scope = document.getElementById('newDebtScope').value;
+      const chkOb = document.getElementById('chkCreateObligation').checked;
+      const monthly_payment_rub = chkOb ? (parseFloat(document.getElementById('newDebtMonthlyPayment').value) || 0) : 0;
+      const due_day = chkOb ? parseInt(document.getElementById('newDebtDueDay').value) : null;
+      const receive_money = document.getElementById('chkReceiveMoney').checked;
+      const destination_account_id = receive_money ? document.getElementById('newDebtReceiveAccount').value : null;
+      const description = document.getElementById('newDebtNotes').value.trim();
+      const msgEl = document.getElementById('newDebtMsg');
+
+      if (!name) {
+        msgEl.innerHTML = '<div class="alert alert-error">Укажите название задолженности</div>';
+        return;
+      }
+
+      const btn = document.getElementById('btnSubmitNewDebt');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/debts/create', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            name,
+            subtype,
+            ownership_scope,
+            initial_debt_rub,
+            credit_limit_rub,
+            monthly_payment_rub,
+            due_day,
+            receive_money,
+            destination_account_id,
+            description
+          })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          closeNewDebtModal();
+          await loadDashboard();
+          await loadDebts();
+          await loadObligations();
+        } else {
+          msgEl.innerHTML = `<div class="alert alert-error">${data.message || 'Ошибка создания задолженности'}</div>`;
+        }
+      } catch (e) {
+        msgEl.innerHTML = `<div class="alert alert-error">Ошибка сети: ${e.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function archiveDebt(accountId, encodedName) {
+      const name = decodeURIComponent(encodedName || '');
+      if (!confirm(`Отправить задолженность "${name}" в архив? Она перестанет отображаться в активных долгах.`)) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/debts/archive', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ account_id: accountId })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          await loadDashboard();
+          await loadDebts();
+        } else {
+          alert('Ошибка архивации: ' + (data.message || 'Неизвестная ошибка'));
+        }
+      } catch (e) {
+        alert('Ошибка связи: ' + e.message);
+      }
     }
 
     function populatePayDebtSelects(selectedLiabilityId) {
-
       const liabSel = document.getElementById('payDebtLiabilityAccount');
-
       const srcSel = document.getElementById('payDebtSourceAccount');
-
       if (!liabSel || !srcSel) return;
 
       // Populate Liability Accounts
-
       liabSel.innerHTML = '';
-
       if (allDebtsData && allDebtsData.debts) {
-
         allDebtsData.debts.forEach(d => {
-
           const opt = document.createElement('option');
-
           opt.value = d.id;
-
           opt.innerText = `${d.name} (долг: ${d.debt_rub} ₽)`;
-
           if (selectedLiabilityId && d.id === selectedLiabilityId) opt.selected = true;
-
           liabSel.appendChild(opt);
-
         });
-
       }
 
       // Populate Source Liquid Asset Accounts
-
       srcSel.innerHTML = '';
-
       if (overviewData && overviewData.accounts) {
-
-        overviewData.accounts.filter(a => a.type === 'ASSET' && (a.subtype === 'CHECKING' || a.subtype === 'CASH' || a.subtype === 'SAVINGS')).forEach(a => {
-
+        overviewData.accounts.filter(a => a.type === 'ASSET' && (a.subtype === 'CHECKING' || a.subtype === 'CASH' || a.subtype === 'SAVINGS' || a.subtype === 'DEBIT_CARD')).forEach(a => {
           const opt = document.createElement('option');
-
           opt.value = a.id;
-
-          opt.innerText = `${a.name} (${a.scope}, ${a.balance_rub} ₽)`;
-
+          opt.innerText = `${a.name} (${a.scope || a.ownership_scope || ''}, ${a.balance_rub} ₽)`;
           srcSel.appendChild(opt);
-
         });
-
       }
-
     }
 
-    async function openPayDebtModal(targetLiabilityId) {
-
+    function openPayDebtModal(targetLiabilityId) {
       if (!allDebtsData) {
-
         try {
-
-          const res = await fetch('/api/debts', { headers: authHeaders() });
-
-          allDebtsData = await res.json();
-
+          fetch('/api/debts', { headers: authHeaders() }).then(r => r.json()).then(d => {
+            allDebtsData = d;
+            populatePayDebtSelects(targetLiabilityId);
+            onDebtLiabilityChanged();
+          });
         } catch (e) {}
-
+      } else {
+        populatePayDebtSelects(targetLiabilityId);
+        onDebtLiabilityChanged();
       }
-
-      populatePayDebtSelects(targetLiabilityId);
-
-      onDebtLiabilityChanged();
-
       document.getElementById('payDebtAmount').value = '';
-
       document.getElementById('payDebtMsg').innerHTML = '';
-
       document.getElementById('modalPayDebt').classList.remove('hidden');
-
     }
 
     function closePayDebtModal() {
-
       document.getElementById('modalPayDebt').classList.add('hidden');
-
     }
 
     function onDebtLiabilityChanged() {
-
       const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
-
       if (!allDebtsData || !allDebtsData.debts) return;
-
       const d = allDebtsData.debts.find(x => x.id === liabId);
-
       if (!d) return;
-
-      document.getElementById('payDebtCurrentAmount').innerText = d.debt_rub + ' ₽';
-
-      const limRow = document.getElementById('payDebtLimitRow');
-
-      if (d.credit_limit_cents > 0) {
-
-        limRow.style.display = 'flex';
-
-        document.getElementById('payDebtLimitAmount').innerText = d.credit_limit_rub + ' ₽';
-
-      } else {
-
-        limRow.style.display = 'none';
-
-      }
-
-      document.getElementById('payDebtDesc').value = `Погашение задолженности: ${d.name}`;
-
+      document.getElementById('payDebtTargetName').innerText = d.name;
+      document.getElementById('payDebtTargetTotal').innerText = d.debt_rub + ' ₽';
+      document.getElementById('payDebtTargetType').innerText = d.subtype === 'CREDIT_CARD' ? 'Кредитная карта' : 'Кредит / Займ';
     }
 
     function setPayDebtFull() {
-
       const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
-
       if (!allDebtsData || !allDebtsData.debts) return;
-
       const d = allDebtsData.debts.find(x => x.id === liabId);
-
-      if (!d) return;
-
-      document.getElementById('payDebtAmount').value = d.debt_rub;
-
+      if (d && d.debt_rub) {
+        document.getElementById('payDebtAmount').value = String(d.debt_rub).replace(/\\s/g, '');
+      }
     }
 
-    function addPayDebtAmount(amt) {
-
+    function addPayDebtAmount(delta) {
       const el = document.getElementById('payDebtAmount');
-
+      if (!el) return;
       const cur = parseFloat(el.value) || 0;
-
-      el.value = (cur + amt).toFixed(2);
-
+      el.value = (cur + delta).toFixed(2);
     }
 
     async function submitPayDebt() {
-
       const liability_account_id = document.getElementById('payDebtLiabilityAccount').value;
-
       const source_account_id = document.getElementById('payDebtSourceAccount').value;
-
       const amount_rub = document.getElementById('payDebtAmount').value;
-
       const description = document.getElementById('payDebtDesc').value.trim();
-
       const msgEl = document.getElementById('payDebtMsg');
 
       if (!liability_account_id) {
-
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Выберите задолженность для погашения</div>';
-
         return;
-
       }
-
       if (!source_account_id) {
-
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Выберите счет списания</div>';
-
         return;
-
       }
-
       if (!amount_rub || parseFloat(amount_rub) <= 0) {
-
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите сумму погашения больше нуля</div>';
-
         return;
-
       }
 
       try {
-
         const res = await fetch('/api/debts/pay', {
-
           method: 'POST',
-
           headers: authHeaders(),
-
           body: JSON.stringify({
-
             liability_account_id,
-
             source_account_id,
-
             amount_rub,
-
             description
-
           })
-
         });
-
         const data = await res.json();
-
         if (data.status === 'success') {
-
           closePayDebtModal();
-
-          alert('✅ Задолженность успешно погашена! Средства списаны, баланс и Safe-to-Spend обновлены.');
-
-          await loadDebts();
-
           await loadDashboard();
-
+          await loadDebts();
+          await loadTransactions(currentSelectedMonth);
         } else {
-
           msgEl.innerHTML = `<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Ошибка: ${data.message}</div>`;
-
         }
-
       } catch (e) {
-
         msgEl.innerHTML = `<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Ошибка связи: ${e.message}</div>`;
-
       }
-
     }
-
-    // =========================================================================
-
-    // Stage 10: Savings Envelopes & Piggy Banks (Конверты-копилки) Functions
-
-    // =========================================================================
-
-    let allEnvelopesData = [];
-
-    let activeEnvDeposit = null;
-
-    let activeEnvWithdraw = null;
 
     async function loadEnvelopes() {
 
