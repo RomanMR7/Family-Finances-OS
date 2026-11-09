@@ -2046,6 +2046,23 @@ class LedgerEngine:
 
         cursor = conn.cursor()
 
+
+        # Sanitize foreign keys to prevent FOREIGN KEY constraint failed
+        category_id = str(category_id).strip() if category_id else None
+        if category_id:
+            cursor.execute("SELECT id FROM categories WHERE id = ?;", (category_id,))
+            if not cursor.fetchone():
+                category_id = None
+        else:
+            category_id = None
+
+        payment_account_id = str(payment_account_id).strip() if payment_account_id else None
+        if payment_account_id:
+            cursor.execute("SELECT id FROM accounts WHERE id = ?;", (payment_account_id,))
+            if not cursor.fetchone():
+                payment_account_id = None
+        else:
+            payment_account_id = None
         try:
 
             cursor.execute("""
@@ -3514,6 +3531,23 @@ class LedgerEngine:
 
         cursor = conn.cursor()
 
+
+        # Sanitize foreign keys to prevent FOREIGN KEY constraint failed
+        account_id = str(account_id).strip() if account_id else None
+        if account_id:
+            cursor.execute("SELECT id FROM accounts WHERE id = ?;", (account_id,))
+            if not cursor.fetchone():
+                account_id = None
+        else:
+            account_id = None
+
+        category_id = str(category_id).strip() if category_id else None
+        if category_id:
+            cursor.execute("SELECT id FROM categories WHERE id = ?;", (category_id,))
+            if not cursor.fetchone():
+                category_id = None
+        else:
+            category_id = None
         try:
 
             cursor.execute("""
@@ -4438,6 +4472,23 @@ class LedgerEngine:
             account_id = f"acc_liab_{generate_uuid()[:8]}"
             date_str = tx_date or current_iso_time()[:10]
 
+
+            # Sanitize owner_member_id to prevent FOREIGN KEY constraint failed
+            if owner_member_id:
+                owner_member_id = str(owner_member_id).strip()
+                cursor.execute("SELECT id FROM members WHERE id = ?;", (owner_member_id,))
+                if not cursor.fetchone():
+                    owner_member_id = None
+            else:
+                owner_member_id = None
+
+            if destination_account_id:
+                destination_account_id = str(destination_account_id).strip()
+                cursor.execute("SELECT id FROM accounts WHERE id = ?;", (destination_account_id,))
+                if not cursor.fetchone():
+                    destination_account_id = None
+            else:
+                destination_account_id = None
             if subtype == "CREDIT_CARD":
                 meta = {
                     "note": description.strip() if description else "",
@@ -4506,7 +4557,14 @@ class LedgerEngine:
                 else:
                     cursor.execute("SELECT id FROM accounts WHERE code = '3010';")
                     eq_row = cursor.fetchone()
-                    equity_id = eq_row["id"] if eq_row else "acc_core_3010"
+                    if not eq_row:
+                        cursor.execute("""
+                        INSERT OR IGNORE INTO accounts (id, code, name, account_type, subtype, currency, ownership_scope, is_active)
+                        VALUES ('acc_core_3010', '3010', 'Общий семейный капитал', 'EQUITY', 'COMMON_EQUITY', 'RUB', 'COMMON', 1);
+                        """)
+                        equity_id = "acc_core_3010"
+                    else:
+                        equity_id = eq_row["id"]
                     tx_desc = f"Фиксация начального остатка долга '{name.strip()}'"
                     postings = [
                         Posting(

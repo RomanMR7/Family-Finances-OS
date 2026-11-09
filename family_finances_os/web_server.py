@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v11';
+const CACHE_NAME = 'ffos-shell-v14';
 
 const STATIC_SHELL = [
 
@@ -2648,9 +2648,9 @@ self.addEventListener('fetch', (event) => {
 
                 target_date = body.get("target_date") or None
 
-                account_id = body.get("account_id") or None
+                account_id = (body.get("account_id") or "").strip() or None
 
-                category_id = body.get("category_id") or None
+                category_id = (body.get("category_id") or "").strip() or None
 
                 icon = body.get("icon", "🎯")
 
@@ -2834,7 +2834,7 @@ self.addEventListener('fetch', (event) => {
                 else:
                     due_day = None
                 receive_money = bool(body.get("receive_money", False))
-                destination_account_id = body.get("destination_account_id")
+                destination_account_id = (body.get("destination_account_id") or "").strip() or None
                 description = body.get("description", "").strip() or None
 
                 interest_rate_percent = safe_float(body.get("interest_rate_percent"), 24.8)
@@ -4423,6 +4423,24 @@ self.addEventListener('fetch', (event) => {
       .stat-val {
         font-size: 24px !important;
       }
+
+      /* Mobile Modal Viewport & Touch Scroll Fix */
+      #modalNewDebt, #modalEditTx, #modalPayDebt, #modalCardSettings, #modalEnvelope, #modalGoal, #modalObligation, #modalQrPair {
+        align-items: flex-start !important;
+        justify-content: center !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding: 12px 10px 100px 10px !important;
+        z-index: 100000 !important;
+      }
+      #modalNewDebt .card, #modalEditTx .card, #modalPayDebt .card, #modalCardSettings .card, #modalEnvelope .card, #modalGoal .card, #modalObligation .card, #modalQrPair .card {
+        max-height: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-top: 10px !important;
+        margin-bottom: 90px !important;
+        overscroll-behavior: contain !important;
+      }
     }
 
     /* Appetite UI Hero Card & Actions */
@@ -4642,6 +4660,94 @@ self.addEventListener('fetch', (event) => {
       background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.14) 45%, transparent 65%);
       pointer-events: none;
     }
+  
+    /* --- APPETITE UI ENHANCEMENTS --- */
+    :root, [data-theme="dark"] {
+      --bg: #07090e;
+      --bg-gradient: radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.18) 0%, rgba(7, 9, 14, 0) 55%), radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 45%), #07090e;
+      --card-bg: rgba(15, 18, 26, 0.85);
+      --card-hover: rgba(22, 27, 39, 0.95);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: #3b82f6;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-soft: #cbd5e1;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
+      --accent-purple: #8b5cf6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --input-bg: #0a0d14;
+      --modal-bg: #0f121a;
+      --box-bg: rgba(255, 255, 255, 0.025);
+      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+      --shadow-lg: 0 24px 54px -6px rgba(0, 0, 0, 0.9);
+      --card-radius: 20px;
+    }
+
+    body {
+      background: var(--bg-gradient, var(--bg)) !important;
+      background-attachment: fixed !important;
+    }
+
+    .header {
+      background: rgba(7, 9, 14, 0.8) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      border-bottom: 1px solid var(--border) !important;
+    }
+
+    .nav-tabs {
+      background: rgba(15, 18, 26, 0.85) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 9999px !important;
+      padding: 6px !important;
+      margin-bottom: 24px !important;
+      gap: 6px !important;
+    }
+
+    .tab-btn {
+      border-radius: 9999px !important;
+      padding: 9px 20px !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      color: #94a3b8 !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      border: none !important;
+    }
+
+    .tab-btn:hover {
+      color: #ffffff !important;
+      background: rgba(255, 255, 255, 0.06) !important;
+    }
+
+    [data-theme="dark"] .tab-btn.active,
+    :root .tab-btn.active {
+      color: #ffffff !important;
+      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%) !important;
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45) !important;
+      border-color: transparent !important;
+    }
+
+    .card {
+      background: var(--card-bg) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      border: 1px solid var(--border) !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    }
+
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.16) !important;
+      box-shadow: 0 14px 40px -5px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    }
+    /* --- END APPETITE UI ENHANCEMENTS --- */
+
   </style>
 
 </head>
@@ -11033,7 +11139,8 @@ self.addEventListener('fetch', (event) => {
 
         if (res.status === 401 || res.status === 423) return;
 
-        allGoalsData = await res.json();
+        const rawGoals = await res.json();
+        allGoalsData = Array.isArray(rawGoals) ? rawGoals : (rawGoals.goals || []);
 
         if (!allGoalsData || allGoalsData.length === 0) {
 
@@ -11191,8 +11298,8 @@ self.addEventListener('fetch', (event) => {
 
         if (res.status === 401 || res.status === 423) return;
 
-        const goals = await res.json();
-
+        const rawWidget = await res.json();
+        const goals = Array.isArray(rawWidget) ? rawWidget : (rawWidget.goals || []);
         allGoalsData = goals;
 
         if (!goals || goals.length === 0) {
