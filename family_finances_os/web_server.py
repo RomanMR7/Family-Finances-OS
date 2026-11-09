@@ -4336,6 +4336,152 @@ self.addEventListener('fetch', (event) => {
         font-size: 24px !important;
       }
     }
+
+    /* Appetite UI Hero Card & Actions */
+    .appetite-hero-card {
+      position: relative;
+      border-radius: 26px;
+      padding: 28px 24px 22px 24px;
+      color: #ffffff;
+      overflow: hidden;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: radial-gradient(circle at 100% 20%, #283048 0%, #151821 50%, #080808 100%);
+    }
+
+    [data-theme="light"] .appetite-hero-card {
+      background: linear-gradient(180deg, #1864f5 0%, #2f7cf7 55%, #76b1fb 95%, #ffffff 100%);
+      box-shadow: 0 10px 30px rgba(29, 104, 246, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .appetite-hero-stripes {
+      background-image: repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.04) 0px,
+        rgba(255, 255, 255, 0.04) 1px,
+        transparent 1px,
+        transparent 28px
+      );
+    }
+
+    .hero-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .hero-balance-val {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      color: #ffffff;
+      line-height: 1.1;
+    }
+
+    @media (max-width: 600px) {
+      .hero-balance-val {
+        font-size: 32px !important;
+      }
+    }
+
+    .hero-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #ffffff;
+      margin-top: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .hero-actions-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 22px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .hero-action-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: #ffffff;
+      text-decoration: none;
+      transition: transform 0.15s ease;
+    }
+
+    .hero-action-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .hero-action-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #1e2229;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+      margin-bottom: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.2s;
+    }
+
+    [data-theme="light"] .hero-action-icon {
+      background: #ffffff;
+      color: #1d68f6;
+      border: none;
+    }
+
+    .hero-action-btn span {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+    }
+
+    /* Appetite Debit Card Component */
+    .appetite-debit-card {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1.58 / 1;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #1765f6 0%, #1f71f9 45%, #0d52db 100%);
+      padding: 22px;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(29, 104, 246, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      user-select: none;
+    }
+
+    .appetite-card-sheen {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.14) 45%, transparent 65%);
+      pointer-events: none;
+    }
   </style>
 
 </head>
@@ -5686,280 +5832,211 @@ self.addEventListener('fetch', (event) => {
       </div>
 
       <!-- Tab 1: Overview -->
-
       <div id="tab-overview">
 
-        <!-- Quick Actions & Smart Entry Bar -->
-
-        <div class="card" style="margin-bottom: 20px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-
-            <h3 style="font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px;">
-
-              <span>⚡</span> <span>Умный быстрый ввод</span>
-
-            </h3>
-
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-
-              <button class="btn btn-secondary" onclick="openNewDebtModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; color: #93c5fd;">➕ Добавить долг</button>
-
-              <button class="btn btn-secondary" onclick="openPayDebtModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5;">💳 Погасить долг</button>
-
-              <button class="btn btn-secondary" onclick="openNewGoalModal()" style="font-size: 12px; padding: 4px 10px; background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #6ee7b7;">🎯 Новая цель</button>
-
+        <!-- Appetite UI Hero Balance Card -->
+        <div class="appetite-hero-card appetite-hero-stripes">
+          <div>
+            <div class="hero-label">Свободный баланс семьи (Safe-to-Spend)</div>
+            <div class="hero-balance-val" id="valSafeToSpend">0.00 ₽</div>
+            <div class="hero-badge-pill" id="valSafeToSpendBadge">
+              <span id="valSafeToSpendNote">Ликвидные активы за вычетом обязательств и кредиток</span>
             </div>
-
           </div>
 
-          <div class="quick-input-bar" style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; position: relative;">
+          <!-- 4 Quick Actions (Exact Appetite UI Dashboard specification) -->
+          <div class="hero-actions-grid">
+            <button class="hero-action-btn" onclick="openNewTxModal('EXPENSE')">
+              <div class="hero-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </div>
+              <span>Расход</span>
+            </button>
 
-            <!-- Dropdown selector for category directly on dashboard -->
+            <button class="hero-action-btn" onclick="openNewTxModal('INCOME')">
+              <div class="hero-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="17" y1="7" x2="7" y2="17"></line>
+                  <polyline points="17 17 7 17 7 7"></polyline>
+                </svg>
+              </div>
+              <span>Доход</span>
+            </button>
 
+            <button class="hero-action-btn" onclick="openPayDebtModal()">
+              <div class="hero-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <line x1="2" y1="10" x2="22" y2="10"></line>
+                </svg>
+              </div>
+              <span>Погасить</span>
+            </button>
+
+            <button class="hero-action-btn" onclick="openNewGoalModal()">
+              <div class="hero-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="6"></circle>
+                  <circle cx="12" cy="12" r="2"></circle>
+                </svg>
+              </div>
+              <span>Цель</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Smart Quick Entry Bar (Appetite UI Style) -->
+        <div class="card" style="padding: 14px 18px; margin-bottom: 20px;">
+          <div class="quick-input-bar" style="display: flex; gap: 8px; align-items: center; position: relative;">
             <div style="position: relative;">
-
               <button type="button" id="dashCatDropdownBtn" class="btn btn-secondary" 
-
-                      style="padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; height: 44px; border-radius: 8px; background: var(--input-bg); color: var(--text); border: 1px solid var(--border);" 
-
+                      style="padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; height: 44px; border-radius: 12px;" 
                       onclick="toggleCategoryDropdown('dashCatMenu')">
-
                 <span id="dashCatSelectedIcon">🏷️</span>
-
                 <span id="dashCatSelectedName">Категория</span>
-
                 <span style="font-size: 10px; opacity: 0.7;">▼</span>
-
               </button>
-
               <div id="dashCatMenu" class="category-dropdown-menu hidden" style="left: 0; min-width: 290px;">
-
                 <div class="category-dropdown-search">
-
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <span style="font-size: 13px; font-weight: 700; color: var(--text);">🏷️ Выберите категорию</span>
                     <button type="button" onclick="document.getElementById('dashCatMenu').classList.add('hidden')" style="background: transparent; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">✕</button>
                   </div>
-
-                  <input type="text" id="dashCatSearchInput" placeholder="🔍 Поиск категории..." 
-
-                         oninput="filterCategoryDropdown('dashCatMenu', this.value)">
-
+                  <input type="text" id="dashCatSearchInput" placeholder="🔍 Поиск категории..." oninput="filterCategoryDropdown('dashCatMenu', this.value)">
                   <div style="display: flex; gap: 4px; margin-top: 6px;">
-
                     <button type="button" class="btn btn-secondary cat-filter-btn active" onclick="setCatMenuFilter('dashCatMenu', 'ALL', this)" style="padding: 2px 8px; font-size: 11px;">Все</button>
-
                     <button type="button" class="btn btn-secondary cat-filter-btn" onclick="setCatMenuFilter('dashCatMenu', 'EXPENSE', this)" style="padding: 2px 8px; font-size: 11px;">🔴 Расход</button>
-
                     <button type="button" class="btn btn-secondary cat-filter-btn" onclick="setCatMenuFilter('dashCatMenu', 'INCOME', this)" style="padding: 2px 8px; font-size: 11px;">🟢 Доход</button>
-
                   </div>
-
                 </div>
-
                 <div id="dashCatList" class="category-dropdown-list"></div>
-
               </div>
-
             </div>
 
-            <input type="text" id="dashQuickInput" placeholder="Например: 500 кофе, 1500 продукты, 850 аптека..." 
-
-                   style="font-size: 15px; padding: 11px 14px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); flex: 1;"
-
+            <input type="text" id="dashQuickInput" placeholder="Умная запись: 500 кофе, 1500 продукты, 850 аптека..." 
+                   style="font-size: 14px; padding: 11px 16px; border-radius: 12px; flex: 1;"
                    oninput="onQuickInputLive(this.value, 'dashQuickPreview')" 
-
                    onkeydown="if(event.key==='Enter')submitQuickInput('dashQuickInput', 'dashQuickMsg')">
 
-            <button class="btn" style="padding: 11px 18px; font-size: 14px; font-weight: 600; white-space: nowrap;" onclick="submitQuickInput('dashQuickInput', 'dashQuickMsg')">
-
+            <button class="btn" style="padding: 11px 20px; font-size: 14px; font-weight: 600; white-space: nowrap; border-radius: 12px;" onclick="submitQuickInput('dashQuickInput', 'dashQuickMsg')">
               ⚡ Записать
-
             </button>
-
           </div>
 
-          <!-- Live recognition preview badge -->
-
-          <div id="dashQuickPreview" class="alert alert-info hidden" style="margin-bottom: 8px; padding: 8px 12px; font-size: 12px;"></div>
-
+          <div id="dashQuickPreview" class="alert alert-info hidden" style="margin-top: 8px; padding: 8px 12px; font-size: 12px;"></div>
           <div id="dashQuickMsg"></div>
 
-          <!-- 1-Tap Quick presets -->
-
-          <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px;">
-
-            <span style="font-size: 11px; color: var(--text-muted); margin-right: 4px;">Быстрые кнопки:</span>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('1000 продукты')">🛒 Продукты 1000 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('300 кофе')">☕ Кофе 300 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('500 такси')">🚖 Такси 500 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('2000 бензин')">⛽ Бензин 2000 ₽</button>
-
-            <button type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11px; border-radius: 6px;" onclick="applyQuickPreset('500 аптека')">💊 Аптека 500 ₽</button>
-
+          <!-- Quick presets -->
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px;">
+            <span style="font-size: 11px; color: var(--text-muted); margin-right: 4px; font-weight: 500;">Частые:</span>
+            <button type="button" class="btn btn-secondary" style="padding: 3px 9px; font-size: 11px; border-radius: 9999px;" onclick="applyQuickPreset('1000 продукты')">🛒 Продукты 1000 ₽</button>
+            <button type="button" class="btn btn-secondary" style="padding: 3px 9px; font-size: 11px; border-radius: 9999px;" onclick="applyQuickPreset('300 кофе')">☕ Кофе 300 ₽</button>
+            <button type="button" class="btn btn-secondary" style="padding: 3px 9px; font-size: 11px; border-radius: 9999px;" onclick="applyQuickPreset('500 такси')">🚖 Такси 500 ₽</button>
+            <button type="button" class="btn btn-secondary" style="padding: 3px 9px; font-size: 11px; border-radius: 9999px;" onclick="applyQuickPreset('2000 бензин')">⛽ Бензин 2000 ₽</button>
+            <button type="button" class="btn btn-secondary" style="padding: 3px 9px; font-size: 11px; border-radius: 9999px;" onclick="applyQuickPreset('500 аптека')">💊 Аптека 500 ₽</button>
           </div>
-
         </div>
 
-        <!-- Quick Onboarding Wizard Banner for Manual Zero-State Setup -->
-
-        <div id="onboardingBanner" class="card hidden" style="border: 2px solid #3b82f6; background: rgba(59, 130, 246, 0.08); margin-bottom: 20px;">
-
+        <!-- Hidden Onboarding Form (preserved for state initialization if triggered) -->
+        <div id="onboardingBanner" class="card hidden" style="margin-bottom: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-
-            <div>
-
-              <h3 style="font-size: 17px; color: #60a5fa; display:flex; align-items:center; gap: 8px;">
-
-                <span>✨</span> Мастер начальной настройки семейного бюджета
-
-              </h3>
-
-              <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">
-
-                Система чиста и готова к заполнению с нуля. Введите текущие остатки на картах семьи и главное обязательство, чтобы запустить расчет Safe-to-Spend.
-
-              </p>
-
-            </div>
-
+            <h3 style="font-size: 16px; color: var(--primary);">✨ Мастер настройки семейного бюджета</h3>
             <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="document.getElementById('onboardingBanner').classList.add('hidden')">✕ Закрыть</button>
-
           </div>
-
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px;">
-
-            <div style="background: var(--card-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text);">1. Текущие остатки на дебетовых картах (₽)</h4>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Основная карта (1010):</label><input type="number" id="obMainCard" placeholder="0" value="0"></div>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Вторая карта / карта жены (1012):</label><input type="number" id="obWifeCard" placeholder="0" value="0"></div>
-
-              <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">Наличные деньги семьи (1020):</label><input type="number" id="obCash" placeholder="0" value="0"></div>
-
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px;">
+            <div style="background: var(--card-hover); padding: 12px; border-radius: 12px;">
+              <h4 style="font-size: 12px; margin-bottom: 6px;">1. Остатки на картах</h4>
+              <input type="number" id="obMainCard" placeholder="0" value="0" style="margin-bottom: 6px;">
+              <input type="number" id="obWifeCard" placeholder="0" value="0" style="margin-bottom: 6px;">
+              <input type="number" id="obCash" placeholder="0" value="0">
             </div>
-
-            <div style="background: var(--card-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text);">2. Кредитная карта (2020)</h4>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Кредитный лимит (₽):</label><input type="number" id="obCreditLimit" placeholder="0" value="0"></div>
-
-              <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">Текущий долг по кредитке на сегодня (₽):</label><input type="number" id="obCreditDebt" placeholder="0" value="0"></div>
-
+            <div style="background: var(--card-hover); padding: 12px; border-radius: 12px;">
+              <h4 style="font-size: 12px; margin-bottom: 6px;">2. Кредитная карта (2020)</h4>
+              <input type="number" id="obCreditLimit" placeholder="Лимит" value="0" style="margin-bottom: 6px;">
+              <input type="number" id="obCreditDebt" placeholder="Долг" value="0">
             </div>
-
-            <div style="background: var(--card-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-
-              <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text);">3. Главный обязательный платеж месяца</h4>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Название (Аренда / Ипотека / ЖКХ):</label><input type="text" id="obOblName" placeholder="Например: Аренда жилья"></div>
-
-              <div class="form-group" style="margin-bottom: 8px;"><label style="font-size: 11px;">Сумма платежа (₽):</label><input type="number" id="obOblAmount" placeholder="0"></div>
-
-              <div class="form-group" style="margin-bottom: 0;"><label style="font-size: 11px;">День списания (1-31):</label><input type="number" id="obOblDay" value="15"></div>
-
+            <div style="background: var(--card-hover); padding: 12px; border-radius: 12px;">
+              <h4 style="font-size: 12px; margin-bottom: 6px;">3. Обязательный платеж</h4>
+              <input type="text" id="obOblName" placeholder="Аренда / ЖКХ" style="margin-bottom: 6px;">
+              <input type="number" id="obOblAmount" placeholder="Сумма" style="margin-bottom: 6px;">
+              <input type="number" id="obOblDay" value="15">
             </div>
-
           </div>
-
-          <button class="btn" style="width: 100%; padding: 11px; font-size: 14px; font-weight: 600;" onclick="submitOnboarding()">
-
-            🚀 Зафиксировать стартовый бюджет семьи и рассчитать Safe-to-Spend
-
-          </button>
-
+          <button class="btn" style="width: 100%; padding: 10px;" onclick="submitOnboarding()">Зафиксировать бюджет</button>
         </div>
 
-        <!-- Multidimensional Financial Metrics Grid -->
-
-        <div class="grid-3">
-
-          <div class="card">
-
-            <div class="stat-label">Доступно к тратам (Safe-to-Spend)</div>
-
-            <div class="stat-val primary" id="valSafeToSpend">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="valSafeToSpendNote">Ликвидные активы минус платежи и кредитки</p>
-
-          </div>
-
-          <div class="card">
-
-            <div class="stat-label">Обязательные платежи месяца</div>
-
-            <div class="stat-val purple" id="valObligations">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="valObligationsDetail">Осталось оплатить до конца месяца</p>
-
-          </div>
-
-          <div class="card">
-
-            <div class="stat-label">Общие ликвидные активы</div>
-
-            <div class="stat-val success" id="valLiquid">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Все карты + Наличные семьи</p>
-
-          </div>
-
-        </div>
-
-        <div class="grid-3">
-
-          <div class="card">
-
-            <div class="stat-label">Подушка безопасности (Резерв)</div>
-
-            <div class="stat-val warning" id="valReserve">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Накопительные счета / Вклады</p>
-
-          </div>
-
-          <div class="card">
-
-            <div class="stat-label">Чистый капитал семьи</div>
-
-            <div class="stat-val" style="color: #60a5fa;" id="valNetWorth">0.00 ₽</div>
-
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Все активы семьи минус обязательства</p>
-
-          </div>
-
-          <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
-
-            <div>
-
-              <div class="stat-label">Кредитные карты и долги</div>
-
-              <div class="stat-val danger" id="valCreditSummary">0.00 ₽</div>
-
-              <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="valCreditDetail">Доступно: 0.00 ₽</p>
-
+        <!-- Core Financial Cards: Appetite Debit Card + Meso Metrics -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px;">
+          <!-- Left: Appetite Family Debit Card -->
+          <div class="appetite-debit-card">
+            <div class="appetite-card-sheen"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 2;">
+              <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Appetite Family Debit</span>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <path d="M8.5 16.5a5 5 0 0 1 0-7"></path>
+                <path d="M12 19a8.5 8.5 0 0 0 0-12"></path>
+                <path d="M15.5 21.5a12 12 0 0 0 0-17"></path>
+              </svg>
             </div>
 
-            <div style="margin-top: 10px;">
+            <div style="margin: 24px 0 16px 0; position: relative; z-index: 2;">
+              <div style="font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px;">Ликвидный остаток всех карт</div>
+              <div style="font-size: 28px; font-weight: 800; letter-spacing: -0.02em;" id="valLiquid">0.00 ₽</div>
+            </div>
 
-              <button class="btn btn-secondary" style="width: 100%; font-size: 12px; padding: 5px 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #fca5a5;" onclick="openPayDebtModal()">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; position: relative; z-index: 2; font-size: 13px;">
+              <div>
+                <div style="font-size: 10px; opacity: 0.7; text-transform: uppercase;">Владелец</div>
+                <div style="font-weight: 600;">Семья • 1010</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 10px; opacity: 0.7; text-transform: uppercase;">Срок</div>
+                <div style="font-mono font-weight: 600;">12/29</div>
+              </div>
+            </div>
+          </div>
 
-                💳 Погасить задолженность
+          <!-- Right: Appetite Metric Cards Grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="card" style="margin-bottom: 0; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div class="stat-label">Обязательства</div>
+                <div class="stat-val purple" id="valObligations">0.00 ₽</div>
+              </div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;" id="valObligationsDetail">Платежи месяца</p>
+            </div>
 
+            <div class="card" style="margin-bottom: 0; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div class="stat-label">Резерв</div>
+                <div class="stat-val warning" id="valReserve">0.00 ₽</div>
+              </div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Подушка безопасности</p>
+            </div>
+
+            <div class="card" style="margin-bottom: 0; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div class="stat-label">Капитал</div>
+                <div class="stat-val" style="color: #60a5fa;" id="valNetWorth">0.00 ₽</div>
+              </div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Чистый капитал семьи</p>
+            </div>
+
+            <div class="card" style="margin-bottom: 0; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div class="stat-label">Кредиты и долги</div>
+                <div class="stat-val danger" id="valCreditSummary">0.00 ₽</div>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="valCreditDetail">Доступно: 0.00 ₽</p>
+              </div>
+              <button class="btn btn-secondary" style="width: 100%; font-size: 11px; padding: 6px 8px; margin-top: 8px; color: #f87171;" onclick="openPayDebtModal()">
+                Погасить
               </button>
-
             </div>
-
           </div>
-
         </div>
 
         <!-- Goals Progress Widget on Dashboard -->
