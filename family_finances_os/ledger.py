@@ -1,3 +1,4 @@
+import json
 """
 
 Family Finances OS - Comprehensive Double-Entry Ledger Engine
@@ -4075,6 +4076,152 @@ class LedgerEngine:
     # ---------------------------------------------------------
 
 
+    @staticmethod
+    def calculate_credit_card_banking_metrics(
+        debt_cents: int,
+        credit_limit_cents: int = 0,
+        interest_rate_percent: float = 24.8,
+        grace_period_days: int = 120,
+        grace_due_date: str = None,
+        min_payment_percent: float = 3.0,
+        late_penalty_rate_percent: float = 36.0,
+        as_of_date: str = None
+    ) -> dict:
+        """
+        Calculate banking indicators for credit cards according to Russian banking rules
+        and specific PAO Sberbank contract parameters (120 days grace, 24.8% APR, 36.0% overdue penalty):
+        - Minimum monthly mandatory payment (standard 3% Sberbank / 5% general Russian banks, min 150 rubles)
+        - Days remaining until grace period expiration / payment due date
+        - Status (PAID_OFF, GRACE_ACTIVE, PAYMENT_DUE_SOON, OVERDUE)
+        - Overdue interest & penalty accumulation (APR, 36.0% overdue penalty according to Sberbank contract)
+        - 30-day overdue simulation
+        """
+        from datetime import date
+        today = date.fromisoformat(as_of_date) if as_of_date else date.today()
+        debt_cents = max(0, int(debt_cents))
+        credit_limit_cents = max(0, int(credit_limit_cents))
+        interest_rate_percent = float(interest_rate_percent)
+        grace_period_days = int(grace_period_days)
+        min_payment_percent = float(min_payment_percent)
+        late_penalty_rate_percent = float(late_penalty_rate_percent)
+
+        if debt_cents == 0:
+            min_payment_cents = 0
+        else:
+            calc_min = round(debt_cents * (min_payment_percent / 100.0))
+            min_payment_cents = min(debt_cents, max(15000, calc_min))
+
+        days_remaining = None
+        due_date_str = None
+        if grace_due_date and str(grace_due_date).strip():
+            try:
+                clean_due = str(grace_due_date).strip()[:10]
+                due_parsed = date.fromisoformat(clean_due)
+                days_remaining = (due_parsed - today).days
+                due_date_str = clean_due
+            except Exception:
+                days_remaining = None
+
+        min_payment_str = cents_to_rubles(min_payment_cents)
+        debt_str = cents_to_rubles(debt_cents)
+
+        if debt_cents == 0:
+            status = "PAID_OFF"
+            status_label = "Задолженность отсутствует"
+            status_color = "gray"
+            is_urgent = False
+            is_overdue = False
+            overdue_days = 0
+            warning_message = "Задолженность по карте отсутствует (0.00 ₽). Проценты и штрафы не начисляются."
+        elif days_remaining is not None and days_remaining < 0:
+            status = "OVERDUE"
+            overdue_days = abs(days_remaining)
+            status_label = f"Просрочка {overdue_days} дн.!"
+            status_color = "red"
+            is_urgent = True
+            is_overdue = True
+            warning_message = (
+                f"ВНИМАНИЕ: Платеж просрочен на {overdue_days} дн.! "
+                f"Банк начисляет неустойку {late_penalty_rate_percent:.1f}% годовых и ставку {interest_rate_percent:.1f}% годовых. "
+                f"Срочно внесите минимальный платеж {min_payment_str} ₽!"
+            )
+        elif days_remaining is not None and days_remaining <= 5:
+            status = "PAYMENT_DUE_SOON"
+            overdue_days = 0
+            status_label = f"Срочно: осталось {days_remaining} дн."
+            status_color = "yellow"
+            is_urgent = True
+            is_overdue = False
+            warning_message = (
+                f"Срочно: через {days_remaining} дн. наступает дата платежа (до {due_date_str})! "
+                f"Внесите обязательный платеж {min_payment_str} ₽ или закройте долг целиком {debt_str} ₽."
+            )
+        else:
+            status = "GRACE_ACTIVE"
+            overdue_days = 0
+            status_label = f"В грейсе ({days_remaining} дн.)" if days_remaining is not None else "Льготный период активен"
+            status_color = "green"
+            is_urgent = False
+            is_overdue = False
+            rem_text = f"еще {days_remaining} дн." if days_remaining is not None else "активен"
+            warning_message = f"Беспроцентный период {rem_text}. Обязательный платеж: {min_payment_str} ₽."
+
+        r_daily = (interest_rate_percent / 100.0) / 365.0
+        p_daily = (late_penalty_rate_percent / 100.0) / 365.0
+
+        if is_overdue and debt_cents > 0:
+            accrued_overdue_interest_cents = round(debt_cents * r_daily * overdue_days)
+            accrued_overdue_penalty_cents = round(debt_cents * p_daily * overdue_days)
+        else:
+            accrued_overdue_interest_cents = 0
+            accrued_overdue_penalty_cents = 0
+
+        current_debt_with_accruals_cents = debt_cents + accrued_overdue_interest_cents + accrued_overdue_penalty_cents
+
+        sim_30d_interest_cents = round(debt_cents * r_daily * 30)
+        sim_30d_penalty_cents = round(debt_cents * p_daily * 30)
+        sim_30d_extra_cents = sim_30d_interest_cents + sim_30d_penalty_cents
+        sim_30d_total_cents = debt_cents + sim_30d_extra_cents
+
+        return {
+            "debt_cents": debt_cents,
+            "debt_rub": float(debt_str),
+            "debt_formatted": debt_str,
+            "credit_limit_cents": credit_limit_cents,
+            "credit_limit_rub": float(cents_to_rubles(credit_limit_cents)),
+            "credit_limit_formatted": cents_to_rubles(credit_limit_cents),
+            "interest_rate_percent": interest_rate_percent,
+            "grace_period_days": grace_period_days,
+            "grace_due_date": due_date_str,
+            "min_payment_percent": min_payment_percent,
+            "late_penalty_rate_percent": late_penalty_rate_percent,
+            "min_payment_cents": min_payment_cents,
+            "min_payment_rub": float(min_payment_str),
+            "min_payment_formatted": min_payment_str,
+            "days_remaining": days_remaining,
+            "overdue_days": overdue_days,
+            "status": status,
+            "status_label": status_label,
+            "status_color": status_color,
+            "is_urgent": is_urgent,
+            "is_overdue": is_overdue,
+            "warning_message": warning_message,
+            "accrued_overdue_interest_cents": accrued_overdue_interest_cents,
+            "accrued_overdue_interest_rub": float(cents_to_rubles(accrued_overdue_interest_cents)),
+            "accrued_overdue_penalty_cents": accrued_overdue_penalty_cents,
+            "accrued_overdue_penalty_rub": float(cents_to_rubles(accrued_overdue_penalty_cents)),
+            "current_debt_with_accruals_cents": current_debt_with_accruals_cents,
+            "current_debt_with_accruals_rub": float(cents_to_rubles(current_debt_with_accruals_cents)),
+            "simulation_30d_interest_cents": sim_30d_interest_cents,
+            "simulation_30d_interest_rub": float(cents_to_rubles(sim_30d_interest_cents)),
+            "simulation_30d_penalty_cents": sim_30d_penalty_cents,
+            "simulation_30d_penalty_rub": float(cents_to_rubles(sim_30d_penalty_cents)),
+            "simulation_30d_extra_cents": sim_30d_extra_cents,
+            "simulation_30d_extra_rub": float(cents_to_rubles(sim_30d_extra_cents)),
+            "simulation_30d_total_cents": sim_30d_total_cents,
+            "simulation_30d_total_rub": float(cents_to_rubles(sim_30d_total_cents))
+        }
+
     def create_debt(
         self,
         name: str,
@@ -4088,28 +4235,13 @@ class LedgerEngine:
         destination_account_id: Optional[str] = None,
         description: Optional[str] = None,
         owner_member_id: Optional[str] = None,
-        tx_date: Optional[str] = None
+        tx_date: Optional[str] = None,
+        interest_rate_percent: float = 24.8,
+        grace_period_days: int = 120,
+        grace_due_date: Optional[str] = None,
+        min_payment_percent: float = 3.0,
+        late_penalty_rate_percent: float = 36.0
     ) -> Dict[str, Any]:
-        """
-        Create a new debt / liability account of any supported subtype:
-        - CREDIT_CARD (Кредитная карта)
-        - MORTGAGE (Ипотека)
-        - CONSUMER_LOAN (Потребительский кредит)
-        - AUTO_LOAN (Автокредит)
-        - PERSONAL_DEBT (Долг человеку / частный заём)
-        - INSTALLMENT_BNPL (Рассрочка / Долями / Сплит)
-        - LOAN (Кредит / заём)
-
-        Maintains strict double-entry balance:
-        - If receive_money is True:
-          DEBIT: destination_account_id (+funds)
-          CREDIT: new_liability_account (+debt)
-        - If receive_money is False and initial_debt_cents > 0:
-          DEBIT: Equity account 3010
-          CREDIT: new_liability_account (+debt)
-
-        Optionally creates a linked recurring monthly obligation if monthly_payment_cents > 0 and due_day is provided.
-        """
         if not name or not name.strip():
             raise ValueError("Название задолженности не может быть пустым.")
 
@@ -4130,7 +4262,6 @@ class LedgerEngine:
         conn = self._get_conn()
         cursor = conn.cursor()
         try:
-            # Determine next accounting code in 2000-2999 range
             cursor.execute("""
             SELECT code FROM accounts 
             WHERE account_type = 'LIABILITY' AND code GLOB '2[0-9][0-9][0-9]'
@@ -4145,7 +4276,19 @@ class LedgerEngine:
             account_id = f"acc_liab_{generate_uuid()[:8]}"
             date_str = tx_date or current_iso_time()[:10]
 
-            # Insert account
+            if subtype == "CREDIT_CARD":
+                meta = {
+                    "note": description.strip() if description else "",
+                    "interest_rate_percent": float(interest_rate_percent),
+                    "grace_period_days": int(grace_period_days),
+                    "grace_due_date": str(grace_due_date).strip() if grace_due_date else None,
+                    "min_payment_percent": float(min_payment_percent),
+                    "late_penalty_rate_percent": float(late_penalty_rate_percent)
+                }
+                desc_val = json.dumps(meta, ensure_ascii=False)
+            else:
+                desc_val = description.strip() if description else None
+
             cursor.execute("""
             INSERT INTO accounts (
                 id, code, name, account_type, subtype, currency,
@@ -4159,22 +4302,19 @@ class LedgerEngine:
                 subtype,
                 ownership_scope,
                 owner_member_id,
-                description.strip() if description else None,
+                desc_val,
                 credit_limit_cents,
                 initial_debt_cents
             ))
 
-            # Record CDC event for account creation
             cursor.execute("SELECT * FROM accounts WHERE id = ?;", (account_id,))
             acc_row = cursor.fetchone()
             self._get_sync_engine().record_change_event("ACCOUNT", account_id, "INSERT", dict(acc_row), cursor=cursor)
 
-            # Double-entry transaction for initial debt balance
             tx_id = None
             if initial_debt_cents > 0:
                 tx_id = generate_uuid()
                 if receive_money and destination_account_id:
-                    # Received money on account right now
                     dest_acc = self.get_account_by_id(destination_account_id)
                     if not dest_acc:
                         raise ValueError(f"Счет зачисления {destination_account_id} не найден.")
@@ -4202,7 +4342,6 @@ class LedgerEngine:
                         )
                     ]
                 else:
-                    # Existing opening debt
                     cursor.execute("SELECT id FROM accounts WHERE code = '3010';")
                     eq_row = cursor.fetchone()
                     equity_id = eq_row["id"] if eq_row else "acc_core_3010"
@@ -4241,11 +4380,9 @@ class LedgerEngine:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                     """, (p.id, p.transaction_id, p.account_id, p.amount_cents, p.posting_type, p.ownership_scope, p.purpose_allocation, p.note))
 
-                # CDC for transaction
                 cursor.execute("SELECT * FROM transactions WHERE id = ?;", (tx_id,))
                 self._get_sync_engine().record_change_event("TRANSACTION", tx_id, "INSERT", dict(cursor.fetchone()), cursor=cursor)
 
-            # Optional recurring monthly obligation creation
             obligation_id = None
             if monthly_payment_cents > 0 and due_day:
                 obligation_id = generate_uuid()
@@ -4283,164 +4420,209 @@ class LedgerEngine:
         finally:
             self._close_if_local(conn)
 
-    def get_debts_summary(self) -> Dict[str, Any]:
-
+    def update_credit_card_settings(
+        self,
+        account_id: str,
+        interest_rate_percent: float = 24.8,
+        grace_period_days: int = 120,
+        grace_due_date: Optional[str] = None,
+        min_payment_percent: float = 3.0,
+        late_penalty_rate_percent: float = 36.0,
+        credit_limit_cents: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
-
-        Get structured overview of all liabilities, debts, credit cards and loans.
-
+        Update banking terms and grace period due date for a credit card account.
         """
-
         conn = self._get_conn()
-
         cursor = conn.cursor()
-
         try:
+            cursor.execute("SELECT * FROM accounts WHERE id = ?;", (account_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError(f"Счет задолженности {account_id} не найден.")
 
+            current_desc = row["description"] or ""
+            note = ""
+            if current_desc.strip().startswith("{"):
+                try:
+                    parsed = json.loads(current_desc)
+                    note = parsed.get("note", "")
+                except Exception:
+                    note = current_desc
+            else:
+                note = current_desc
+
+            meta = {
+                "note": note,
+                "interest_rate_percent": float(interest_rate_percent),
+                "grace_period_days": int(grace_period_days),
+                "grace_due_date": str(grace_due_date).strip() if grace_due_date else None,
+                "min_payment_percent": float(min_payment_percent),
+                "late_penalty_rate_percent": float(late_penalty_rate_percent)
+            }
+            new_desc = json.dumps(meta, ensure_ascii=False)
+
+            if credit_limit_cents is not None:
+                cursor.execute("""
+                UPDATE accounts
+                SET description = ?, credit_limit_cents = ?
+                WHERE id = ?;
+                """, (new_desc, max(0, int(credit_limit_cents)), account_id))
+            else:
+                cursor.execute("""
+                UPDATE accounts
+                SET description = ?
+                WHERE id = ?;
+                """, (new_desc, account_id))
+
+            cursor.execute("SELECT * FROM accounts WHERE id = ?;", (account_id,))
+            updated_row = dict(cursor.fetchone())
+            self._get_sync_engine().record_change_event("ACCOUNT", account_id, "UPDATE", updated_row, cursor=cursor)
+
+            conn.commit()
+            self._save_if_encrypted()
+
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "updated": True,
+                "metadata": meta
+            }
+        finally:
+            self._close_if_local(conn)
+
+    def get_debts_summary(self) -> Dict[str, Any]:
+        """
+        Get structured overview of all liabilities, debts, credit cards and loans,
+        including banking grace period calculations and overdue penalty alerts.
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
             cursor.execute("""
-
             SELECT 
-
                 a.id, a.code, a.name, a.subtype, a.credit_limit_cents, a.ownership_scope,
-
+                a.description,
                 COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) -
-
                 COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) as balance_cents
-
             FROM accounts a
-
             LEFT JOIN postings p ON a.id = p.account_id
-
             LEFT JOIN transactions t ON p.transaction_id = t.id AND t.is_voided = 0
-
             WHERE a.account_type = 'LIABILITY' AND a.is_active = 1
-
             GROUP BY a.id
-
             ORDER BY a.code;
-
             """)
-
             rows = cursor.fetchall()
 
-            # Also check recurring obligations linked to liabilities
-
             cursor.execute("""
-
             SELECT o.id, o.name, o.amount_cents, o.due_day, o.payment_account_id,
-
                    op.paid_amount_cents, op.paid_at
-
             FROM obligations o
-
             LEFT JOIN obligation_payments op ON o.id = op.obligation_id AND op.month_year = ?
-
             WHERE o.is_active = 1;
-
             """, (current_iso_time()[:7],))
-
             ob_rows = cursor.fetchall()
-
             ob_by_acc = {}
-
             for ob in ob_rows:
-
                 acc_id = ob["payment_account_id"]
-
                 if acc_id:
-
                     ob_by_acc[acc_id] = {
-
                         "obligation_id": ob["id"],
-
                         "name": ob["name"],
-
                         "amount_cents": ob["amount_cents"],
-
                         "amount_rub": cents_to_rubles(ob["amount_cents"]),
-
                         "due_day": ob["due_day"],
-
                         "is_paid": ob["paid_amount_cents"] is not None
-
                     }
 
             debts = []
-
             total_debt_cents = 0
-
             credit_cards_debt_cents = 0
-
             loans_debt_cents = 0
+            urgent_cards_count = 0
+            total_min_payments_cents = 0
 
             for r in rows:
-
                 bal = max(0, r["balance_cents"])
-
                 limit = r["credit_limit_cents"] or 0
-
                 subtype = r["subtype"]
 
+                banking = None
                 if subtype == "CREDIT_CARD":
-
                     credit_cards_debt_cents += bal
-
                     avail_cents = max(0, limit - bal)
 
+                    apr = 24.8
+                    grace_days = 120
+                    grace_due = None
+                    min_pct = 3.0
+                    late_penalty = 36.0
+                    note = ""
+
+                    raw_desc = r["description"] or ""
+                    if raw_desc.strip().startswith("{"):
+                        try:
+                            parsed = json.loads(raw_desc)
+                            apr = float(parsed.get("interest_rate_percent", 24.8))
+                            grace_days = int(parsed.get("grace_period_days", 120))
+                            grace_due = parsed.get("grace_due_date")
+                            min_pct = float(parsed.get("min_payment_percent", 3.0))
+                            late_penalty = float(parsed.get("late_penalty_rate_percent", 36.0))
+                            note = parsed.get("note", "")
+                        except Exception:
+                            note = raw_desc
+                    else:
+                        note = raw_desc
+
+                    banking = self.calculate_credit_card_banking_metrics(
+                        debt_cents=bal,
+                        credit_limit_cents=limit,
+                        interest_rate_percent=apr,
+                        grace_period_days=grace_days,
+                        grace_due_date=grace_due,
+                        min_payment_percent=min_pct,
+                        late_penalty_rate_percent=late_penalty
+                    )
+                    banking["note"] = note
+                    if banking["is_urgent"] and bal > 0:
+                        urgent_cards_count += 1
+                    total_min_payments_cents += banking["min_payment_cents"]
                 else:
-
                     loans_debt_cents += bal
-
                     avail_cents = 0
 
                 total_debt_cents += bal
 
                 debts.append({
-
                     "id": r["id"],
-
                     "code": r["code"],
-
                     "name": r["name"],
-
                     "subtype": subtype,
-
                     "debt_cents": bal,
-
                     "debt_rub": cents_to_rubles(bal),
-
                     "credit_limit_cents": limit,
-
                     "credit_limit_rub": cents_to_rubles(limit),
-
                     "available_cents": avail_cents,
-
                     "available_rub": cents_to_rubles(avail_cents),
-
+                    "description": r["description"],
+                    "banking": banking,
                     "linked_obligation": ob_by_acc.get(r["id"])
-
                 })
 
             return {
-
                 "debts": debts,
-
                 "total_debt_cents": total_debt_cents,
-
                 "total_debt_rub": cents_to_rubles(total_debt_cents),
-
                 "credit_cards_debt_cents": credit_cards_debt_cents,
-
                 "credit_cards_debt_rub": cents_to_rubles(credit_cards_debt_cents),
-
                 "loans_debt_cents": loans_debt_cents,
-
-                "loans_debt_rub": cents_to_rubles(loans_debt_cents)
-
+                "loans_debt_rub": cents_to_rubles(loans_debt_cents),
+                "has_urgent_card_payment": urgent_cards_count > 0,
+                "urgent_cards_count": urgent_cards_count,
+                "total_min_payments_cents": total_min_payments_cents,
+                "total_min_payments_rub": cents_to_rubles(total_min_payments_cents)
             }
-
         finally:
-
             self._close_if_local(conn)
 
     def record_debt_repayment(
