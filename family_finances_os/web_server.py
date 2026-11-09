@@ -68,6 +68,8 @@ from family_finances_os.models import (
 
 PORT = 8000
 
+ENABLE_P2P_SYNC: bool = os.environ.get("FFOS_ENABLE_P2P_SYNC", "0").lower() in ("1", "true", "yes")
+
 def get_lan_ip_candidates() -> List[str]:
 
     """Discover candidate LAN IPv4 addresses of the host machine."""
@@ -3725,6 +3727,8 @@ self.addEventListener('fetch', (event) => {
           <span id="themeToggleIcon">☀️</span> <span id="themeToggleText">Светлая</span>
         </button>
         <span class="badge" id="storageBadge">Шифрование: AES-256-GCM</span>
+
+        <span class="badge" id="offlineModeBadge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight:600;">🏠 100% Локально</span>
 
         <span class="badge hidden" id="syncBadge" style="background:#047857; cursor:pointer;" onclick="triggerLanSync()" title="Нажмите для синхронизации в домашней сети">📡 P2P: 0 пиров</span>
 
@@ -7432,11 +7436,10 @@ self.addEventListener('fetch', (event) => {
 
             document.getElementById('btnLogout').classList.remove('hidden');
 
-            document.getElementById('btnHeaderQrPair').classList.remove('hidden');
-
-            document.getElementById('syncBadge').classList.remove('hidden');
-
-            updateSyncStatus();
+            // Wi-Fi / P2P sync and QR pairing disabled for local home mode
+            // document.getElementById('btnHeaderQrPair').classList.remove('hidden');
+            // document.getElementById('syncBadge').classList.remove('hidden');
+            // updateSyncStatus();
 
           }
 
@@ -9292,7 +9295,7 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-    setInterval(updateSyncStatus, 8000);
+    // Sync polling disabled for local home mode
 
     async function triggerLanSync() {
 
@@ -12289,29 +12292,19 @@ def start_server(port: int = PORT, host: str = "127.0.0.1"):
 
             print(f"[{APP_NAME}] Хранилище защищено пользовательским мастер-паролем (ожидает разблокировки).")
 
-    # Start LAN P2P Discovery Beacon
-
-    try:
-
-        from family_finances_os.sync import PeerDiscoveryBeacon, P2PSyncEngine
-
-        sync_engine = P2PSyncEngine()
-
-        GLOBAL_DISCOVERY_BEACON = PeerDiscoveryBeacon(
-
-            device_id=sync_engine.device_id,
-
-            device_name=sync_engine.device_name,
-
-            http_port=port
-
-        )
-
-        GLOBAL_DISCOVERY_BEACON.start()
-
-    except Exception as e:
-
-        print(f"[{APP_NAME}] Discovery beacon notice: {e}")
+    # Start LAN P2P Discovery Beacon (Disabled by default for 100% local operation)
+    if ENABLE_P2P_SYNC:
+        try:
+            from family_finances_os.sync import PeerDiscoveryBeacon, P2PSyncEngine
+            sync_engine = P2PSyncEngine()
+            GLOBAL_DISCOVERY_BEACON = PeerDiscoveryBeacon(
+                device_id=sync_engine.device_id,
+                device_name=sync_engine.device_name,
+                http_port=port
+            )
+            GLOBAL_DISCOVERY_BEACON.start()
+        except Exception as e:
+            print(f"[{APP_NAME}] Discovery beacon notice: {e}")
 
     socketserver.TCPServer.allow_reuse_address = True
 

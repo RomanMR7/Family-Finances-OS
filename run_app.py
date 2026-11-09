@@ -54,13 +54,9 @@ def print_banner(host: str, port: int, local_ip: str):
     print("      Закрытая автономная система управления финансами семьи")
     print("=" * 68)
     print(f"[*] Локальный веб-интерфейс:   http://127.0.0.1:{port}")
-    if host == "0.0.0.0":
-        print(f"[*] Доступ со смартфона по Wi-Fi: http://{local_ip}:{port}")
-    else:
-        print(f"[*] Сетевой режим:             Только локальный ПК")
-        print(f"    (Для доступа со смартфона запустите: python run_app.py --lan)")
+    print("[*] Сетевой режим:             100% Автономно на ПК (Wi-Fi синхронизация отключена)")
     print("[*] Безопасность хранилища:    Envelope Encryption (AES-256-GCM + PBKDF2 600k)")
-    print("[*] Синхронизация в сети:      P2P Local UDP Beacon (порт 41234, без облака)")
+    print("[*] База данных:               Локально на диске (SQLite)")
     print("[*] Для остановки сервера нажмите Ctrl + C")
     print("=" * 68)
     print()
