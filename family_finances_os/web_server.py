@@ -532,18 +532,24 @@ self.addEventListener('fetch', (event) => {
         self.wfile.write(body)
 
     def _read_json_body(self) -> dict:
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            content_length = 0
 
-        content_length = int(self.headers.get("Content-Length", 0))
-
-        if content_length == 0:
-
+        if content_length <= 0:
             self._raw_body_bytes = b""
-
             return {}
 
-        self._raw_body_bytes = self.rfile.read(content_length)
-
-        return json.loads(self._raw_body_bytes.decode("utf-8"))
+        try:
+            self._raw_body_bytes = self.rfile.read(content_length)
+            decoded = self._raw_body_bytes.decode("utf-8", errors="replace").strip()
+            if not decoded:
+                return {}
+            parsed = json.loads(decoded)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
 
     def _get_bearer_token(self) -> Optional[str]:
 
@@ -10501,13 +10507,27 @@ self.addEventListener('fetch', (event) => {
       if (!container) return;
       try {
         const res = await fetch('/api/debts', { headers: authHeaders() });
-        if (res.status === 401 || res.status === 423) return;
+        if (res.status === 401) {
+          container.innerHTML = '<div class="alert alert-error" style="padding:16px; text-align:center;">🔒 Сессия истекла. Пожалуйста, выполните вход заново.</div>';
+          return;
+        }
+        if (res.status === 423) {
+          container.innerHTML = '<div class="alert alert-warning" style="padding:16px; text-align:center;">🔒 База данных заблокирована мастер-паролем.</div>';
+          return;
+        }
+        if (!res.ok) {
+          container.innerHTML = `<div class="alert alert-error" style="padding:16px; text-align:center;">⚠️ Ошибка связи с сервером (${res.status}). Не удалось загрузить долги.</div>`;
+          return;
+        }
         allDebtsData = await res.json();
         
         // Update KPI summary cards
-        document.getElementById('debtsTabTotal').innerText = (allDebtsData.total_debt_rub || '0.00') + ' ₽';
-        document.getElementById('debtsTabCards').innerText = (allDebtsData.credit_cards_debt_rub || '0.00') + ' ₽';
-        document.getElementById('debtsTabLoans').innerText = (allDebtsData.loans_debt_rub || '0.00') + ' ₽';
+        const totalEl = document.getElementById('debtsTabTotal');
+        if (totalEl) totalEl.innerText = (allDebtsData.total_debt_rub || '0.00') + ' ₽';
+        const cardsEl = document.getElementById('debtsTabCards');
+        if (cardsEl) cardsEl.innerText = (allDebtsData.credit_cards_debt_rub || '0.00') + ' ₽';
+        const loansEl = document.getElementById('debtsTabLoans');
+        if (loansEl) loansEl.innerText = (allDebtsData.loans_debt_rub || '0.00') + ' ₽';
 
         // Urgent Alert Banner
         const urgentBanner = document.getElementById('debtsUrgentBanner');
@@ -10521,7 +10541,7 @@ self.addEventListener('fetch', (event) => {
           }
         }
 
-        const debts = allDebtsData.debts || [];
+        const debts = Array.isArray(allDebtsData.debts) ? allDebtsData.debts : [];
         if (debts.length === 0) {
           container.innerHTML = `
             <div style="text-align: center; padding: 36px 16px; background: rgba(16,185,129,0.05); border-radius: 12px; border: 1px dashed rgba(16,185,129,0.3);">
@@ -10541,16 +10561,16 @@ self.addEventListener('fetch', (event) => {
           const isCard = d.subtype === 'CREDIT_CARD';
           const fullDebtNum = parseFloat(d.debt_rub) || 0;
           const typeBadge = `<span class="badge" style="background:${cfg.badgeBg}; color:${cfg.badgeColor}; display: inline-flex; align-items: center; gap: 4px;">${cfg.icon} ${cfg.name}</span>`;
-          const hasDebt = d.debt_cents > 0;
+          const hasDebt = (d.debt_cents || 0) > 0;
           
           let limitInfo = '';
-          if (isCard && d.credit_limit_cents > 0) {
-            const usedPct = Math.min(100, Math.round((d.debt_cents / d.credit_limit_cents) * 100));
+          if (isCard && (d.credit_limit_cents || 0) > 0) {
+            const usedPct = Math.min(100, Math.round(((d.debt_cents || 0) / d.credit_limit_cents) * 100));
             limitInfo = `
               <div style="margin-top: 8px;">
                 <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
                   <span>Использовано лимита: <strong>${usedPct}%</strong></span>
-                  <span>Лимит: <strong>${d.credit_limit_rub} ₽</strong> | Доступно: <strong>${d.available_rub} ₽</strong></span>
+                  <span>Лимит: <strong>${d.credit_limit_rub || '0.00'} ₽</strong> | Доступно: <strong>${d.available_rub || '0.00'} ₽</strong></span>
                 </div>
                 <div class="progress-bar-bg" style="height: 6px;">
                   <div class="progress-bar-fill" style="width: ${usedPct}%; background: ${usedPct > 80 ? '#ef4444' : (usedPct > 50 ? '#f59e0b' : '#10b981')}; height: 100%;"></div>
@@ -10564,7 +10584,7 @@ self.addEventListener('fetch', (event) => {
             const b = d.banking;
             const statusColor = b.status_color === 'red' ? '#ef4444' : (b.status_color === 'yellow' ? '#f59e0b' : (b.status_color === 'green' ? '#10b981' : '#64748b'));
             const statusBg = b.status_color === 'red' ? 'rgba(239, 68, 68, 0.15)' : (b.status_color === 'yellow' ? 'rgba(245, 158, 11, 0.15)' : (b.status_color === 'green' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)'));
-            const statusBadge = `<span class="badge" style="background:${statusBg}; color:${statusColor}; border:1px solid ${statusColor}; font-weight:700; font-size:11px; padding:3px 8px;">${b.status_label}</span>`;
+            const statusBadge = `<span class="badge" style="background:${statusBg}; color:${statusColor}; border:1px solid ${statusColor}; font-weight:700; font-size:11px; padding:3px 8px;">${b.status_label || 'Активна'}</span>`;
 
             cardBankingBlock = `
               <div style="background: var(--card-hover); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; margin-top: 10px;">
@@ -10580,23 +10600,23 @@ self.addEventListener('fetch', (event) => {
 
                 <!-- Warning message -->
                 <div style="font-size: 12px; color: ${statusColor}; margin-bottom: 10px; line-height: 1.4; padding: 8px 12px; background: ${statusBg}; border-radius: 6px; border: 1px solid ${statusColor};">
-                  ${b.warning_message}
+                  ${b.warning_message || 'Контроль платежей по кредитной карте активен.'}
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px;">
                   <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Обязательный мин. платеж:</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #fbbf24;">${b.min_payment_formatted || b.min_payment_rub} ₽</div>
-                    <div style="font-size: 10px; color: var(--text-muted);">${b.min_payment_percent}% от суммы долга</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #fbbf24;">${b.min_payment_formatted || b.min_payment_rub || '0.00'} ₽</div>
+                    <div style="font-size: 10px; color: var(--text-muted);">${b.min_payment_percent || 3.0}% от суммы долга</div>
                   </div>
                   <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Ставка банка вне грейса:</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #94a3b8;">${b.interest_rate_percent}% <span style="font-size: 11px;">годовых</span></div>
+                    <div style="font-size: 15px; font-weight: 700; color: #94a3b8;">${b.interest_rate_percent || 24.8}% <span style="font-size: 11px;">годовых</span></div>
                     <div style="font-size: 10px; color: var(--text-muted);">0.0% в льготный период</div>
                   </div>
                   <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Неустойка за просрочку:</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #f87171;">${b.late_penalty_rate_percent}% <span style="font-size: 11px;">годовых</span></div>
+                    <div style="font-size: 15px; font-weight: 700; color: #f87171;">${b.late_penalty_rate_percent || 36.0}% <span style="font-size: 11px;">годовых</span></div>
                     <div style="font-size: 10px; color: var(--text-muted);">по договору Сбербанка</div>
                   </div>
                 </div>
@@ -10606,15 +10626,15 @@ self.addEventListener('fetch', (event) => {
                   <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
                     <div style="font-size: 12px; font-weight: 700; color: #fca5a5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;">
                       <span>⚠️ Расчет банковских штрафов при просрочке на 30 дней:</span>
-                      <span style="font-size: 13px; color: #ef4444; font-weight: 800;">+${b.simulation_30d_extra_rub} ₽ переплаты</span>
+                      <span style="font-size: 13px; color: #ef4444; font-weight: 800;">+${b.simulation_30d_extra_rub || '0.00'} ₽ переплаты</span>
                     </div>
                     <div style="font-size: 11px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; line-height: 1.4;">
-                      <div>• Проценты по ставке (${b.interest_rate_percent}%): <strong style="color:#f87171;">+${b.simulation_30d_interest_rub} ₽</strong></div>
-                      <div>• Неустойка банка (${b.late_penalty_rate_percent}%): <strong style="color:#f87171;">+${b.simulation_30d_penalty_rub} ₽</strong></div>
+                      <div>• Проценты по ставке (${b.interest_rate_percent || 24.8}%): <strong style="color:#f87171;">+${b.simulation_30d_interest_rub || '0.00'} ₽</strong></div>
+                      <div>• Неустойка банка (${b.late_penalty_rate_percent || 36.0}%): <strong style="color:#f87171;">+${b.simulation_30d_penalty_rub || '0.00'} ₽</strong></div>
                     </div>
                     <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(239, 68, 68, 0.2); font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                       <span>Итого к оплате банку при просрочке:</span>
-                      <strong style="color: #fca5a5; font-size: 14px;">${b.simulation_30d_total_rub} ₽</strong>
+                      <strong style="color: #fca5a5; font-size: 14px;">${b.simulation_30d_total_rub || '0.00'} ₽</strong>
                     </div>
                   </div>
                 ` : ''}
@@ -10622,11 +10642,11 @@ self.addEventListener('fetch', (event) => {
                 <!-- Action buttons for this card -->
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                   ${hasDebt ? `
-                    <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 10px; color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);" onclick="openPayDebtModal('${d.id}', ${b.min_payment_rub})">
-                      💳 Внести мин. платеж (${b.min_payment_formatted || b.min_payment_rub} ₽)
+                    <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 10px; color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);" onclick="openPayDebtModal('${d.id}', ${b.min_payment_rub || 0})">
+                      💳 Внести мин. платеж (${b.min_payment_formatted || b.min_payment_rub || '0.00'} ₽)
                     </button>
                     <button class="btn btn-danger" style="font-size: 12px; padding: 6px 10px;" onclick="openPayDebtModal('${d.id}', ${fullDebtNum})">
-                      💰 Закрыть весь долг (${d.debt_rub} ₽)
+                      💰 Закрыть весь долг (${d.debt_rub || '0.00'} ₽)
                     </button>
                   ` : ''}
                   <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" onclick="openCardSettingsModal('${d.id}')">
@@ -10639,14 +10659,14 @@ self.addEventListener('fetch', (event) => {
 
           const obInfo = d.linked_obligation ? `
             <div style="font-size: 12px; color: #60a5fa; margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(59,130,246,0.1); padding: 6px 12px; border-radius: 6px;">
-              <span>📅 Привязан регулярный платеж: <strong>${d.linked_obligation.amount_rub} ₽</strong> (до ${d.linked_obligation.due_day}-го числа)</span>
+              <span>📅 Привязан регулярный платеж: <strong>${d.linked_obligation.amount_rub || '0.00'} ₽</strong> (до ${d.linked_obligation.due_day}-го числа)</span>
               ${d.linked_obligation.is_paid ? '<span class="badge" style="background:#065f46; color:#6ee7b7; font-size:10px;">Оплачен в этом месяце</span>' : '<span class="badge" style="background:#991b1b; color:#fca5a5; font-size:10px;">Ожидает оплаты</span>'}
             </div>
           ` : '';
 
-          const descInfo = (d.description && !d.description.startsWith('{')) ? `
+          const descInfo = (typeof d.description === 'string' && d.description.trim() && !d.description.trim().startsWith('{')) ? `
             <div style="font-size: 12px; color: #94a3b8; margin-top: 6px;">
-              📝 <em>${d.description}</em>
+              📝 <em>${escapeHtml(d.description.trim())}</em>
             </div>
           ` : '';
 
@@ -10656,71 +10676,75 @@ self.addEventListener('fetch', (event) => {
               ? '<span class="badge" style="background: rgba(236,72,153,0.15); color: #f472b6; font-size:11px;">Жена</span>'
               : '';
 
-                    let payoffAcceleratorsHtml = '';
-          if (isCard && d.banking && d.banking.payoff_scenarios && d.debt_cents > 0) {
+          let payoffAcceleratorsHtml = '';
+          if (isCard && d.banking && d.banking.payoff_scenarios && (d.debt_cents || 0) > 0) {
             const sc = d.banking.payoff_scenarios;
-            const minSc = sc.minimum_scenario;
-            const graceSc = sc.grace_scenario;
-            const accSc = sc.accelerated_scenarios || [];
+            const minSc = sc.minimum_scenario || null;
+            const graceSc = sc.grace_scenario || null;
+            const accSc = Array.isArray(sc.accelerated_scenarios) ? sc.accelerated_scenarios : [];
 
-            payoffAcceleratorsHtml = `
-              <div style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px;">
-                <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                  <span>🚀 Стратегии: сколько платить, чтобы закрыть долг быстрее</span>
-                  <span style="font-size: 11px; color: var(--text-muted);">Расчет по договору Сбербанка (24.8% APR)</span>
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-bottom: 8px;">
-                  <!-- Grace Period -->
-                  ${graceSc && graceSc.is_active ? `
-                    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
-                      <div>
-                        <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 2px;">💎 В льготный период (0% переплаты)</div>
-                        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
-                          Срок: <strong style="color: var(--text);">${graceSc.days_left} дн.</strong> (до ${graceSc.due_date || 'конца грейса'})<br>
-                          Переплата: <strong style="color: #34d399;">0.00 ₽</strong> (100% экономия)
-                        </div>
-                      </div>
-                      <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #34d399; border-color: rgba(52,211,153,0.4);" onclick="openPayDebtModal('${d.id}', ${fullDebtNum}, 100)">
-                        Закрыть без процентов (${d.debt_rub} ₽)
-                      </button>
-                    </div>
-                  ` : ''}
-
-                  <!-- Minimum Payment Warning -->
-                  <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
-                    <div>
-                      <div style="font-size: 11px; font-weight: 700; color: #fca5a5; margin-bottom: 2px;">⚠️ Мин. платеж (3% от долга)</div>
-                      <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
-                        Платеж: <strong style="color: #fbbf24;">${minSc.first_payment_rub} ₽/мес</strong> (3.0%)<br>
-                        Срок: <strong style="color: #f87171;">${minSc.days_to_payoff} дн.</strong> (${minSc.months_to_payoff} мес.)<br>
-                        Переплата: <strong style="color: #ef4444;">+${minSc.total_interest_rub} ₽</strong>
-                      </div>
-                    </div>
-                    <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #fbbf24; border-color: rgba(251,191,36,0.4);" onclick="openPayDebtModal('${d.id}', ${minSc.first_payment_cents / 100}, 3.0)">
-                      Мин. платеж (${minSc.first_payment_rub} ₽)
-                    </button>
+            if (minSc || (graceSc && graceSc.is_active) || accSc.length > 0) {
+              payoffAcceleratorsHtml = `
+                <div style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px;">
+                  <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                    <span>🚀 Стратегии: сколько платить, чтобы закрыть долг быстрее</span>
+                    <span style="font-size: 11px; color: var(--text-muted);">Расчет по договору Сбербанка (${d.banking.interest_rate_percent || 24.8}% APR)</span>
                   </div>
 
-                  <!-- Accelerated Horizons -->
-                  ${accSc.map(a => `
-                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
-                      <div>
-                        <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 2px;">⚡ ${a.label}</div>
-                        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
-                          Платеж: <strong style="color: var(--text);">${a.monthly_payment_rub} ₽/мес</strong> (${a.monthly_payment_percent}%)<br>
-                          Срок: <strong style="color: #38bdf8;">${a.days} дн.</strong> (${a.months} мес.)<br>
-                          Экономия: <strong style="color: #34d399;">+${a.interest_savings_rub} ₽</strong>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-bottom: 8px;">
+                    <!-- Grace Period -->
+                    ${graceSc && graceSc.is_active ? `
+                      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                          <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 2px;">💎 В льготный период (0% переплаты)</div>
+                          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
+                            Срок: <strong style="color: var(--text);">${graceSc.days_left || 0} дн.</strong> (до ${graceSc.due_date || 'конца грейса'})<br>
+                            Переплата: <strong style="color: #34d399;">0.00 ₽</strong> (100% экономия)
+                          </div>
                         </div>
+                        <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #34d399; border-color: rgba(52,211,153,0.4);" onclick="openPayDebtModal('${d.id}', ${fullDebtNum}, 100)">
+                          Закрыть без процентов (${d.debt_rub || '0.00'} ₽)
+                        </button>
                       </div>
-                      <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #38bdf8; border-color: rgba(56,189,248,0.4);" onclick="openPayDebtModal('${d.id}', ${a.monthly_payment_cents / 100}, ${a.monthly_payment_percent})">
-                        Платить ${a.monthly_payment_rub} ₽/мес
-                      </button>
-                    </div>
-                  `).join('')}
+                    ` : ''}
+
+                    <!-- Minimum Payment Warning -->
+                    ${minSc ? `
+                      <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                          <div style="font-size: 11px; font-weight: 700; color: #fca5a5; margin-bottom: 2px;">⚠️ Мин. платеж (${minSc.payment_percent || 3.0}% от долга)</div>
+                          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
+                            Платеж: <strong style="color: #fbbf24;">${minSc.first_payment_rub || '0.00'} ₽/мес</strong> (${minSc.payment_percent || 3.0}%)<br>
+                            Срок: <strong style="color: #f87171;">${minSc.days_to_payoff || 0} дн.</strong> (${minSc.months_to_payoff || 0} мес.)<br>
+                            Переплата: <strong style="color: #ef4444;">+${minSc.total_interest_rub || '0.00'} ₽</strong>
+                          </div>
+                        </div>
+                        <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #fbbf24; border-color: rgba(251,191,36,0.4);" onclick="openPayDebtModal('${d.id}', ${(minSc.first_payment_cents || 0) / 100}, ${minSc.payment_percent || 3.0})">
+                          Мин. платеж (${minSc.first_payment_rub || '0.00'} ₽)
+                        </button>
+                      </div>
+                    ` : ''}
+
+                    <!-- Accelerated Horizons -->
+                    ${accSc.filter(Boolean).map(a => `
+                      <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                          <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 2px;">⚡ ${a.label || 'Ускоренное погашение'}</div>
+                          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
+                            Платеж: <strong style="color: var(--text);">${a.monthly_payment_rub || '0.00'} ₽/мес</strong> (${a.monthly_payment_percent || 0}%)<br>
+                            Срок: <strong style="color: #38bdf8;">${a.days || 0} дн.</strong> (${a.months || 0} мес.)<br>
+                            Экономия: <strong style="color: #34d399;">+${a.interest_savings_rub || '0.00'} ₽</strong>
+                          </div>
+                        </div>
+                        <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #38bdf8; border-color: rgba(56,189,248,0.4);" onclick="openPayDebtModal('${d.id}', ${(a.monthly_payment_cents || 0) / 100}, ${a.monthly_payment_percent || 0})">
+                          Платить ${a.monthly_payment_rub || '0.00'} ₽/мес
+                        </button>
+                      </div>
+                    `).join('')}
+                  </div>
                 </div>
-              </div>
-            `;
+              `;
+            }
           }
 
           const safeName = encodeURIComponent(d.name || '');
@@ -10737,7 +10761,7 @@ self.addEventListener('fetch', (event) => {
                     <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">${d.code}</span>
                   </div>
                   <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
-                    Остаток задолженности: <strong style="color: ${hasDebt ? '#f87171' : '#34d399'}; font-size: 17px;">${d.debt_rub} ₽</strong>
+                    Остаток задолженности: <strong style="color: ${hasDebt ? '#f87171' : '#34d399'}; font-size: 17px;">${d.debt_rub || '0.00'} ₽</strong>
                   </div>
                   ${descInfo}
                 </div>
@@ -10755,6 +10779,9 @@ self.addEventListener('fetch', (event) => {
         }).join('');
       } catch (e) {
         console.error('loadDebts error:', e);
+        if (container) {
+          container.innerHTML = `<div class="alert alert-error" style="padding:16px; text-align:center;">⚠️ Не удалось отобразить список задолженностей: ${escapeHtml(e.message || 'Ошибка рендеринга')}. <button class="btn btn-secondary" style="margin-left:8px; padding:4px 10px; font-size:12px;" onclick="loadDebts()">Повторить</button></div>`;
+        }
       }
     }
 
