@@ -6218,6 +6218,16 @@ self.addEventListener('fetch', (event) => {
 
   <script>
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .split('&').join('&amp;')
+        .split('<').join('&lt;')
+        .split('>').join('&gt;')
+        .split(String.fromCharCode(34)).join('&quot;')
+        .split(String.fromCharCode(39)).join('&#039;');
+    }
+
     let sessionToken = sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
 
     let overviewData = null;

@@ -1514,7 +1514,7 @@ class LedgerEngine:
 
                     total_liabilities_cents += debt
 
-                elif subtype in ("LOAN", "MORTGAGE"):
+                elif subtype in ("LOAN", "MORTGAGE", "CONSUMER_LOAN", "AUTO_LOAN", "PERSONAL_DEBT", "INSTALLMENT_BNPL"):
 
                     loan_debt = max(0, bal)
 

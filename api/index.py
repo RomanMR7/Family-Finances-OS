@@ -41,7 +41,13 @@ class handler(FamilyFinancesHandler):
         parsed = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(parsed.query)
         if "__url" in qs and qs["__url"]:
-            self.path = qs["__url"][0]
+            target_url = qs.pop("__url")[0]
+            sub_parsed = urllib.parse.urlparse(target_url)
+            sub_qs = urllib.parse.parse_qs(sub_parsed.query)
+            for k, v in sub_qs.items():
+                qs.setdefault(k, []).extend(v)
+            new_query = urllib.parse.urlencode(qs, doseq=True)
+            self.path = f"{sub_parsed.path}?{new_query}" if new_query else sub_parsed.path
         elif "x-forwarded-uri" in self.headers:
             self.path = self.headers["x-forwarded-uri"]
         elif "x-real-path" in self.headers:
