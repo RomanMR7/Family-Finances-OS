@@ -4550,6 +4550,18 @@ class LedgerEngine:
                 obligation_id = generate_uuid()
                 day_val = max(1, min(31, int(due_day)))
                 ob_cat_id = DEBT_CATEGORY_MAP.get(subtype, "cat_debts")
+                cursor.execute("SELECT id FROM categories WHERE id = ?;", (ob_cat_id,))
+                if not cursor.fetchone():
+                    cursor.execute("SELECT id FROM categories WHERE id = 'cat_debts';")
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                        INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
+                        VALUES ('cat_debts', 'Кредиты, долги и займы', 'EXPENSE', NULL, '💳', 80, 1);
+                        """)
+                    cursor.execute("""
+                    INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
+                    VALUES (?, 'Погашение задолженности', 'EXPENSE', 'cat_debts', '💳', 81, 1);
+                    """, (ob_cat_id,))
                 cursor.execute("""
                 INSERT INTO obligations (
                     id, name, amount_cents, due_day, category_id, payment_account_id,

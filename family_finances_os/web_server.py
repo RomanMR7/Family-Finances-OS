@@ -150,6 +150,21 @@ def resolve_external_host(headers: dict, fallback_host: str = "127.0.0.1") -> st
 
     return fallback_host
 
+def safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely parse float from string, handling spaces, commas, and currency symbols."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace(" ", "").replace("\xa0", "").replace("₽", "").replace(",", ".")
+    if not s:
+        return default
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return default
+
+
 class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
     storage = GLOBAL_STORAGE
@@ -2588,9 +2603,9 @@ self.addEventListener('fetch', (event) => {
                 name = body.get("name", "").strip()
                 subtype = body.get("subtype", "CONSUMER_LOAN")
                 ownership_scope = body.get("ownership_scope", "COMMON")
-                credit_limit_rub = float(body.get("credit_limit_rub") or 0)
-                initial_debt_rub = float(body.get("initial_debt_rub") or 0)
-                monthly_payment_rub = float(body.get("monthly_payment_rub") or 0)
+                credit_limit_rub = safe_float(body.get("credit_limit_rub"), 0.0)
+                initial_debt_rub = safe_float(body.get("initial_debt_rub"), 0.0)
+                monthly_payment_rub = safe_float(body.get("monthly_payment_rub"), 0.0)
                 due_day = body.get("due_day")
                 if due_day is not None and str(due_day).strip():
                     due_day = int(due_day)
@@ -2600,11 +2615,11 @@ self.addEventListener('fetch', (event) => {
                 destination_account_id = body.get("destination_account_id")
                 description = body.get("description", "").strip() or None
 
-                interest_rate_percent = float(body.get("interest_rate_percent") or 24.8)
-                grace_period_days = int(body.get("grace_period_days") or 120)
+                interest_rate_percent = safe_float(body.get("interest_rate_percent"), 24.8)
+                grace_period_days = int(safe_float(body.get("grace_period_days"), 120))
                 grace_due_date = body.get("grace_due_date")
-                min_payment_percent = float(body.get("min_payment_percent") or 3.0)
-                late_penalty_rate_percent = float(body.get("late_penalty_rate_percent") or 36.0)
+                min_payment_percent = safe_float(body.get("min_payment_percent"), 3.0)
+                late_penalty_rate_percent = safe_float(body.get("late_penalty_rate_percent"), 36.0)
 
                 res = ledger.create_debt(
                     name=name,
@@ -2644,12 +2659,12 @@ self.addEventListener('fetch', (event) => {
                 if not account_id:
                     self._send_json({"status": "error", "message": "Не указан ID задолженности"}, 400)
                     return
-                interest_rate = float(body.get("interest_rate_percent") or 24.8)
-                grace_days = int(body.get("grace_period_days") or 120)
+                interest_rate = safe_float(body.get("interest_rate_percent"), 24.8)
+                grace_days = int(safe_float(body.get("grace_period_days"), 120))
                 grace_due = body.get("grace_due_date")
-                min_pct = float(body.get("min_payment_percent") or 3.0)
-                penalty_rate = float(body.get("late_penalty_rate_percent") or 36.0)
-                limit_cents = rubles_to_cents(float(body["credit_limit_rub"])) if ("credit_limit_rub" in body and body["credit_limit_rub"] is not None) else None
+                min_pct = safe_float(body.get("min_payment_percent"), 3.0)
+                penalty_rate = safe_float(body.get("late_penalty_rate_percent"), 36.0)
+                limit_cents = rubles_to_cents(safe_float(body["credit_limit_rub"])) if ("credit_limit_rub" in body and body["credit_limit_rub"] is not None) else None
 
                 res = ledger.update_credit_card_settings(
                     account_id=account_id,
@@ -3604,6 +3619,81 @@ self.addEventListener('fetch', (event) => {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
       }
+
+      /* Mobile Modal Viewport & Touch Scroll Fix */
+      #modalNewDebt, #modalEditTx, #modalPayDebt, #modalCardSettings, #modalEnvelope, #modalGoal, #modalObligation, #modalQrPair {
+        align-items: flex-start !important;
+        justify-content: center !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding: 12px 10px 100px 10px !important;
+        z-index: 100000 !important;
+      }
+      #modalNewDebt .card, #modalEditTx .card, #modalPayDebt .card, #modalCardSettings .card, #modalEnvelope .card, #modalGoal .card, #modalObligation .card, #modalQrPair .card {
+        max-height: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-top: 10px !important;
+        margin-bottom: 90px !important;
+        overscroll-behavior: contain !important;
+      }
+    }
+
+    /* Debt Type Buttons & Grid */
+    .debt-type-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr) !important;
+      gap: 6px !important;
+    }
+    @media (max-width: 480px) {
+      .debt-type-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+      }
+    }
+    .debt-type-btn {
+      font-size: 11px !important;
+      padding: 8px 4px !important;
+      text-align: center;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .debt-type-btn:hover {
+      background: var(--card-hover);
+      border-color: var(--primary);
+    }
+    .debt-type-btn.active {
+      background: var(--primary) !important;
+      color: #ffffff !important;
+      border-color: var(--primary) !important;
+      font-weight: 700;
+      box-shadow: 0 0 12px rgba(37, 99, 235, 0.4);
+    }
+
+    /* Alerts */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #ef4444;
+    }
+    .alert-success {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #10b981;
     }
   </style>
 
@@ -4576,7 +4666,7 @@ self.addEventListener('fetch', (event) => {
 
 
       <!-- Modal: Add New Debt / Loan / Credit Card -->
-      <div id="modalNewDebt" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div id="modalNewDebt" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px;">
         <div class="card" style="max-width: 600px; width: 100%; border-color: var(--primary); position: relative; max-height: 90vh; overflow-y: auto;">
           <button onclick="closeNewDebtModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
           
@@ -4589,13 +4679,13 @@ self.addEventListener('fetch', (event) => {
           </div>
 
           <!-- Type Selection Buttons Grid -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
-            <button type="button" class="btn btn-secondary debt-type-btn active" data-type="CREDIT_CARD" onclick="selectDebtType('CREDIT_CARD')" style="font-size: 12px; padding: 8px 6px; text-align: center;">💳 Кредитка</button>
-            <button type="button" class="btn btn-secondary debt-type-btn" data-type="CONSUMER_LOAN" onclick="selectDebtType('CONSUMER_LOAN')" style="font-size: 12px; padding: 8px 6px; text-align: center;">📋 Потребкредит</button>
-            <button type="button" class="btn btn-secondary debt-type-btn" data-type="MORTGAGE" onclick="selectDebtType('MORTGAGE')" style="font-size: 12px; padding: 8px 6px; text-align: center;">🏠 Ипотека</button>
-            <button type="button" class="btn btn-secondary debt-type-btn" data-type="AUTO_LOAN" onclick="selectDebtType('AUTO_LOAN')" style="font-size: 12px; padding: 8px 6px; text-align: center;">🚗 Автокредит</button>
-            <button type="button" class="btn btn-secondary debt-type-btn" data-type="INSTALLMENT_BNPL" onclick="selectDebtType('INSTALLMENT_BNPL')" style="font-size: 12px; padding: 8px 6px; text-align: center;">🛍️ Рассрочка/Сплит</button>
-            <button type="button" class="btn btn-secondary debt-type-btn" data-type="PERSONAL_DEBT" onclick="selectDebtType('PERSONAL_DEBT')" style="font-size: 12px; padding: 8px 6px; text-align: center;">🤝 Долг человеку</button>
+          <div class="debt-type-grid" style="margin-bottom: 12px;">
+            <button type="button" class="btn btn-secondary debt-type-btn active" data-type="CREDIT_CARD" onclick="selectDebtType('CREDIT_CARD')">💳 Кредитка</button>
+            <button type="button" class="btn btn-secondary debt-type-btn" data-type="CONSUMER_LOAN" onclick="selectDebtType('CONSUMER_LOAN')">📋 Потребкредит</button>
+            <button type="button" class="btn btn-secondary debt-type-btn" data-type="MORTGAGE" onclick="selectDebtType('MORTGAGE')">🏠 Ипотека</button>
+            <button type="button" class="btn btn-secondary debt-type-btn" data-type="AUTO_LOAN" onclick="selectDebtType('AUTO_LOAN')">🚗 Автокредит</button>
+            <button type="button" class="btn btn-secondary debt-type-btn" data-type="INSTALLMENT_BNPL" onclick="selectDebtType('INSTALLMENT_BNPL')">🛍️ Рассрочка/Сплит</button>
+            <button type="button" class="btn btn-secondary debt-type-btn" data-type="PERSONAL_DEBT" onclick="selectDebtType('PERSONAL_DEBT')">🤝 Долг человеку</button>
           </div>
           <input type="hidden" id="newDebtSubtype" value="CREDIT_CARD">
 
@@ -4611,11 +4701,11 @@ self.addEventListener('fetch', (event) => {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div class="form-group" id="groupCreditLimit">
               <label>Кредитный лимит (₽):</label>
-              <input type="number" id="newDebtCreditLimit" placeholder="165000" style="width: 100%; padding: 10px;">
+              <input type="text" inputmode="decimal" id="newDebtCreditLimit" placeholder="165000" style="width: 100%; padding: 10px;">
             </div>
             <div class="form-group">
               <label id="lblDebtAmount">Текущий долг (₽):</label>
-              <input type="number" id="newDebtCurrentAmount" placeholder="50000" style="width: 100%; padding: 10px;">
+              <input type="text" inputmode="decimal" id="newDebtCurrentAmount" placeholder="50000" style="width: 100%; padding: 10px;">
             </div>
           </div>
 
@@ -4631,21 +4721,21 @@ self.addEventListener('fetch', (event) => {
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label style="font-size: 11px;">📊 Ставка банка (% годовых):</label>
-                <input type="number" id="newDebtApr" step="0.1" value="24.8" style="width: 100%; padding: 8px; font-size: 12px;">
+                <input type="text" inputmode="decimal" id="newDebtApr" value="24.8" style="width: 100%; padding: 8px; font-size: 12px;">
               </div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
               <div class="form-group" style="margin-bottom: 0;">
                 <label style="font-size: 11px;">⏳ Грейс (дней):</label>
-                <input type="number" id="newDebtGraceDays" value="120" style="width: 100%; padding: 8px; font-size: 12px;">
+                <input type="text" inputmode="numeric" id="newDebtGraceDays" value="120" style="width: 100%; padding: 8px; font-size: 12px;">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label style="font-size: 11px;">💳 Мин. платеж (%):</label>
-                <input type="number" id="newDebtMinPaymentPct" step="0.5" value="3.0" style="width: 100%; padding: 8px; font-size: 12px;">
+                <input type="text" inputmode="decimal" id="newDebtMinPaymentPct" value="3.0" style="width: 100%; padding: 8px; font-size: 12px;">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label style="font-size: 11px;">⚠️ Неустойка (%):</label>
-                <input type="number" id="newDebtLatePenaltyPct" step="0.5" value="36.0" style="width: 100%; padding: 8px; font-size: 12px;">
+                <input type="text" inputmode="decimal" id="newDebtLatePenaltyPct" value="36.0" style="width: 100%; padding: 8px; font-size: 12px;">
               </div>
             </div>
           </div>
@@ -4668,11 +4758,11 @@ self.addEventListener('fetch', (event) => {
             <div id="debtObligationFields" style="display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
               <div class="form-group" style="margin-bottom: 0;">
                 <label style="font-size: 11px;">Сумма платежа (₽):</label>
-                <input type="number" id="newDebtMonthlyPayment" placeholder="3000" style="width: 100%; padding: 8px; font-size: 12px;">
+                <input type="text" inputmode="decimal" id="newDebtMonthlyPayment" placeholder="3000" style="width: 100%; padding: 8px; font-size: 12px;">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label style="font-size: 11px;">Число месяца (день):</label>
-                <input type="number" id="newDebtDueDay" value="15" min="1" max="31" style="width: 100%; padding: 8px; font-size: 12px;">
+                <input type="text" inputmode="numeric" id="newDebtDueDay" value="15" min="1" max="31" style="width: 100%; padding: 8px; font-size: 12px;">
               </div>
             </div>
           </div>
@@ -10668,7 +10758,18 @@ self.addEventListener('fetch', (event) => {
       }
     }
 
+    function parseMobileFloat(val, fallback = 0) {
+      if (val === null || val === undefined) return fallback;
+      const s = String(val).replace(/[ \t\r\n\u00a0]+/g, '').replace('₽', '').replace(',', '.').trim();
+      if (!s) return fallback;
+      const n = parseFloat(s);
+      return isNaN(n) ? fallback : n;
+    }
+
     function openNewDebtModal() {
+      // Dismiss any open dropdowns so they do not cover the modal
+      document.querySelectorAll('.category-dropdown-menu').forEach(m => m.classList.add('hidden'));
+
       document.getElementById('newDebtName').value = '';
       document.getElementById('newDebtCurrentAmount').value = '';
       document.getElementById('newDebtCreditLimit').value = '165000';
@@ -10719,7 +10820,11 @@ self.addEventListener('fetch', (event) => {
       }
 
       selectDebtType('CREDIT_CARD');
-      document.getElementById('modalNewDebt').classList.remove('hidden');
+      const debtModal = document.getElementById('modalNewDebt');
+      debtModal.classList.remove('hidden');
+      debtModal.scrollTop = 0;
+      const modalCard = debtModal.querySelector('.card');
+      if (modalCard) modalCard.scrollTop = 0;
     }
 
     function closeNewDebtModal() {
@@ -10819,30 +10924,37 @@ self.addEventListener('fetch', (event) => {
     async function submitNewDebt() {
       const name = document.getElementById('newDebtName').value.trim();
       const subtype = document.getElementById('newDebtSubtype').value;
-      const initial_debt_rub = parseFloat(document.getElementById('newDebtCurrentAmount').value) || 0;
-      const credit_limit_rub = (subtype === 'CREDIT_CARD') ? (parseFloat(document.getElementById('newDebtCreditLimit').value) || 0) : 0;
+      const initial_debt_rub = parseMobileFloat(document.getElementById('newDebtCurrentAmount')?.value, 0);
+      const credit_limit_rub = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtCreditLimit')?.value, 0) : 0;
       const ownership_scope = document.getElementById('newDebtScope').value;
       const chkOb = document.getElementById('chkCreateObligation').checked;
-      const monthly_payment_rub = chkOb ? (parseFloat(document.getElementById('newDebtMonthlyPayment').value) || 0) : 0;
-      const due_day = chkOb ? parseInt(document.getElementById('newDebtDueDay').value) : null;
+      const monthly_payment_rub = chkOb ? parseMobileFloat(document.getElementById('newDebtMonthlyPayment')?.value, 0) : 0;
+      const due_day = chkOb ? parseInt(document.getElementById('newDebtDueDay')?.value) : null;
       const receive_money = document.getElementById('chkReceiveMoney').checked;
-      const destination_account_id = receive_money ? document.getElementById('newDebtReceiveAccount').value : null;
+      const destination_account_id = receive_money ? document.getElementById('newDebtReceiveAccount')?.value : null;
       const description = document.getElementById('newDebtNotes').value.trim();
       const msgEl = document.getElementById('newDebtMsg');
 
-      const interest_rate_percent = (subtype === 'CREDIT_CARD') ? (parseFloat(document.getElementById('newDebtApr')?.value) || 24.8) : 24.8;
+      const interest_rate_percent = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtApr')?.value, 24.8) : 24.8;
       const grace_period_days = (subtype === 'CREDIT_CARD') ? (parseInt(document.getElementById('newDebtGraceDays')?.value) || 120) : 120;
       const grace_due_date = (subtype === 'CREDIT_CARD') ? (document.getElementById('newDebtGraceDueDate')?.value || null) : null;
-      const min_payment_percent = (subtype === 'CREDIT_CARD') ? (parseFloat(document.getElementById('newDebtMinPaymentPct')?.value) || 3.0) : 3.0;
-      const late_penalty_rate_percent = (subtype === 'CREDIT_CARD') ? (parseFloat(document.getElementById('newDebtLatePenaltyPct')?.value) || 36.0) : 36.0;
+      const min_payment_percent = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtMinPaymentPct')?.value, 3.0) : 3.0;
+      const late_penalty_rate_percent = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtLatePenaltyPct')?.value, 36.0) : 36.0;
 
       if (!name) {
-        msgEl.innerHTML = '<div class="alert alert-error">Укажите название задолженности</div>';
+        msgEl.innerHTML = '<div class="alert alert-error">⚠️ Пожалуйста, укажите название карты или кредита</div>';
+        const nameInput = document.getElementById('newDebtName');
+        if (nameInput) {
+          nameInput.focus();
+          nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
         return;
       }
 
       const btn = document.getElementById('btnSubmitNewDebt');
       btn.disabled = true;
+      const originalText = btn.innerText;
+      btn.innerText = '⏳ Сохранение...';
       try {
         const res = await fetch('/api/debts/create', {
           method: 'POST',
@@ -10872,12 +10984,15 @@ self.addEventListener('fetch', (event) => {
           await loadDebts();
           await loadObligations();
         } else {
-          msgEl.innerHTML = `<div class="alert alert-error">${data.message || 'Ошибка создания задолженности'}</div>`;
+          msgEl.innerHTML = `<div class="alert alert-error">❌ ${data.message || 'Ошибка создания задолженности'}</div>`;
+          msgEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
       } catch (e) {
-        msgEl.innerHTML = `<div class="alert alert-error">Ошибка сети: ${e.message}</div>`;
+        msgEl.innerHTML = `<div class="alert alert-error">❌ Ошибка сети: ${e.message}</div>`;
+        msgEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } finally {
         btn.disabled = false;
+        btn.innerText = originalText;
       }
     }
 

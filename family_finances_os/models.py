@@ -11,9 +11,23 @@ from typing import List, Optional
 def rubles_to_cents(amount_rub: float | str | Decimal) -> int:
     """
     Safely convert rubles to integer cents without floating-point inaccuracies.
-    Example: 100.50 -> 10050, '1250.99' -> 125099
+    Handles commas, spaces, currency symbols, and None gracefully.
+    Example: 100.50 -> 10050, '1 250,99' -> 125099, '50000,00' -> 5000000
     """
-    dec = Decimal(str(amount_rub))
+    if amount_rub is None:
+        return 0
+    if isinstance(amount_rub, (int, float)):
+        dec = Decimal(str(amount_rub))
+    else:
+        s = str(amount_rub).strip().replace(" ", "").replace("\xa0", "").replace("₽", "").replace(",", ".")
+        if not s:
+            return 0
+        try:
+            dec = Decimal(s)
+            if not dec.is_finite():
+                return 0
+        except Exception:
+            return 0
     cents = (dec * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     return int(cents)
 
