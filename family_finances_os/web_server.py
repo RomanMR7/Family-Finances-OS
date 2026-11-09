@@ -42,7 +42,11 @@ from typing import Dict, Any, Optional, List
 
 from family_finances_os.config import APP_NAME, APP_VERSION, DB_PATH, ENC_DB_PATH, STRICT_ENCRYPTION
 
-from family_finances_os.db import init_database, check_db_health, GLOBAL_STORAGE
+import base64
+import hashlib
+import sqlite3
+import tempfile
+from family_finances_os.db import init_database, check_db_health, GLOBAL_STORAGE, create_schema, get_connection
 
 from family_finances_os.auth import AuthService, GLOBAL_SESSION_MANAGER
 
@@ -333,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v5';
+const CACHE_NAME = 'ffos-shell-v6';
 
 const STATIC_SHELL = [
 
@@ -623,6 +627,51 @@ self.addEventListener('fetch', (event) => {
 
         return True
 
+    def _has_owner(self) -> bool:
+        """Check whether an owner account currently exists in the database."""
+        if self.storage.is_unlocked():
+            try:
+                auth = AuthService(conn_or_path=self.storage.get_connection())
+                return auth.has_owner()
+            except Exception:
+                return False
+        if self._is_db_locked() and self.storage.exists():
+            return True
+        target_plain = DB_PATH if DB_PATH.exists() else self.storage.enc_path.with_name(self.storage.enc_path.stem)
+        if target_plain.exists():
+            try:
+                auth = AuthService(conn_or_path=target_plain)
+                return auth.has_owner()
+            except Exception:
+                return False
+        return False
+
+    def _get_database_raw_bytes(self) -> Optional[bytes]:
+        """Extract raw bytes of active database, flushing WAL if needed."""
+        if self.storage.is_unlocked():
+            try:
+                return self.storage.get_connection().serialize()
+            except Exception:
+                pass
+        target = DB_PATH if DB_PATH.exists() else self.storage.enc_path.with_name(self.storage.enc_path.stem)
+        if target.exists():
+            try:
+                conn = get_connection(target)
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.close()
+            except Exception:
+                pass
+            try:
+                return target.read_bytes()
+            except Exception:
+                pass
+        if self.storage.exists():
+            try:
+                return self.storage.enc_path.read_bytes()
+            except Exception:
+                pass
+        return None
+
     def do_GET(self):
 
         if not self._validate_host():
@@ -717,6 +766,44 @@ self.addEventListener('fetch', (event) => {
 
             })
 
+            return
+
+        # Database Backup & Export Endpoints
+        if path == "/api/database/export-blob":
+            user = self._require_auth()
+            if not user:
+                return
+            raw_bytes = self._get_database_raw_bytes()
+            if not raw_bytes:
+                self._send_json({"status": "error", "message": "База данных недоступна для экспорта"}, 500)
+                return
+            sha256 = hashlib.sha256(raw_bytes).hexdigest()
+            b64_str = base64.b64encode(raw_bytes).decode("ascii")
+            self._send_json({
+                "status": "ok",
+                "size_bytes": len(raw_bytes),
+                "sha256": sha256,
+                "blob_base64": b64_str,
+                "exported_at": current_iso_time()
+            })
+            return
+
+        if path in ("/api/database/export-file", "/api/database/download", "/api/database/backup"):
+            user = self._require_auth()
+            if not user:
+                return
+            raw_bytes = self._get_database_raw_bytes()
+            if not raw_bytes:
+                self._send_json({"status": "error", "message": "База данных недоступна"}, 500)
+                return
+            filename = f"family_finances_backup_{current_iso_time()[:10].replace('-', '')}.db"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-sqlite3")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(raw_bytes)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(raw_bytes)
             return
 
         # 2. Gatekeeper: if DB is encrypted and locked, prevent data leakage
@@ -1297,6 +1384,126 @@ self.addEventListener('fetch', (event) => {
         url = urllib.parse.urlparse(self.path)
 
         path = url.path
+
+        if path == "/api/database/restore-blob":
+            try:
+                cl = int(self.headers.get("Content-Length", 0))
+            except (ValueError, TypeError):
+                cl = 0
+            if cl > 20 * 1024 * 1024:
+                self._send_json({"status": "error", "error": "Размер полезной нагрузки превышает лимит 20 МБ"}, 413)
+                return
+
+            has_owner = self._has_owner()
+            if has_owner:
+                user = self._require_auth()
+                if not user:
+                    return
+
+            body = self._read_json_body()
+            blob_base64 = body.get("blob_base64")
+            if not blob_base64 or not isinstance(blob_base64, str):
+                self._send_json({"status": "error", "error": "Отсутствует или недействителен параметр blob_base64"}, 400)
+                return
+
+            try:
+                raw_bytes = base64.b64decode(blob_base64, validate=True)
+            except Exception:
+                self._send_json({"status": "error", "error": "Некорректная кодировка base64"}, 400)
+                return
+
+            if not (raw_bytes.startswith(b"SQLite format 3\x00") or raw_bytes.startswith(b"FFOS_ENV\x01")):
+                self._send_json({"status": "error", "error": "Неверный формат: файл должен быть базой данных SQLite"}, 400)
+                return
+
+            # Verify integrity if raw SQLite
+            if raw_bytes.startswith(b"SQLite format 3\x00"):
+                temp_fd, temp_path = tempfile.mkstemp(prefix="ffos_restore_")
+                os.close(temp_fd)
+                try:
+                    with open(temp_path, "wb") as f:
+                        f.write(raw_bytes)
+                    test_conn = sqlite3.connect(temp_path, timeout=5.0)
+                    cur = test_conn.cursor()
+                    cur.execute("PRAGMA integrity_check;")
+                    row = cur.fetchone()
+                    test_conn.close()
+                    if not row or row[0] != "ok":
+                        self._send_json({"status": "error", "error": f"Ошибка целостности базы данных: {row[0] if row else 'неизвестная ошибка'}"}, 400)
+                        return
+                except Exception as e:
+                    self._send_json({"status": "error", "error": f"Файл поврежден или не является базой: {e}"}, 400)
+                    return
+                finally:
+                    try:
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
+                    except Exception:
+                        pass
+
+            # Restore database atomically to DB_PATH
+            target_path = DB_PATH
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            wal_path = target_path.with_suffix(target_path.suffix + "-wal")
+            shm_path = target_path.with_suffix(target_path.suffix + "-shm")
+            for companion in (wal_path, shm_path):
+                try:
+                    if companion.exists():
+                        companion.unlink()
+                except Exception:
+                    pass
+
+            temp_restore = target_path.with_suffix(".tmp_restore")
+            try:
+                temp_restore.write_bytes(raw_bytes)
+                temp_restore.replace(target_path)
+            except Exception:
+                target_path.write_bytes(raw_bytes)
+
+            # If encrypted storage was active, reload connection in memory
+            if self.storage.is_unlocked():
+                try:
+                    self.storage.get_connection().deserialize(raw_bytes)
+                except Exception:
+                    pass
+
+            # Run schema migrations to ensure all tables exist
+            try:
+                conn = get_connection(target_path)
+                create_schema(conn)
+                conn.close()
+            except Exception:
+                pass
+
+            # Create session token for owner
+            token = None
+            user_dict = None
+            try:
+                conn = get_connection(target_path)
+                cur = conn.cursor()
+                cur.execute("SELECT id, username, display_name, role FROM users WHERE role = 'OWNER' AND is_active = 1 LIMIT 1;")
+                owner_row = cur.fetchone()
+                conn.close()
+                if owner_row:
+                    user_dict = {
+                        "user_id": owner_row[0],
+                        "username": owner_row[1],
+                        "display_name": owner_row[2],
+                        "role": owner_row[3]
+                    }
+                    token = GLOBAL_SESSION_MANAGER.create_session(user_dict)
+            except Exception:
+                pass
+
+            self._send_json({
+                "status": "ok",
+                "restored": True,
+                "size_bytes": len(raw_bytes),
+                "token": token,
+                "user": user_dict,
+                "restored_at": current_iso_time()
+            })
+            return
 
         body = self._read_json_body()
 
@@ -3732,6 +3939,7 @@ self.addEventListener('fetch', (event) => {
         <span class="badge" id="storageBadge">Шифрование: AES-256-GCM</span>
 
         <span class="badge" id="offlineModeBadge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight:600;">🏠 100% Локально</span>
+        <span class="badge" id="localVaultBadge" onclick="openVaultModal()" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); font-weight:600; cursor: pointer;" title="Данные сохранены локально в памяти телефона. Нажмите для резервных копий">💾 На телефоне (<span id="vaultTime">только что</span>)</span>
 
         <span class="badge hidden" id="syncBadge" style="background:#047857; cursor:pointer;" onclick="triggerLanSync()" title="Нажмите для синхронизации в домашней сети">📡 P2P: 0 пиров</span>
 
@@ -3745,6 +3953,29 @@ self.addEventListener('fetch', (event) => {
 
       </div>
 
+    </div>
+
+    <!-- Modal: Local Phone Database Vault -->
+    <div id="vaultModal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div class="card" style="max-width: 440px; width: 100%; border-color: #6366f1; position: relative; max-height: 90vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 17px; display: flex; align-items: center; gap: 8px;">💾 Хранилище на телефоне</h3>
+          <button class="btn btn-secondary" onclick="closeVaultModal()" style="padding: 2px 8px; font-size: 14px;">✕</button>
+        </div>
+        <div id="vaultStatusInfo"></div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <button class="btn btn-primary" onclick="syncVaultNow()" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            🔄 Сохранить базу в память сейчас
+          </button>
+          <button class="btn btn-secondary" onclick="downloadVaultBackup()" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            📥 Скачать файл (.db) на телефон
+          </button>
+          <label class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; margin-bottom: 0;">
+            📂 Восстановить из файла (.db)
+            <input type="file" id="vaultFileInput" accept=".db,.sqlite,.sqlite3" style="display: none;" onchange="restoreVaultFromFile(this.files[0])">
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- Modal: QR-Code Pairing for Smartphones -->
@@ -7352,6 +7583,10 @@ self.addEventListener('fetch', (event) => {
         // 2. Check if owner exists
 
         if (!data.has_owner) {
+          const restored = await LocalDatabaseVault.autoRestoreIfEmpty();
+          if (restored) {
+            return loadStatus();
+          }
 
           document.getElementById('setupScreen').classList.remove('hidden');
 
@@ -7713,6 +7948,10 @@ self.addEventListener('fetch', (event) => {
       if (res.status === 401 || res.status === 423) return false;
 
       overviewData = await res.json();
+
+      LocalDatabaseVault.updateBadge();
+
+      LocalDatabaseVault.syncAfterMutation();
 
       // Metrics
 
@@ -11957,6 +12196,8 @@ self.addEventListener('fetch', (event) => {
 
           closeEnvelopeDepositModal();
 
+          LocalDatabaseVault.syncAfterMutation();
+
           await loadEnvelopes();
 
           await loadEnvelopesWidget();
@@ -12084,6 +12325,8 @@ self.addEventListener('fetch', (event) => {
         if (data.status === 'success') {
 
           closeEnvelopeWithdrawModal();
+
+          LocalDatabaseVault.syncAfterMutation();
 
           await loadEnvelopes();
 
@@ -12229,6 +12472,8 @@ self.addEventListener('fetch', (event) => {
 
           closeEnvelopeTransferModal();
 
+          LocalDatabaseVault.syncAfterMutation();
+
           await loadEnvelopes();
 
           await loadEnvelopesWidget();
@@ -12245,6 +12490,326 @@ self.addEventListener('fetch', (event) => {
 
       }
 
+    }
+
+    // =========================================================================
+    // Client-Side Local Database Vault (IndexedDB + localStorage Fallback)
+    // Ensures 100% of financial data persists on the user's phone/browser
+    // and seamlessly survives Vercel serverless cold starts.
+    // =========================================================================
+    const LocalDatabaseVault = {
+      dbName: 'FamilyFinancesOS_DB',
+      storeName: 'vault',
+      key: 'primary_db',
+      _dbPromise: null,
+
+      async getDB() {
+        if (this._dbPromise) return this._dbPromise;
+        if (!window.indexedDB) return null;
+        this._dbPromise = new Promise((resolve) => {
+          try {
+            const req = indexedDB.open(this.dbName, 1);
+            req.onupgradeneeded = (e) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains(this.storeName)) {
+                db.createObjectStore(this.storeName);
+              }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => resolve(null);
+          } catch (e) {
+            resolve(null);
+          }
+        });
+        return this._dbPromise;
+      },
+
+      async saveSnapshot(blob_base64, sha256, size_bytes) {
+        if (!blob_base64) return false;
+        const record = {
+          blob_base64,
+          sha256,
+          size_bytes: size_bytes || Math.round(blob_base64.length * 0.75),
+          updated_at: new Date().toISOString(),
+          timestamp: Date.now()
+        };
+        let saved = false;
+        try {
+          const db = await this.getDB();
+          if (db) {
+            await new Promise((resolve, reject) => {
+              const tx = db.transaction(this.storeName, 'readwrite');
+              const store = tx.objectStore(this.storeName);
+              const putReq = store.put(record, this.key);
+              putReq.onsuccess = () => resolve(true);
+              putReq.onerror = () => reject(putReq.error);
+            });
+            saved = true;
+          }
+        } catch (e) {
+          console.warn('[Vault] IndexedDB save notice:', e);
+        }
+        try {
+          localStorage.setItem('ffos_vault_meta', JSON.stringify({
+            sha256: record.sha256,
+            size_bytes: record.size_bytes,
+            updated_at: record.updated_at,
+            timestamp: record.timestamp
+          }));
+          if (blob_base64.length < 4000000) {
+            localStorage.setItem('ffos_vault_blob', blob_base64);
+          }
+        } catch (e) {
+          console.warn('[Vault] localStorage cache notice:', e);
+        }
+        this.updateBadge();
+        return saved;
+      },
+
+      async getSnapshot() {
+        try {
+          const db = await this.getDB();
+          if (db) {
+            const rec = await new Promise((resolve, reject) => {
+              const tx = db.transaction(this.storeName, 'readonly');
+              const store = tx.objectStore(this.storeName);
+              const getReq = store.get(this.key);
+              getReq.onsuccess = () => resolve(getReq.result || null);
+              getReq.onerror = () => reject(getReq.error);
+            });
+            if (rec && rec.blob_base64) return rec;
+          }
+        } catch (e) {
+          console.warn('[Vault] IndexedDB get notice:', e);
+        }
+        try {
+          const blob = localStorage.getItem('ffos_vault_blob');
+          const metaStr = localStorage.getItem('ffos_vault_meta');
+          if (blob) {
+            const meta = metaStr ? JSON.parse(metaStr) : {};
+            return {
+              blob_base64: blob,
+              sha256: meta.sha256 || '',
+              size_bytes: meta.size_bytes || Math.round(blob.length * 0.75),
+              updated_at: meta.updated_at || new Date().toISOString(),
+              timestamp: meta.timestamp || Date.now()
+            };
+          }
+        } catch (e) {
+          console.warn('[Vault] localStorage fallback notice:', e);
+        }
+        return null;
+      },
+
+      async hasLocalSnapshot() {
+        const snap = await this.getSnapshot();
+        return !!(snap && snap.blob_base64);
+      },
+
+      async autoRestoreIfEmpty() {
+        try {
+          const snap = await this.getSnapshot();
+          if (!snap || !snap.blob_base64) return false;
+
+          const badge = document.getElementById('localVaultBadge');
+          if (badge) badge.innerText = '💾 Восстановление данных...';
+
+          const res = await fetch('/api/database/restore-blob', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blob_base64: snap.blob_base64,
+              sha256: snap.sha256
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.status === 'ok') {
+            if (data.token) {
+              sessionToken = data.token;
+              sessionStorage.setItem('ffos_session_token', data.token);
+              localStorage.setItem('ffos_session_token', data.token);
+            }
+            this.updateBadge();
+            return true;
+          }
+        } catch (e) {
+          console.warn('[Vault] Auto-restore error:', e);
+        }
+        return false;
+      },
+
+      _debounceTimer: null,
+      syncAfterMutation() {
+        if (this._debounceTimer) clearTimeout(this._debounceTimer);
+        this._debounceTimer = setTimeout(async () => {
+          try {
+            const token = sessionToken || sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
+            if (!token) return;
+            const res = await fetch('/api/database/export-blob', {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.status === 'ok' && data.blob_base64) {
+              await this.saveSnapshot(data.blob_base64, data.sha256, data.size_bytes);
+            }
+          } catch (e) {
+            console.warn('[Vault] Auto-export error:', e);
+          }
+        }, 500);
+      },
+
+      async updateBadge() {
+        const badge = document.getElementById('localVaultBadge');
+        const timeEl = document.getElementById('vaultTime');
+        if (!badge) return;
+        const snap = await this.getSnapshot();
+        if (snap && snap.updated_at) {
+          const d = new Date(snap.updated_at);
+          const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          if (timeEl) timeEl.innerText = timeStr;
+          else badge.innerText = `💾 На телефоне (${timeStr})`;
+          badge.style.display = 'inline-flex';
+          badge.title = `Локальная база сохранена: ${d.toLocaleString()} (${Math.round((snap.size_bytes || 0)/1024)} КБ)`;
+        } else {
+          if (timeEl) timeEl.innerText = 'сохранено';
+          badge.style.display = 'inline-flex';
+        }
+      },
+
+      async downloadBackupFile() {
+        try {
+          const token = sessionToken || sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
+          const res = await fetch('/api/database/export-file', {
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `family_finances_backup_${new Date().toISOString().slice(0, 10)}.db`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            return;
+          }
+        } catch (e) {
+          console.warn('[Vault] File download fallback to blob:', e);
+        }
+        const snap = await this.getSnapshot();
+        if (snap && snap.blob_base64) {
+          const byteChars = atob(snap.blob_base64);
+          const byteNums = new Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) {
+            byteNums[i] = byteChars.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNums);
+          const blob = new Blob([byteArray], { type: 'application/x-sqlite3' });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `family_finances_backup_${new Date().toISOString().slice(0, 10)}.db`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }
+      },
+
+      async restoreFromFile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const arrayBuffer = e.target.result;
+            const bytes = new Uint8Array(arrayBuffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            const b64 = btoa(binary);
+
+            const token = sessionToken || sessionStorage.getItem('ffos_session_token') || localStorage.getItem('ffos_session_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+
+            const res = await fetch('/api/database/restore-blob', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ blob_base64: b64 })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+              await this.saveSnapshot(b64, null, bytes.byteLength);
+              if (data.token) {
+                sessionToken = data.token;
+                sessionStorage.setItem('ffos_session_token', data.token);
+                localStorage.setItem('ffos_session_token', data.token);
+              }
+              alert('✅ База данных успешно восстановлена из файла!');
+              closeVaultModal();
+              await loadStatus();
+              await loadDashboard();
+            } else {
+              alert('❌ Ошибка восстановления: ' + (data.error || data.message || 'Неизвестная ошибка'));
+            }
+          } catch (err) {
+            alert('❌ Ошибка чтения файла: ' + err.message);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    };
+
+    function openVaultModal() {
+      const modal = document.getElementById('vaultModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      updateVaultModalInfo();
+    }
+
+    function closeVaultModal() {
+      const modal = document.getElementById('vaultModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function syncVaultNow() {
+      LocalDatabaseVault.syncAfterMutation();
+      updateVaultModalInfo();
+    }
+
+    function downloadVaultBackup() {
+      LocalDatabaseVault.downloadBackupFile();
+    }
+
+    function restoreVaultFromFile(file) {
+      LocalDatabaseVault.restoreFromFile(file);
+    }
+
+    async function updateVaultModalInfo() {
+      const infoEl = document.getElementById('vaultStatusInfo');
+      if (!infoEl) return;
+      const snap = await LocalDatabaseVault.getSnapshot();
+      if (snap && snap.updated_at) {
+        const d = new Date(snap.updated_at);
+        infoEl.innerHTML = `
+          <div style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 13px;">
+            <div style="font-weight: 600; color: #34d399; margin-bottom: 4px;">✅ Данные в безопасности на вашем телефоне</div>
+            <div>Сохранено: <strong>${d.toLocaleString()}</strong></div>
+            <div>Размер базы: <strong>${Math.round((snap.size_bytes || 0) / 1024)} КБ</strong></div>
+            <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">Все счета, долги и транзакции привязаны к этому браузеру и не зависят от перезагрузок Vercel.</div>
+          </div>
+        `;
+      } else {
+        infoEl.innerHTML = `
+          <div style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 13px;">
+            <div style="font-weight: 600; color: #a5b4fc; margin-bottom: 4px;">ℹ️ Локальное хранилище готово</div>
+            <div style="color: var(--text-muted); font-size: 11px;">При первом добавлении данных резервная копия автоматически сохранится в память телефона.</div>
+          </div>
+        `;
+      }
     }
 
     if (document.readyState === 'loading') {
