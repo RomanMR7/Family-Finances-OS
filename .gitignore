@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local runtime databases & backups
+family_finances_os/data/*.db
+family_finances_os/data/*.db-wal
+family_finances_os/data/*.db-shm
+family_finances_os/data/*.db-journal
+family_finances_os/data/*.db.enc*
+family_finances_os/data/*.bak
+family_finances_os/data/.dev_backup/
+*.tmp*
+*.log
+
+# Vercel deployment artifacts
+.vercel/
+
+# Node / Package managers
+node_modules/

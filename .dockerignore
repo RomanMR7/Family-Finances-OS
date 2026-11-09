@@ -1,0 +1,20 @@
+# Docker build ignore file
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.git/
+.gitignore
+.gemini/
+.agents/
+.vscode/
+.idea/
+ffos_test_*
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+scratch/
+test_*.py
+family_finances_os/test_*.py

@@ -1,0 +1,3 @@
+# Family Finances OS - Production Requirements
+# 100% Offline-First, Zero Cloud Dependencies
+cryptography>=42.0.0

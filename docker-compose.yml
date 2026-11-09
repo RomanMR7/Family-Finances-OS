@@ -1,0 +1,24 @@
+# Family Finances OS - Docker Compose Orchestration
+# 100% Offline-First, Secure Containerized Deployment
+
+name: family-finances-os
+
+services:
+  family-finances-os:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: family_finances_os
+    restart: unless-stopped
+    ports:
+      - "8000:8000/tcp"      # Web UI, REST API, PWA
+      - "41234:41234/udp"    # P2P Local Discovery Beacon
+    environment:
+      - FFOS_HOST=0.0.0.0
+      - FFOS_PORT=8000
+      - FFOS_NO_BROWSER=1
+      # Опционально: если вы хотите явно зафиксировать IP вашего ПК для QR-кода:
+      # - FFOS_EXTERNAL_HOST=192.168.1.100
+    volumes:
+      # Постоянное хранилище зашифрованной базы данных и ключей на хост-машине
+      - ./family_finances_os/data:/app/family_finances_os/data
