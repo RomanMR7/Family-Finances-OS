@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v17';
+const CACHE_NAME = 'ffos-shell-v18';
 
 const STATIC_SHELL = [
 
@@ -5809,6 +5809,33 @@ self.addEventListener('fetch', (event) => {
       }
     }
 
+    /* Light Theme Debit Card Surface */
+    [data-theme="light"] .revolut-debit-card {
+      background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%) !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #ffffff !important;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25) !important;
+    }
+
+    /* Strict Light Theme Contrast Overrides for Header and Badges */
+    [data-theme="light"] .status-indicator-btn {
+      background: #ecfdf5 !important;
+      border: 1px solid #6ee7b7 !important;
+      color: #047857 !important;
+      font-weight: 600 !important;
+    }
+    [data-theme="light"] .family-scope-chip {
+      background: #eff6ff !important;
+      border: 1px solid #93c5fd !important;
+      color: #1d4ed8 !important;
+      font-weight: 600 !important;
+    }
+    [data-theme="light"] .btn-icon-round {
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #0f172a !important;
+    }
+
   </style>
 
 </head>
@@ -7425,7 +7452,7 @@ self.addEventListener('fetch', (event) => {
           <div class="appetite-debit-card revolut-debit-card">
             <div class="appetite-card-sheen"></div>
             <div style="display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 2;">
-              <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Revolut Family Debit</span>
+              <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Семейная карта • Black Edition</span>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
                 <path d="M8.5 16.5a5 5 0 0 1 0-7"></path>
                 <path d="M12 19a8.5 8.5 0 0 0 0-12"></path>
