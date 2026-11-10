@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v18';
+const CACHE_NAME = 'ffos-shell-v19';
 
 const STATIC_SHELL = [
 
@@ -3759,83 +3759,191 @@ self.addEventListener('fetch', (event) => {
       filter: none;
     }
 
-    /* Revolut Segmented Capsule Navigation Tabs */
+    /* Apple HIG iOS Segmented Control Navigation Tabs */
     .nav-tabs {
       display: flex;
+      align-items: center;
       flex-wrap: nowrap;
-      gap: 6px;
+      gap: 3px;
       margin-bottom: 24px;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 9999px;
-      padding: 5px;
+      background: rgba(118, 118, 128, 0.24);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 3px;
       overflow-x: auto;
       overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-x;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.4) rgba(255, 255, 255, 0.06);
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }
     .nav-tabs::-webkit-scrollbar {
-      height: 6px;
-      display: block;
-    }
-    .nav-tabs::-webkit-scrollbar-track {
-      background: rgba(255, 255, 255, 0.06);
-      border-radius: 9999px;
-    }
-    .nav-tabs::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.38);
-      border-radius: 9999px;
-      border: 1px solid rgba(0, 0, 0, 0.2);
-    }
-    .nav-tabs::-webkit-scrollbar-thumb:hover {
-      background: var(--primary);
-    }
-    [data-theme="light"] .nav-tabs {
-      scrollbar-color: rgba(0, 0, 0, 0.35) rgba(0, 0, 0, 0.06);
-    }
-    [data-theme="light"] .nav-tabs::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.06);
-    }
-    [data-theme="light"] .nav-tabs::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.32);
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
     }
 
     .tab-btn {
       flex-shrink: 0;
       white-space: nowrap;
       background: transparent;
-      color: var(--text-muted);
-      border: 1px solid transparent;
-      padding: 8px 18px;
-      border-radius: 9999px;
+      color: rgba(235, 235, 245, 0.65);
+      border: none;
+      outline: none;
+      padding: 7px 16px;
+      border-radius: 9px;
       cursor: pointer;
-      font-weight: 600;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      font-weight: 500;
       font-size: 13px;
+      line-height: 1.25;
       letter-spacing: -0.01em;
+      user-select: none;
+      -webkit-user-select: none;
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      white-space: nowrap;
     }
 
     .tab-btn:hover {
-      color: var(--text);
-      background: var(--card-hover);
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.06);
     }
 
-    [data-theme="dark"] .tab-btn.active,
-    :root .tab-btn.active {
-      color: #0c0d12 !important;
-      background: #ffffff !important;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-      border-color: transparent !important;
+    .tab-btn:active {
+      transform: scale(0.97);
     }
 
-    [data-theme="light"] .tab-btn.active {
+    /* Active Tab in Dark Mode: Deep elevated dark pill */
+    :root .tab-btn.active,
+    [data-theme="dark"] .tab-btn.active {
       color: #ffffff !important;
-      background: #0f172a !important;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-      border-color: transparent !important;
+      background: #3a3a3c !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0.5px 0.5px rgba(255, 255, 255, 0.12) inset !important;
+      font-weight: 600 !important;
+      border: none !important;
+    }
+
+    /* Active Tab in Light Mode: White with subtle crisp shadow */
+    [data-theme="light"] .tab-btn.active {
+      color: #000000 !important;
+      background: #ffffff !important;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 0.5px 1.5px rgba(0, 0, 0, 0.06) !important;
+      font-weight: 600 !important;
+      border: none !important;
+    }
+
+    /* Apple HIG Month Selector & Period Navigator Bar */
+    .month-navigator-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 12px 20px;
+      margin-bottom: 20px;
+      background: rgba(30, 41, 59, 0.75);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), 0 0.5px 1px rgba(255, 255, 255, 0.08) inset;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .month-navigator-label {
+      font-weight: 700;
+      font-size: 14px;
+      color: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    [data-theme="light"] .month-navigator-label {
+      color: #000000 !important;
+    }
+
+    /* Apple HIG Round Squircle Chevron Buttons */
+    .month-chevron-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+      cursor: pointer;
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+      -webkit-user-select: none;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+
+    .month-chevron-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateY(-1px) scale(1.04);
+      color: #ffffff;
+    }
+
+    .month-chevron-btn:active {
+      transform: scale(0.94);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    [data-theme="light"] .month-chevron-btn {
+      background: #f2f2f7;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      color: #1c1c1e;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    [data-theme="light"] .month-chevron-btn:hover {
+      background: #e5e5ea;
+      border-color: rgba(0, 0, 0, 0.16);
+      color: #000000;
+    }
+
+    [data-theme="light"] .month-chevron-btn:active {
+      background: #d1d1d6;
+    }
+
+    /* Apple HIG Month Selector Dropdown */
+    .month-select-input {
+      padding: 6px 14px;
+      height: 34px;
+      font-size: 13px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      cursor: pointer;
+      min-width: 170px;
+      outline: none;
+      transition: all 0.18s ease;
+      font-family: inherit;
+    }
+
+    .month-select-input:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    [data-theme="light"] .month-select-input {
+      background: #ffffff;
+      color: #1c1c1e;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    [data-theme="light"] .month-select-input:hover {
+      border-color: rgba(0, 0, 0, 0.22);
     }
 
     /* Revolut Cards & Grids */
@@ -4452,34 +4560,30 @@ self.addEventListener('fetch', (event) => {
       }
       .nav-tabs {
         display: flex !important;
+        align-items: center !important;
         flex-wrap: nowrap !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         -webkit-overflow-scrolling: touch !important;
         touch-action: pan-x !important;
-        scrollbar-width: thin !important;
-        scrollbar-color: rgba(255, 255, 255, 0.45) rgba(255, 255, 255, 0.08) !important;
-        gap: 4px !important;
-        padding-bottom: 8px !important;
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+        gap: 3px !important;
+        padding: 3px !important;
+        border-radius: 12px !important;
         margin-bottom: 16px !important;
       }
       .nav-tabs::-webkit-scrollbar {
-        height: 5px !important;
-        display: block !important;
-      }
-      .nav-tabs::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.06) !important;
-        border-radius: 9999px !important;
-      }
-      .nav-tabs::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.4) !important;
-        border-radius: 9999px !important;
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
       }
       .tab-btn {
         flex-shrink: 0 !important;
         white-space: nowrap !important;
-        padding: 7px 14px !important;
+        padding: 6px 13px !important;
         font-size: 12px !important;
+        border-radius: 9px !important;
       }
       .card {
         padding: 16px !important;
@@ -4768,9 +4872,9 @@ self.addEventListener('fetch', (event) => {
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
       z-index: 99999;
       display: flex;
       align-items: center;
@@ -4816,16 +4920,16 @@ self.addEventListener('fetch', (event) => {
     }
 
     .bottom-sheet-handle {
-      width: 44px;
+      width: 36px;
       height: 5px;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.35);
+      border-radius: 9999px;
       margin: 0 auto;
       transition: background 0.2s ease;
     }
 
     [data-theme="light"] .bottom-sheet-handle {
-      background: rgba(0, 0, 0, 0.2);
+      background: rgba(0, 0, 0, 0.22);
     }
 
     .bottom-sheet-close-btn {
@@ -4964,21 +5068,26 @@ self.addEventListener('fetch', (event) => {
         align-items: flex-end !important;
         justify-content: center !important;
         padding: 0 !important;
-        background: rgba(0, 0, 0, 0.65) !important;
+        background: rgba(0, 0, 0, 0.6) !important;
+        backdrop-filter: blur(25px) !important;
+        -webkit-backdrop-filter: blur(25px) !important;
         touch-action: pan-y;
       }
       #modalNewTx .bottom-sheet-card {
         max-width: 100% !important;
         width: 100% !important;
-        border-radius: 24px 24px 0 0 !important;
+        border-radius: 28px 28px 0 0 !important;
         margin: 0 !important;
         border-left: none !important;
         border-right: none !important;
         border-bottom: none !important;
-        max-height: 85vh !important;
-        padding: 14px 20px calc(24px + env(safe-area-inset-bottom, 20px)) 20px !important;
+        max-height: calc(88vh - env(safe-area-inset-bottom, 0px)) !important;
+        padding: 12px 20px calc(24px + env(safe-area-inset-bottom, 20px)) 20px !important;
         animation: revolutSlideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1);
         box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
       }
       .bottom-sheet-handle-bar {
         display: flex !important;
@@ -4991,6 +5100,542 @@ self.addEventListener('fetch', (event) => {
       }
       to {
         transform: translateY(0);
+      }
+    }
+
+    /* ==========================================================================
+       Apple HIG Modals & Bottom Sheets Optimization
+       ========================================================================== */
+    /* 1. Backdrop Blur (25px) and Base Presentation for All Modals */
+    #modalNewTx,
+    #modalNewDebt,
+    #modalEditTx,
+    #modalPayDebt,
+    #modalGoal,
+    #modalEnvelope,
+    #settingsModal,
+    #modalCardSettings,
+    #modalObligation,
+    #modalQrPair,
+    #modalContributeGoal,
+    #modalEnvelopeDeposit,
+    #modalEnvelopeWithdraw,
+    #modalEnvelopeTransfer,
+    #vaultModal,
+    [id^="modal"] {
+      backdrop-filter: blur(25px) !important;
+      -webkit-backdrop-filter: blur(25px) !important;
+      background: rgba(0, 0, 0, 0.65) !important;
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain !important;
+    }
+
+    [data-theme="light"] #modalNewTx,
+    [data-theme="light"] #modalNewDebt,
+    [data-theme="light"] #modalEditTx,
+    [data-theme="light"] #modalPayDebt,
+    [data-theme="light"] #modalGoal,
+    [data-theme="light"] #modalEnvelope,
+    [data-theme="light"] #settingsModal,
+    [data-theme="light"] #modalCardSettings,
+    [data-theme="light"] #modalObligation,
+    [data-theme="light"] #modalQrPair,
+    [data-theme="light"] #modalContributeGoal,
+    [data-theme="light"] #modalEnvelopeDeposit,
+    [data-theme="light"] #modalEnvelopeWithdraw,
+    [data-theme="light"] #modalEnvelopeTransfer,
+    [data-theme="light"] #vaultModal,
+    [data-theme="light"] [id^="modal"] {
+      background: rgba(15, 23, 42, 0.45) !important;
+    }
+
+    /* Modal Cards: Apple HIG Glass Surfaces */
+    #modalNewDebt .card,
+    #modalEditTx .card,
+    #modalPayDebt .card,
+    #modalGoal .card,
+    #modalEnvelope .card,
+    #settingsModal .card,
+    #modalCardSettings .card,
+    #modalObligation .card,
+    #modalQrPair .card,
+    #modalContributeGoal .card,
+    #modalEnvelopeDeposit .card,
+    #modalEnvelopeWithdraw .card,
+    #modalEnvelopeTransfer .card,
+    #vaultModal .card {
+      border-radius: 24px !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain !important;
+    }
+
+    [data-theme="light"] #modalNewDebt .card,
+    [data-theme="light"] #modalEditTx .card,
+    [data-theme="light"] #modalPayDebt .card,
+    [data-theme="light"] #modalGoal .card,
+    [data-theme="light"] #modalEnvelope .card,
+    [data-theme="light"] #settingsModal .card,
+    [data-theme="light"] #modalCardSettings .card,
+    [data-theme="light"] #modalObligation .card,
+    [data-theme="light"] #modalQrPair .card,
+    [data-theme="light"] #modalContributeGoal .card,
+    [data-theme="light"] #modalEnvelopeDeposit .card,
+    [data-theme="light"] #modalEnvelopeWithdraw .card,
+    [data-theme="light"] #modalEnvelopeTransfer .card,
+    [data-theme="light"] #vaultModal .card {
+      background: #ffffff !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+      box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    /* 2. Category Dropdown Menu (#modalTxCatMenu): Smooth Touch Scroll & 100% Readability */
+    #modalTxCatMenu {
+      position: absolute;
+      width: 100% !important;
+      max-width: 100% !important;
+      background: rgba(20, 23, 32, 0.97) !important;
+      backdrop-filter: blur(25px) !important;
+      -webkit-backdrop-filter: blur(25px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7) !important;
+      z-index: 10001 !important;
+      overflow: hidden !important;
+    }
+
+    #modalTxCatMenu .category-dropdown-list,
+    #modalTxCatList {
+      max-height: 300px !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain !important;
+      touch-action: pan-y !important;
+      padding: 4px 0 !important;
+    }
+
+    #modalTxCatMenu .cat-dropdown-item {
+      color: #f8fafc !important;
+      padding: 10px 14px !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+      font-size: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 10px !important;
+      transition: background 0.15s ease, padding 0.15s ease !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+
+    #modalTxCatMenu .cat-dropdown-item:hover,
+    #modalTxCatMenu .cat-dropdown-item:active {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: #ffffff !important;
+    }
+
+    #modalTxCatMenu .cat-dropdown-item.active {
+      background: rgba(59, 130, 246, 0.2) !important;
+      color: #60a5fa !important;
+      font-weight: 600 !important;
+    }
+
+    #modalTxCatMenu .cat-group-header {
+      padding: 8px 14px !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.05em !important;
+      color: #94a3b8 !important;
+      background: #181c26 !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 2 !important;
+    }
+
+    #modalTxCatMenu .category-dropdown-search {
+      padding: 10px 12px !important;
+      background: rgba(255, 255, 255, 0.02) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+      flex-shrink: 0 !important;
+    }
+
+    #modalTxCatMenu .category-dropdown-search input {
+      background: #0d0f15 !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      color: #ffffff !important;
+      border-radius: 10px !important;
+      padding: 9px 12px !important;
+      font-size: 14px !important;
+    }
+
+    #modalTxCatMenu .category-dropdown-search input::placeholder {
+      color: #64748b !important;
+    }
+
+    /* Category Dropdown - Light Theme 100% Readability */
+    [data-theme="light"] #modalTxCatMenu {
+      background: rgba(255, 255, 255, 0.98) !important;
+      border: 1px solid #cbd5e1 !important;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12) !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .cat-dropdown-item {
+      color: #0f172a !important;
+      border-bottom: 1px solid #f1f5f9 !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .cat-dropdown-item:hover,
+    [data-theme="light"] #modalTxCatMenu .cat-dropdown-item:active {
+      background: #f1f5f9 !important;
+      color: #0f172a !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .cat-dropdown-item.active {
+      background: rgba(37, 99, 235, 0.1) !important;
+      color: #2563eb !important;
+      font-weight: 600 !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .cat-group-header {
+      color: #475569 !important;
+      background: #f8fafc !important;
+      border-bottom: 1px solid #e2e8f0 !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .category-dropdown-search {
+      background: #f8fafc !important;
+      border-bottom: 1px solid #e2e8f0 !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .category-dropdown-search input {
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #0f172a !important;
+    }
+
+    [data-theme="light"] #modalTxCatMenu .category-dropdown-search input::placeholder {
+      color: #94a3b8 !important;
+    }
+
+    /* 3. Apple HIG Form Controls (Inputs, Selects, Textareas) in All Modals */
+    .modal input:not([type="checkbox"]):not([type="radio"]),
+    .modal select,
+    .modal textarea,
+    [id^="modal"] input:not([type="checkbox"]):not([type="radio"]),
+    [id^="modal"] select,
+    [id^="modal"] textarea,
+    #settingsModal input:not([type="checkbox"]):not([type="radio"]),
+    #settingsModal select,
+    #settingsModal textarea {
+      border-radius: 12px !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      background: var(--input-bg, #11131a);
+      color: var(--text, #ffffff);
+      padding: 11px 14px;
+      font-family: inherit;
+      font-size: 15px;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+      -webkit-appearance: none;
+      appearance: none;
+      box-sizing: border-box;
+    }
+
+    .modal select,
+    [id^="modal"] select,
+    #settingsModal select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+
+    .modal input:focus,
+    .modal select:focus,
+    .modal textarea:focus,
+    [id^="modal"] input:focus,
+    [id^="modal"] select:focus,
+    [id^="modal"] textarea:focus,
+    #settingsModal input:focus,
+    #settingsModal select:focus,
+    #settingsModal textarea:focus {
+      outline: none !important;
+      border-color: #3b82f6 !important;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.28) !important;
+    }
+
+    [data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]),
+    [data-theme="light"] .modal select,
+    [data-theme="light"] .modal textarea,
+    [data-theme="light"] [id^="modal"] input:not([type="checkbox"]):not([type="radio"]),
+    [data-theme="light"] [id^="modal"] select,
+    [data-theme="light"] [id^="modal"] textarea,
+    [data-theme="light"] #settingsModal input:not([type="checkbox"]):not([type="radio"]),
+    [data-theme="light"] #settingsModal select,
+    [data-theme="light"] #settingsModal textarea {
+      background: #f8fafc !important;
+      color: #0f172a !important;
+      border: 1px solid rgba(0, 0, 0, 0.12) !important;
+    }
+
+    [data-theme="light"] .modal select,
+    [data-theme="light"] [id^="modal"] select,
+    [data-theme="light"] #settingsModal select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1.41 0L6 4.58 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+    }
+
+    /* iOS Anti-Auto-Zoom: 16px Base Font on Mobile Viewports */
+    @media (max-width: 768px) {
+      input:not([type="checkbox"]):not([type="radio"]),
+      select,
+      textarea,
+      .modal input:not([type="checkbox"]):not([type="radio"]),
+      .modal select,
+      .modal textarea,
+      [id^="modal"] input:not([type="checkbox"]):not([type="radio"]),
+      [id^="modal"] select,
+      [id^="modal"] textarea,
+      #settingsModal input:not([type="checkbox"]):not([type="radio"]),
+      #settingsModal select,
+      #settingsModal textarea {
+        font-size: 16px !important;
+      }
+      .revolut-amount-input {
+        font-size: 32px !important;
+      }
+    }
+
+    /* 4. Apple HIG Buttons across All Modals */
+    .modal .btn,
+    [id^="modal"] .btn,
+    #settingsModal .btn {
+      border-radius: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .modal .btn:active,
+    [id^="modal"] .btn:active,
+    #settingsModal .btn:active {
+      transform: scale(0.97);
+    }
+
+    /* Secondary Buttons in Modals */
+    .modal .btn-secondary,
+    [id^="modal"] .btn-secondary,
+    #settingsModal .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text, #ffffff);
+    }
+
+    .modal .btn-secondary:hover,
+    [id^="modal"] .btn-secondary:hover,
+    #settingsModal .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="light"] .modal .btn-secondary,
+    [data-theme="light"] [id^="modal"] .btn-secondary,
+    [data-theme="light"] #settingsModal .btn-secondary {
+      background: rgba(0, 0, 0, 0.05) !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+      color: #0f172a !important;
+    }
+
+    [data-theme="light"] .modal .btn-secondary:hover,
+    [data-theme="light"] [id^="modal"] .btn-secondary:hover,
+    [data-theme="light"] #settingsModal .btn-secondary:hover {
+      background: rgba(0, 0, 0, 0.09) !important;
+    }
+
+    /* Universal Modal Close Buttons: Apple Circular Pill */
+    #modalNewTx .bottom-sheet-close-btn,
+    #modalEditTx > .card > button:first-child,
+    #modalNewDebt > .card > button:first-child,
+    #modalPayDebt > .card > button:first-child,
+    #modalGoal > .card > button:first-child,
+    #modalEnvelope > .card > button:first-child,
+    #modalCardSettings > .card > button:first-child,
+    #modalObligation > .card > button:first-child,
+    #modalQrPair > .card > button:first-child,
+    #vaultModal > .card button[onclick*="close"],
+    #settingsModal button[onclick*="close"] {
+      width: 32px !important;
+      height: 32px !important;
+      border-radius: 50% !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      color: var(--text-muted) !important;
+      font-size: 15px !important;
+      font-weight: 600 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+      padding: 0 !important;
+      line-height: 1 !important;
+    }
+
+    #modalNewTx .bottom-sheet-close-btn:hover,
+    #modalEditTx > .card > button:first-child:hover,
+    #modalNewDebt > .card > button:first-child:hover,
+    #modalPayDebt > .card > button:first-child:hover,
+    #modalGoal > .card > button:first-child:hover,
+    #modalEnvelope > .card > button:first-child:hover,
+    #modalCardSettings > .card > button:first-child:hover,
+    #modalObligation > .card > button:first-child:hover,
+    #modalQrPair > .card > button:first-child:hover,
+    #vaultModal > .card button[onclick*="close"]:hover,
+    #settingsModal button[onclick*="close"]:hover {
+      background: rgba(255, 255, 255, 0.16) !important;
+      color: #ffffff !important;
+      transform: scale(1.05);
+    }
+
+    [data-theme="light"] #modalNewTx .bottom-sheet-close-btn,
+    [data-theme="light"] #modalEditTx > .card > button:first-child,
+    [data-theme="light"] #modalNewDebt > .card > button:first-child,
+    [data-theme="light"] #modalPayDebt > .card > button:first-child,
+    [data-theme="light"] #modalGoal > .card > button:first-child,
+    [data-theme="light"] #modalEnvelope > .card > button:first-child,
+    [data-theme="light"] #modalCardSettings > .card > button:first-child,
+    [data-theme="light"] #modalObligation > .card > button:first-child,
+    [data-theme="light"] #modalQrPair > .card > button:first-child,
+    [data-theme="light"] #vaultModal > .card button[onclick*="close"],
+    [data-theme="light"] #settingsModal button[onclick*="close"] {
+      background: rgba(0, 0, 0, 0.05) !important;
+      border-color: rgba(0, 0, 0, 0.08) !important;
+      color: #64748b !important;
+    }
+
+    [data-theme="light"] #modalNewTx .bottom-sheet-close-btn:hover,
+    [data-theme="light"] #modalEditTx > .card > button:first-child:hover,
+    [data-theme="light"] #modalNewDebt > .card > button:first-child:hover,
+    [data-theme="light"] #modalPayDebt > .card > button:first-child:hover,
+    [data-theme="light"] #modalGoal > .card > button:first-child:hover,
+    [data-theme="light"] #modalEnvelope > .card > button:first-child:hover,
+    [data-theme="light"] #modalCardSettings > .card > button:first-child:hover,
+    [data-theme="light"] #modalObligation > .card > button:first-child:hover,
+    [data-theme="light"] #modalQrPair > .card > button:first-child:hover,
+    [data-theme="light"] #vaultModal > .card button[onclick*="close"]:hover,
+    [data-theme="light"] #settingsModal button[onclick*="close"]:hover {
+      background: rgba(0, 0, 0, 0.1) !important;
+      color: #0f172a !important;
+    }
+
+    /* 5. Apple HIG Segmented Controls (Type Switches) */
+    .tx-type-segment-group {
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.28);
+      padding: 4px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    [data-theme="light"] .tx-type-segment-group {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.06);
+    }
+
+    .tx-type-segment-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .tx-type-segment-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tx-type-segment-btn.active-expense {
+      background: #ef4444 !important;
+      color: #ffffff !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+      box-shadow: 0 3px 10px rgba(239, 68, 68, 0.35) !important;
+    }
+
+    .tx-type-segment-btn.active-income {
+      background: #10b981 !important;
+      color: #ffffff !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+      box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35) !important;
+    }
+
+    [data-theme="light"] .tx-type-segment-btn:hover {
+      background: rgba(0, 0, 0, 0.03);
+      color: #0f172a;
+    }
+
+    /* Debt Type Segmented Grid */
+    .debt-type-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.22);
+      padding: 6px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    [data-theme="light"] .debt-type-grid {
+      background: rgba(0, 0, 0, 0.04);
+      border-color: rgba(0, 0, 0, 0.06);
+    }
+
+    .debt-type-btn {
+      padding: 9px 8px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      text-align: center;
+    }
+
+    .debt-type-btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+
+    .debt-type-btn.active {
+      background: var(--primary, #3b82f6) !important;
+      color: #ffffff !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35) !important;
+    }
+
+    [data-theme="light"] .debt-type-btn:hover {
+      background: rgba(0, 0, 0, 0.04);
+      color: #0f172a;
+    }
+
+    @media (max-width: 480px) {
+      .debt-type-grid {
+        grid-template-columns: repeat(2, 1fr);
       }
     }
 
@@ -5234,20 +5879,20 @@ self.addEventListener('fetch', (event) => {
         padding: 12px 22px !important;
         border-radius: 16px !important;
         background: rgba(17, 24, 39, 0.75) !important;
-        backdrop-filter: blur(20px) !important;
-        -webkit-backdrop-filter: blur(20px) !important;
-        border: 1px solid var(--border) !important;
-        margin-bottom: 18px !important;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+        backdrop-filter: blur(20px) saturate(180%) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        margin-bottom: 20px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
       }
 
       .nav-tabs {
         display: flex !important;
         flex-wrap: wrap !important;
-        gap: 8px !important;
-        padding: 8px 12px !important;
-        border-radius: 16px !important;
-        background: rgba(17, 24, 39, 0.6) !important;
+        gap: 3px !important;
+        padding: 3px !important;
+        border-radius: 12px !important;
+        background: rgba(118, 118, 128, 0.24) !important;
         backdrop-filter: blur(20px) !important;
         -webkit-backdrop-filter: blur(20px) !important;
         margin-bottom: 24px !important;
@@ -5255,10 +5900,10 @@ self.addEventListener('fetch', (event) => {
       }
 
       .tab-btn {
-        padding: 8px 18px !important;
+        padding: 7px 15px !important;
         font-size: 13px !important;
-        font-weight: 600 !important;
-        border-radius: 10px !important;
+        font-weight: 500 !important;
+        border-radius: 9px !important;
         white-space: nowrap !important;
       }
 
@@ -5432,21 +6077,21 @@ self.addEventListener('fetch', (event) => {
       color: #d97706 !important;
     }
 
-    /* Navigation Tabs in Light Theme */
+    /* Navigation Tabs in Light Theme (Apple HIG iOS Segmented Control) */
     [data-theme="light"] .nav-tabs {
-      background: #f1f5f9 !important;
-      border: 1px solid #e2e8f0 !important;
-      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+      background: rgba(118, 118, 128, 0.12) !important;
+      border: 1px solid rgba(0, 0, 0, 0.06) !important;
+      box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.06) !important;
     }
 
     [data-theme="light"] .tab-btn {
-      color: #64748b !important;
+      color: #636366 !important;
       background: transparent !important;
     }
 
     [data-theme="light"] .tab-btn:hover {
-      color: #0f172a !important;
-      background: #e2e8f0 !important;
+      color: #1c1c1e !important;
+      background: rgba(0, 0, 0, 0.04) !important;
     }
 
     [data-theme="light"] .tab-btn.active {
@@ -5706,15 +6351,17 @@ self.addEventListener('fetch', (event) => {
       transform: translateY(0) scale(0.97) !important;
     }
 
-    /* Month navigator light mode */
+    /* Month navigator light mode (Apple HIG) */
     [data-theme="light"] .month-navigator-bar {
-      background: #ffffff !important;
-      border: 1px solid #e2e8f0 !important;
-      box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06) !important;
-      color: #0f172a !important;
+      background: rgba(255, 255, 255, 0.88) !important;
+      backdrop-filter: blur(20px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+      border: 1px solid rgba(0, 0, 0, 0.08) !important;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+      color: #1c1c1e !important;
     }
     [data-theme="light"] .month-navigator-bar span {
-      color: #0f172a !important;
+      color: #1c1c1e !important;
     }
 
     /* Segmented transaction switcher in light theme */
@@ -5834,6 +6481,367 @@ self.addEventListener('fetch', (event) => {
       background: #f1f5f9 !important;
       border: 1px solid #cbd5e1 !important;
       color: #0f172a !important;
+    }
+
+    /* ==============================================================
+       APPLE HIG MODERN DESIGN SYSTEM (Cards, Ledger Tables, Badges)
+       ============================================================== */
+
+    /* 1. CARDS: 22px Squircle, Apple Dark #1c1c1e / Light Pure White #ffffff */
+    .card,
+    .desktop-main-column .card,
+    .desktop-widget-column .card,
+    .accounts-card,
+    .desktop-ledger-card,
+    .analytics-card,
+    .debt-card,
+    .obligation-card,
+    .goal-card,
+    .envelope-card,
+    .modal-overlay .card,
+    [id^="modal"] .card,
+    .bottom-sheet-card {
+      border-radius: 22px !important;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-color 0.2s ease,
+                  background 0.2s ease;
+    }
+
+    /* Dark Mode Cards: #1c1c1e surface, 1px rgba(255,255,255,0.08) border */
+    :root, [data-theme="dark"] {
+      --card-bg: #1c1c1e !important;
+      --card-radius: 22px !important;
+      --border: rgba(255, 255, 255, 0.08) !important;
+      --border-hover: rgba(255, 255, 255, 0.16) !important;
+    }
+
+    .card,
+    .desktop-main-column .card,
+    .desktop-widget-column .card,
+    .accounts-card,
+    .desktop-ledger-card,
+    .analytics-card {
+      background: #1c1c1e !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+      color: #ffffff;
+    }
+
+    .card:hover,
+    .desktop-main-column .card:hover,
+    .desktop-widget-column .card:hover {
+      border-color: rgba(255, 255, 255, 0.16) !important;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    /* Light Mode Cards: Pure White #ffffff surface with 1px border #e5e5ea, no muddy gray haze */
+    [data-theme="light"] {
+      --card-bg: #ffffff !important;
+      --card-radius: 22px !important;
+      --border: #e5e5ea !important;
+      --border-hover: #d1d1d6 !important;
+    }
+
+    [data-theme="light"] .card,
+    [data-theme="light"] .desktop-main-column .card,
+    [data-theme="light"] .desktop-widget-column .card,
+    [data-theme="light"] .accounts-card,
+    [data-theme="light"] .desktop-ledger-card,
+    [data-theme="light"] .analytics-card,
+    [data-theme="light"] .modal-overlay .card,
+    [data-theme="light"] [id^="modal"] .card,
+    [data-theme="light"] .bottom-sheet-card {
+      background: #ffffff !important;
+      border: 1px solid #e5e5ea !important;
+      border-top: 1px solid #e5e5ea !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+      color: #1c1c1e !important;
+    }
+
+    [data-theme="light"] .card:hover,
+    [data-theme="light"] .desktop-main-column .card:hover,
+    [data-theme="light"] .desktop-widget-column .card:hover {
+      border-color: #d1d1d6 !important;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* 2. TABLES: Apple Inset Grouped / List Table Style */
+    table,
+    .revolut-ledger-table,
+    #txTable,
+    #dashTxTable,
+    .apple-table {
+      width: 100%;
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+      margin-top: 8px;
+    }
+
+    /* Apple List Header: 12px uppercase, text-muted, letter-spacing: 0.05em */
+    th,
+    table thead th,
+    .revolut-ledger-table thead th {
+      font-size: 12px !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.05em !important;
+      font-weight: 600 !important;
+      padding: 10px 16px !important;
+      text-align: left;
+      height: 38px;
+      line-height: 1.2;
+    }
+
+    th,
+    table thead th,
+    .revolut-ledger-table thead th {
+      color: #8e8e93 !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+      background: transparent !important;
+    }
+
+    [data-theme="light"] th,
+    [data-theme="light"] table thead th,
+    [data-theme="light"] .revolut-ledger-table thead th {
+      color: #8e8e93 !important;
+      border-bottom: 1px solid #e5e5ea !important;
+      background: transparent !important;
+    }
+
+    /* Apple List Rows: 52px comfortable height, subtle bottom divider */
+    table tbody tr,
+    .revolut-ledger-table tbody tr {
+      height: 52px !important;
+      min-height: 52px !important;
+      transition: background 0.15s ease;
+    }
+
+    table tbody td,
+    .revolut-ledger-table tbody td,
+    td {
+      height: 52px !important;
+      padding: 12px 16px !important;
+      font-size: 14px;
+      vertical-align: middle;
+      border-top: none;
+    }
+
+    /* Dark Mode Table Rows & Dividers */
+    table tbody td,
+    .revolut-ledger-table tbody td {
+      color: #ffffff;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    table tbody tr:hover td,
+    .revolut-ledger-table tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.035) !important;
+    }
+
+    /* Light Mode Table Rows & Dividers */
+    [data-theme="light"] table tbody td,
+    [data-theme="light"] .revolut-ledger-table tbody td {
+      color: #1c1c1e !important;
+      border-bottom: 1px solid #e5e5ea !important;
+    }
+
+    [data-theme="light"] table tbody tr:hover td,
+    [data-theme="light"] .revolut-ledger-table tbody tr:hover td {
+      background: rgba(0, 0, 0, 0.02) !important;
+    }
+
+    /* Remove bottom divider from last row */
+    table tbody tr:last-child td,
+    .revolut-ledger-table tbody tr:last-child td {
+      border-bottom: none !important;
+    }
+
+    /* Monospace Amounts: SF Mono / monospace tabular-nums, right-aligned */
+    .amount-cell,
+    td.amount-val,
+    th.amount-header,
+    .tx-amount,
+    .table-amount {
+      font-family: -apple-system-monospaced, "SF Mono", "SFProMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace !important;
+      font-variant-numeric: tabular-nums lining-nums !important;
+      font-feature-settings: "tnum" 1 !important;
+      text-align: right !important;
+      white-space: nowrap !important;
+      font-weight: 600 !important;
+      font-size: 14px;
+    }
+
+    /* Amounts: Green (+) for Income, Dark/White (-) for Expense */
+    /* Dark Mode Amounts */
+    .amount-income,
+    .is-income,
+    .tx-income,
+    td[style*="34d399"] {
+      color: #30d158 !important; /* Apple Green Dark */
+    }
+
+    .amount-expense,
+    .is-expense,
+    .tx-expense,
+    td[style*="f87171"] {
+      color: #ffffff !important; /* Apple Dark Mode Expense: White */
+    }
+
+    /* Light Mode Amounts */
+    [data-theme="light"] .amount-income,
+    [data-theme="light"] .is-income,
+    [data-theme="light"] .tx-income,
+    [data-theme="light"] td[style*="34d399"] {
+      color: #34c759 !important; /* Apple Green Light */
+    }
+
+    [data-theme="light"] .amount-expense,
+    [data-theme="light"] .is-expense,
+    [data-theme="light"] .tx-expense,
+    [data-theme="light"] td[style*="f87171"] {
+      color: #1c1c1e !important; /* Apple Light Mode Expense: Dark */
+    }
+
+    /* 3. CATEGORY CHIPS & BADGES: Rounded 9999px Pills */
+    .badge,
+    .chip,
+    .revolut-chip,
+    .family-scope-chip,
+    .hero-badge-pill,
+    .category-pill,
+    .cat-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 6px !important;
+      border-radius: 9999px !important;
+      padding: 4px 12px !important;
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      line-height: 1.3 !important;
+      white-space: nowrap !important;
+      box-sizing: border-box !important;
+      transition: all 0.15s ease !important;
+    }
+
+    /* Dark Mode: Deep Luminous Tints */
+    .badge,
+    .chip,
+    .revolut-chip {
+      background: #2c2c2e;
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .revolut-chip:hover {
+      background: #3a3a3c !important;
+      border-color: rgba(255, 255, 255, 0.20) !important;
+    }
+
+    .badge-blue, .badge-info, .family-scope-chip {
+      background: rgba(10, 132, 255, 0.18) !important;
+      border: 1px solid rgba(10, 132, 255, 0.32) !important;
+      color: #0a84ff !important;
+    }
+
+    .badge-green, .badge-success, .badge-income {
+      background: rgba(48, 209, 88, 0.18) !important;
+      border: 1px solid rgba(48, 209, 88, 0.32) !important;
+      color: #30d158 !important;
+    }
+
+    .badge-red, .badge-danger, .badge-expense {
+      background: rgba(255, 69, 58, 0.18) !important;
+      border: 1px solid rgba(255, 69, 58, 0.32) !important;
+      color: #ff453a !important;
+    }
+
+    .badge-warning, .badge-amber {
+      background: rgba(255, 159, 10, 0.18) !important;
+      border: 1px solid rgba(255, 159, 10, 0.32) !important;
+      color: #ff9f0a !important;
+    }
+
+    .badge-purple {
+      background: rgba(191, 90, 242, 0.18) !important;
+      border: 1px solid rgba(191, 90, 242, 0.32) !important;
+      color: #bf5af2 !important;
+    }
+
+    /* Light Mode: Soft Pastel Tints */
+    [data-theme="light"] .badge,
+    [data-theme="light"] .chip,
+    [data-theme="light"] .revolut-chip {
+      background: #f2f2f7 !important;
+      border: 1px solid #e5e5ea !important;
+      color: #1c1c1e !important;
+    }
+
+    [data-theme="light"] .revolut-chip:hover {
+      background: #e5e5ea !important;
+      border-color: #d1d1d6 !important;
+    }
+
+    [data-theme="light"] .badge-blue,
+    [data-theme="light"] .badge-info,
+    [data-theme="light"] .family-scope-chip {
+      background: rgba(0, 122, 255, 0.10) !important;
+      border: 1px solid rgba(0, 122, 255, 0.22) !important;
+      color: #007aff !important;
+    }
+
+    [data-theme="light"] .badge-green,
+    [data-theme="light"] .badge-success,
+    [data-theme="light"] .badge-income {
+      background: rgba(52, 199, 89, 0.12) !important;
+      border: 1px solid rgba(52, 199, 89, 0.24) !important;
+      color: #28cd41 !important;
+    }
+
+    [data-theme="light"] .badge-red,
+    [data-theme="light"] .badge-danger,
+    [data-theme="light"] .badge-expense {
+      background: rgba(255, 59, 48, 0.10) !important;
+      border: 1px solid rgba(255, 59, 48, 0.20) !important;
+      color: #ff3b30 !important;
+    }
+
+    [data-theme="light"] .badge-warning,
+    [data-theme="light"] .badge-amber {
+      background: rgba(255, 149, 0, 0.12) !important;
+      border: 1px solid rgba(255, 149, 0, 0.24) !important;
+      color: #ff9500 !important;
+    }
+
+    [data-theme="light"] .badge-purple {
+      background: rgba(175, 82, 222, 0.12) !important;
+      border: 1px solid rgba(175, 82, 222, 0.24) !important;
+      color: #af52de !important;
+    }
+
+    /* 4. WIDGET STAT AMOUNTS & INNER PANELS */
+    .stat-val {
+      font-family: -apple-system-monospaced, "SF Mono", "SFProMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace !important;
+      font-variant-numeric: tabular-nums lining-nums !important;
+      font-feature-settings: "tnum" 1 !important;
+      letter-spacing: -0.02em !important;
+    }
+
+    .stat-label {
+      font-size: 11px !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.05em !important;
+      font-weight: 600 !important;
+      color: #8e8e93 !important;
+    }
+
+    [data-theme="light"] .stat-label {
+      color: #8e8e93 !important;
+    }
+
+    .inner-panel-box,
+    .debt-banking-block {
+      border-radius: 14px !important;
     }
 
   </style>
@@ -7243,22 +8251,22 @@ self.addEventListener('fetch', (event) => {
     <div id="mainDashboard" class="hidden">
 
 <!-- Month Selector & Period Navigator Bar -->
-<div class="month-navigator-bar" style="background: rgba(30, 41, 59, 0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-    <span style="font-weight: 600; font-size: 14px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+<div class="month-navigator-bar">
+  <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+    <span class="month-navigator-label">
       <span style="font-size: 18px;">📅</span>
       <span>Период учёта:</span>
     </span>
     <div style="display: flex; align-items: center; gap: 6px;">
-      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(-1)" title="Предыдущий месяц">◀</button>
-      <select id="globalMonthSelect" onchange="onGlobalMonthSelectChange(this.value)" style="padding: 6px 14px; font-size: 14px; font-weight: 600; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; min-width: 170px;">
+      <button type="button" class="month-chevron-btn" onclick="shiftSelectedMonth(-1)" title="Предыдущий месяц" aria-label="Предыдущий месяц">◀</button>
+      <select id="globalMonthSelect" class="month-select-input" onchange="onGlobalMonthSelectChange(this.value)">
         <!-- Filled dynamically -->
       </select>
-      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" onclick="shiftSelectedMonth(1)" title="Следующий месяц">▶</button>
+      <button type="button" class="month-chevron-btn" onclick="shiftSelectedMonth(1)" title="Следующий месяц" aria-label="Следующий месяц">▶</button>
     </div>
-    <button type="button" id="btnCurrentMonthReset" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; display: none;" onclick="resetToCurrentMonth()">🔄 Текущий месяц</button>
+    <button type="button" id="btnCurrentMonthReset" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; display: none; border-radius: 10px;" onclick="resetToCurrentMonth()">🔄 Текущий месяц</button>
   </div>
-  <div id="pastMonthNotice" style="display: none; align-items: center; gap: 8px; font-size: 13px; color: #fbbf24; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 6px 14px;">
+  <div id="pastMonthNotice" style="display: none; align-items: center; gap: 8px; font-size: 13px; color: #fbbf24; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 6px 14px;">
     <span>⚠️ <strong>Архивный режим:</strong> <span id="pastMonthNoticeLabel"></span>. Все операции и бюджеты фильтруются за этот месяц.</span>
   </div>
 </div>
@@ -11714,10 +12722,10 @@ self.addEventListener('fetch', (event) => {
             const isExpense = (t.tx_type === 'EXPENSE');
             tr.innerHTML = `
               <td><strong>${t.tx_date}</strong></td>
-              <td><span class="badge" style="background:var(--card-bg); border:1px solid var(--border);">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
+              <td><span class="badge ${isExpense ? 'badge-expense' : 'badge-income'}">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
               <td>${t.description}</td>
               <td style="font-size: 13px;">${postingSummary}</td>
-              <td style="font-weight: 700; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: ${isExpense ? '#f87171' : '#34d399'};">${isExpense ? '-' : '+'}${mainAmount}</td>
+              <td class="amount-val ${isExpense ? 'amount-expense' : 'amount-income'}" style="text-align: right; white-space: nowrap;">${isExpense ? '-' : '+'}${mainAmount}</td>
               <td style="text-align: right; white-space: nowrap;">
                 <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="openEditTxModal('${t.id}')" title="Редактировать операцию">✏️</button>
                 <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; color: #f87171;" onclick="deleteTransaction('${t.id}', '${safeDesc}', '${mainAmount}')" title="Удалить операцию">🗑️</button>
@@ -11742,9 +12750,9 @@ self.addEventListener('fetch', (event) => {
             const isExpense = (t.tx_type === 'EXPENSE');
             tr.innerHTML = `
               <td style="white-space: nowrap; font-size: 13px; color: var(--text-muted);">${t.tx_date}</td>
-              <td><span class="badge" style="background:var(--card-bg); border:1px solid var(--border); font-size: 12px;">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
+              <td><span class="badge ${isExpense ? 'badge-expense' : 'badge-income'}" style="font-size: 12px;">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
               <td style="font-weight: 500; font-size: 14px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.description}</td>
-              <td style="font-weight: 700; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: ${isExpense ? '#f87171' : '#34d399'};">${isExpense ? '-' : '+'}${mainAmount}</td>
+              <td class="amount-val ${isExpense ? 'amount-expense' : 'amount-income'}" style="text-align: right; white-space: nowrap;">${isExpense ? '-' : '+'}${mainAmount}</td>
               <td style="text-align: right; white-space: nowrap;">
                 <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 11px;" onclick="openEditTxModal('${t.id}')" title="Редактировать">✏️</button>
               </td>
