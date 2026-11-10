@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v19';
+const CACHE_NAME = 'ffos-shell-v20';
 
 const STATIC_SHELL = [
 
@@ -6842,6 +6842,229 @@ self.addEventListener('fetch', (event) => {
     .inner-panel-box,
     .debt-banking-block {
       border-radius: 14px !important;
+    }
+
+    /* ==============================================================
+       MODAL NEW TRANSACTION SCREENSHOT DEFECT FIXES (Apple HIG)
+       ============================================================== */
+
+    /* 1. Hide ugly HTML5 number spinners */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none !important;
+      margin: 0 !important;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield !important;
+    }
+
+    /* 2. Amount Input & Currency Sign (Perfect Apple HIG Layout) */
+    .revolut-amount-wrapper {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      border-radius: 16px !important;
+      padding: 12px 18px !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      min-height: 64px !important;
+    }
+    .revolut-amount-wrapper:focus-within {
+      outline: none !important;
+      border-color: #0071e3 !important;
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.25) !important;
+    }
+    [data-theme="light"] .revolut-amount-wrapper {
+      background: #ffffff !important;
+      border: 1.5px solid #d1d1d6 !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    }
+    [data-theme="dark"] .revolut-amount-wrapper {
+      background: #2c2c2e !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    }
+    .revolut-amount-currency {
+      font-size: 32px !important;
+      font-weight: 700 !important;
+      color: #ff3b30 !important;
+      margin-right: 12px !important;
+      line-height: 1 !important;
+      user-select: none !important;
+      flex-shrink: 0 !important;
+    }
+    .revolut-amount-currency.currency-income {
+      color: #34c759 !important;
+    }
+    .revolut-amount-input {
+      font-size: 36px !important;
+      font-weight: 700 !important;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
+      width: 100% !important;
+      padding: 0 !important;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif !important;
+      font-variant-numeric: tabular-nums lining-nums !important;
+      font-feature-settings: "tnum" 1 !important;
+      line-height: 1 !important;
+    }
+    [data-theme="light"] .revolut-amount-input {
+      color: #1d1d1f !important;
+    }
+    [data-theme="dark"] .revolut-amount-input {
+      color: #f5f5f7 !important;
+    }
+    .revolut-amount-input::placeholder {
+      color: #8e8e93 !important;
+      opacity: 0.6 !important;
+    }
+
+    /* 3. Category Selector Box (#modalTxCatTrigger) - 100% Readable */
+    .category-dropdown-trigger {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      border-radius: 14px !important;
+      padding: 12px 16px !important;
+      cursor: pointer !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      user-select: none !important;
+      min-height: 54px !important;
+    }
+    [data-theme="light"] .category-dropdown-trigger {
+      background: #f5f5f7 !important;
+      border: 1px solid #d1d1d6 !important;
+      color: #1d1d1f !important;
+    }
+    [data-theme="light"] .category-dropdown-trigger:hover {
+      background: #e5e5ea !important;
+      border-color: #0071e3 !important;
+    }
+    [data-theme="dark"] .category-dropdown-trigger {
+      background: #2c2c2e !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      color: #f5f5f7 !important;
+    }
+    [data-theme="dark"] .category-dropdown-trigger:hover {
+      background: #3a3a3c !important;
+      border-color: #0071e3 !important;
+    }
+    #modalTxCatSelectedName {
+      font-size: 15px !important;
+      font-weight: 600 !important;
+      line-height: 1.25 !important;
+    }
+    [data-theme="light"] #modalTxCatSelectedName {
+      color: #1d1d1f !important;
+    }
+    [data-theme="dark"] #modalTxCatSelectedName {
+      color: #f5f5f7 !important;
+    }
+    #modalTxCatSelectedParent {
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      line-height: 1.2 !important;
+      margin-top: 2px !important;
+    }
+    [data-theme="light"] #modalTxCatSelectedParent {
+      color: #6e6e73 !important;
+    }
+    [data-theme="dark"] #modalTxCatSelectedParent {
+      color: #8e8e93 !important;
+    }
+
+    /* 4. Large CTA Submit Button (Clean Apple HIG Action) */
+    .revolut-cta-btn,
+    #modalBtnSubmitTx {
+      width: 100% !important;
+      padding: 15px 20px !important;
+      font-size: 16px !important;
+      font-weight: 600 !important;
+      border-radius: 14px !important;
+      letter-spacing: -0.01em !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 8px !important;
+      background: #ff3b30 !important;
+      color: #ffffff !important;
+      border: none !important;
+      cursor: pointer !important;
+      box-shadow: 0 4px 16px rgba(255, 59, 48, 0.3) !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      -webkit-tap-highlight-color: transparent !important;
+      min-height: 52px !important;
+    }
+    .revolut-cta-btn.cta-income,
+    #modalBtnSubmitTx.cta-income {
+      background: #34c759 !important;
+      box-shadow: 0 4px 16px rgba(52, 199, 89, 0.3) !important;
+    }
+    .revolut-cta-btn:hover,
+    #modalBtnSubmitTx:hover {
+      transform: translateY(-1px) !important;
+      filter: brightness(1.06) !important;
+    }
+    .revolut-cta-btn:active,
+    #modalBtnSubmitTx:active {
+      transform: scale(0.98) !important;
+      filter: brightness(0.96) !important;
+    }
+    #modalBtnSubmitLabel {
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      font-size: 16px !important;
+    }
+
+    /* 5. Date Picker Indicator Styling */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      cursor: pointer !important;
+      opacity: 0.7 !important;
+      transition: opacity 0.15s ease !important;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 1 !important;
+    }
+
+    /* 6. Quick Amount Chips (+100, +500, +1000) */
+    .revolut-chips-row {
+      display: flex !important;
+      gap: 8px !important;
+      flex-wrap: wrap !important;
+      margin-bottom: 14px !important;
+    }
+    .revolut-chip {
+      flex: 1 !important;
+      min-width: 65px !important;
+      padding: 9px 12px !important;
+      border-radius: 12px !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      cursor: pointer !important;
+      text-align: center !important;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    [data-theme="light"] .revolut-chip {
+      background: #ffffff !important;
+      border: 1px solid #d1d1d6 !important;
+      color: #1d1d1f !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+    }
+    [data-theme="light"] .revolut-chip:hover {
+      background: #f2f2f7 !important;
+      border-color: #0071e3 !important;
+    }
+    [data-theme="dark"] .revolut-chip {
+      background: #2c2c2e !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      color: #f5f5f7 !important;
+    }
+    [data-theme="dark"] .revolut-chip:hover {
+      background: #3a3a3c !important;
+      border-color: rgba(255, 255, 255, 0.25) !important;
+    }
+    .revolut-chip:active {
+      transform: scale(0.96) !important;
     }
 
   </style>
