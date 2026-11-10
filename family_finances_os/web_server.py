@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v16';
+const CACHE_NAME = 'ffos-shell-v17';
 
 const STATIC_SHELL = [
 
@@ -5618,6 +5618,195 @@ self.addEventListener('fetch', (event) => {
 
     [data-theme="light"] .revolut-chip:hover {
       background: #e2e8f0 !important;
+    }
+
+    /* ==============================================================
+       SYSTEM-WIDE HARMONIZATION & POLISH (Dark & Light)
+       ============================================================== */
+
+    /* Action Buttons in Hero Card - High Touch Target & Perfect Alignment */
+    .hero-actions-grid, .revolut-actions-grid {
+      display: grid !important;
+      grid-template-columns: repeat(4, 1fr) !important;
+      gap: 12px !important;
+      margin-top: 22px !important;
+      padding-top: 18px !important;
+      border-top: 1px solid var(--border) !important;
+      align-items: start !important;
+    }
+
+    .hero-action-btn, .revolut-action-btn {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      background: transparent !important;
+      border: none !important;
+      cursor: pointer !important;
+      color: var(--text) !important;
+      text-decoration: none !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      user-select: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      width: 100% !important;
+      min-height: 84px !important;
+      padding: 4px 2px !important;
+    }
+
+    .hero-action-icon, .revolut-action-icon {
+      width: 52px !important;
+      height: 52px !important;
+      border-radius: 16px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin-bottom: 8px !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .hero-action-btn span, .revolut-action-label {
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      letter-spacing: -0.01em !important;
+      color: var(--text) !important;
+      text-align: center !important;
+      line-height: 1.25 !important;
+      word-break: break-word !important;
+      display: block !important;
+    }
+
+    /* Dark mode action button icons */
+    [data-theme="dark"] .revolut-icon-expense {
+      background: rgba(239, 68, 68, 0.16) !important;
+      border: 1px solid rgba(239, 68, 68, 0.35) !important;
+      color: #f87171 !important;
+    }
+    [data-theme="dark"] .revolut-icon-income {
+      background: rgba(16, 185, 129, 0.16) !important;
+      border: 1px solid rgba(16, 185, 129, 0.35) !important;
+      color: #34d399 !important;
+    }
+    [data-theme="dark"] .revolut-icon-transfer {
+      background: rgba(59, 130, 246, 0.16) !important;
+      border: 1px solid rgba(59, 130, 246, 0.35) !important;
+      color: #60a5fa !important;
+    }
+    [data-theme="dark"] .revolut-icon-goals {
+      background: rgba(245, 158, 11, 0.16) !important;
+      border: 1px solid rgba(245, 158, 11, 0.35) !important;
+      color: #fbbf24 !important;
+    }
+
+    /* Hover interactions on buttons */
+    .hero-action-btn:hover, .revolut-action-btn:hover {
+      transform: translateY(-2px) !important;
+    }
+    .hero-action-btn:active, .revolut-action-btn:active {
+      transform: translateY(0) scale(0.97) !important;
+    }
+
+    /* Month navigator light mode */
+    [data-theme="light"] .month-navigator-bar {
+      background: #ffffff !important;
+      border: 1px solid #e2e8f0 !important;
+      box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06) !important;
+      color: #0f172a !important;
+    }
+    [data-theme="light"] .month-navigator-bar span {
+      color: #0f172a !important;
+    }
+
+    /* Segmented transaction switcher in light theme */
+    [data-theme="light"] .tx-type-segment-btn {
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #475569 !important;
+    }
+    [data-theme="light"] .tx-type-segment-btn:hover {
+      background: #e2e8f0 !important;
+      color: #0f172a !important;
+    }
+    .tx-type-segment-btn.active-expense {
+      background: #dc2626 !important;
+      color: #ffffff !important;
+      border-color: #dc2626 !important;
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35) !important;
+    }
+    .tx-type-segment-btn.active-income {
+      background: #16a34a !important;
+      color: #ffffff !important;
+      border-color: #16a34a !important;
+      box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35) !important;
+    }
+
+    /* Status indicator in light theme */
+    [data-theme="light"] .status-indicator-btn {
+      background: #ecfdf5 !important;
+      border: 1px solid #a7f3d0 !important;
+      color: #059669 !important;
+    }
+    [data-theme="light"] .status-indicator-btn:hover {
+      background: #d1fae5 !important;
+    }
+
+    /* Family scope chip in light theme */
+    [data-theme="light"] .family-scope-chip {
+      background: #eff6ff !important;
+      border: 1px solid #bfdbfe !important;
+      color: #2563eb !important;
+    }
+
+    /* Quick input widget in light theme */
+    [data-theme="light"] #dashQuickInput {
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #0f172a !important;
+    }
+    [data-theme="light"] #dashQuickInput:focus {
+      border-color: #2563eb !important;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+    }
+    [data-theme="light"] #dashQuickPreview {
+      background: #f8fafc !important;
+      border: 1px solid #e2e8f0 !important;
+      color: #0f172a !important;
+    }
+
+    /* Hero secondary box and labels */
+    [data-theme="light"] .hero-label {
+      color: #64748b !important;
+    }
+    [data-theme="light"] .hero-badge-pill {
+      background: #f1f5f9 !important;
+      border: 1px solid #e2e8f0 !important;
+      color: #475569 !important;
+    }
+
+    /* Mobile media query overrides for buttons */
+    @media (max-width: 480px) {
+      .hero-actions-grid, .revolut-actions-grid {
+        gap: 8px !important;
+        padding-top: 14px !important;
+      }
+      .hero-action-icon, .revolut-action-icon {
+        width: 46px !important;
+        height: 46px !important;
+        border-radius: 14px !important;
+        margin-bottom: 6px !important;
+      }
+      .hero-action-btn span, .revolut-action-label {
+        font-size: 11px !important;
+      }
+      .hero-balance-val {
+        font-size: 30px !important;
+      }
+      .hero-secondary-val {
+        font-size: 22px !important;
+      }
+      .hero-secondary-balance-box {
+        padding: 8px 12px !important;
+      }
     }
 
   </style>
