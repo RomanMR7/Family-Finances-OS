@@ -3506,58 +3506,64 @@ self.addEventListener('fetch', (event) => {
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* Appetite UI Design System Tokens */
+    /* Concept 1: Revolut / Cash App Dark Design System Tokens */
     :root, [data-theme="dark"] {
-      --bg: #090a0f;
-      --card-bg: #11131a;
-      --card-hover: #171a24;
-      --border: rgba(255, 255, 255, 0.09);
+      --bg: #0c0d12;
+      --card-bg: #141720;
+      --card-hover: #1a1e2b;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-hover: rgba(255, 255, 255, 0.14);
       --border-focus: #2563eb;
       --text: #ffffff;
       --text-muted: #8b929e;
-      --text-soft: #b0b6c2;
+      --text-soft: #a8b0bd;
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
-      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
+      --primary-accent: #3b82f6;
+      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+      --accent-blue: #3b82f6;
       --accent-purple: #8b5cf6;
       --success: #10b981;
       --danger: #ef4444;
       --warning: #f59e0b;
       --purple: #8b5cf6;
-      --input-bg: #0d0f15;
-      --modal-bg: #11131a;
+      --input-bg: #0f1118;
+      --modal-bg: #141720;
       --box-bg: rgba(255, 255, 255, 0.025);
-      --shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.65);
-      --shadow-lg: 0 20px 48px -6px rgba(0, 0, 0, 0.85);
-      --card-radius: 20px;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.7);
+      --card-radius: 18px;
     }
 
     [data-theme="light"] {
-      --bg: #f6f7f9;
+      --bg: #f5f6f8;
       --card-bg: #ffffff;
-      --card-hover: #f1f3f7;
-      --border: #eef0f3;
-      --border-focus: #1d68f6;
-      --text: #0c0d0e;
-      --text-muted: #737a85;
-      --text-soft: #40454d;
-      --primary: #1d68f6;
-      --primary-hover: #1858d4;
-      --primary-gradient: linear-gradient(135deg, #1765f6 0%, #1f71f9 45%, #0d52db 100%);
+      --card-hover: #f0f2f5;
+      --border: #e4e7ec;
+      --border-hover: #d0d5dd;
+      --border-focus: #2563eb;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-soft: #475569;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-accent: #3b82f6;
+      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+      --accent-blue: #3b82f6;
       --accent-purple: #8b5cf6;
       --success: #16a34a;
       --danger: #dc2626;
-      --warning: #f59e0b;
+      --warning: #d97706;
       --purple: #8b5cf6;
-      --input-bg: #f6f7f9;
+      --input-bg: #f8fafc;
       --modal-bg: #ffffff;
-      --box-bg: #f8fafc;
-      --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-      --shadow-lg: 0 16px 36px -4px rgba(0, 0, 0, 0.12);
-      --card-radius: 20px;
+      --box-bg: #f1f5f9;
+      --shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.1);
+      --card-radius: 18px;
     }
 
     /* Base Reset & Crisp Typography */
@@ -3583,7 +3589,7 @@ self.addEventListener('fetch', (event) => {
       margin: 0 auto;
     }
 
-    /* Appetite UI Header */
+    /* Revolut Header & Top Bar */
     .header {
       display: flex;
       justify-content: space-between;
@@ -3598,7 +3604,7 @@ self.addEventListener('fetch', (event) => {
       background: var(--bg);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      transition: background-color 0.25s, border-color 0.25s;
+      transition: background-color 0.2s, border-color 0.2s;
     }
 
     .brand-block {
@@ -3620,13 +3626,13 @@ self.addEventListener('fetch', (event) => {
       line-height: 1;
       width: 36px;
       height: 36px;
-      border-radius: 11px;
+      border-radius: 10px;
       background: var(--primary-gradient);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #ffffff;
-      box-shadow: 0 4px 14px rgba(29, 104, 246, 0.3);
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
       filter: none !important;
     }
 
@@ -3650,8 +3656,8 @@ self.addEventListener('fetch', (event) => {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(29, 104, 246, 0.08);
-      border: 1px solid rgba(29, 104, 246, 0.22);
+      background: rgba(37, 99, 235, 0.08);
+      border: 1px solid rgba(37, 99, 235, 0.22);
       color: #3b82f6;
       padding: 4px 12px;
       border-radius: 9999px;
@@ -3660,7 +3666,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     [data-theme="dark"] .family-scope-chip {
-      color: #60a5fa;
+      color: #3b82f6;
     }
 
     .header-actions {
@@ -3689,7 +3695,7 @@ self.addEventListener('fetch', (event) => {
     .btn-icon-round:hover {
       transform: translateY(-1px);
       background: rgba(255, 255, 255, 0.08) !important;
-      border-color: rgba(255, 255, 255, 0.16) !important;
+      border-color: var(--border-hover) !important;
     }
 
     [data-theme="light"] .btn-icon-round:hover {
@@ -3700,9 +3706,9 @@ self.addEventListener('fetch', (event) => {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(22, 163, 74, 0.1);
-      border: 1px solid rgba(22, 163, 74, 0.25);
-      color: #16a34a;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #10b981;
       font-size: 12px;
       font-weight: 600;
       padding: 6px 12px;
@@ -3712,15 +3718,15 @@ self.addEventListener('fetch', (event) => {
     }
 
     [data-theme="dark"] .status-indicator-btn {
-      color: #4ade80;
+      color: #34d399;
     }
 
     .status-dot {
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #16a34a;
-      box-shadow: 0 0 8px rgba(22, 163, 74, 0.6);
+      background: #10b981;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
       animation: pulseDot 2.5s infinite;
     }
 
@@ -3736,6 +3742,7 @@ self.addEventListener('fetch', (event) => {
 
     /* Privacy Mask Mode */
     body.privacy-masked .stat-val,
+    body.privacy-masked .hero-balance-val,
     body.privacy-masked .overview-balance-val,
     body.privacy-masked #overviewAccountsBody td:last-child {
       filter: blur(7px);
@@ -3744,25 +3751,32 @@ self.addEventListener('fetch', (event) => {
     }
     body.privacy-masked .stat-val:active,
     body.privacy-masked .stat-val:hover,
+    body.privacy-masked .hero-balance-val:active,
+    body.privacy-masked .hero-balance-val:hover,
     body.privacy-masked #overviewAccountsBody td:last-child:active,
     body.privacy-masked #overviewAccountsBody td:last-child:hover {
       filter: none;
     }
 
-    /* Appetite UI Capsule Pill Navigation Tabs with visible high-contrast scrollbar */
+    /* Revolut Segmented Capsule Navigation Tabs */
     .nav-tabs {
       display: flex;
+      flex-wrap: nowrap;
       gap: 6px;
       margin-bottom: 24px;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 5px;
       overflow-x: auto;
+      overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
+      touch-action: pan-x;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.35) rgba(255, 255, 255, 0.05);
+      scrollbar-color: rgba(255, 255, 255, 0.4) rgba(255, 255, 255, 0.06);
     }
     .nav-tabs::-webkit-scrollbar {
-      height: 7px;
+      height: 6px;
       display: block;
     }
     .nav-tabs::-webkit-scrollbar-track {
@@ -3770,7 +3784,7 @@ self.addEventListener('fetch', (event) => {
       border-radius: 9999px;
     }
     .nav-tabs::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.32);
+      background: rgba(255, 255, 255, 0.38);
       border-radius: 9999px;
       border: 1px solid rgba(0, 0, 0, 0.2);
     }
@@ -3788,6 +3802,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     .tab-btn {
+      flex-shrink: 0;
+      white-space: nowrap;
       background: transparent;
       color: var(--text-muted);
       border: 1px solid transparent;
@@ -3808,23 +3824,22 @@ self.addEventListener('fetch', (event) => {
 
     [data-theme="dark"] .tab-btn.active,
     :root .tab-btn.active {
-      color: #080808 !important;
+      color: #0c0d12 !important;
       background: #ffffff !important;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-      border-color: transparent;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      border-color: transparent !important;
     }
 
     [data-theme="light"] .tab-btn.active {
       color: #ffffff !important;
-      background: #0c0d0e !important;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-      border-color: transparent;
+      background: #0f172a !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      border-color: transparent !important;
     }
 
-    /* Appetite UI Cards & Grids */
+    /* Revolut Cards & Grids */
     .card {
       background: var(--card-bg);
-      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0) 100%);
       border: 1px solid var(--border);
       border-radius: var(--card-radius);
       padding: 22px;
@@ -3834,11 +3849,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     .card:hover {
-      border-color: rgba(255, 255, 255, 0.16);
+      border-color: var(--border-hover);
     }
 
     [data-theme="light"] .card:hover {
-      border-color: #dfe2e6;
+      border-color: #cbd5e1;
     }
 
     .grid-3 {
@@ -3853,22 +3868,26 @@ self.addEventListener('fetch', (event) => {
       font-size: 11px;
       margin-bottom: 8px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.05em;
       font-weight: 600;
     }
 
+    /* Monospace amounts tracking (anti-AI-slop fintech) */
     .stat-val {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
       font-size: 26px;
       font-weight: 700;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.015em;
+      font-variant-numeric: tabular-nums lining-nums;
+      font-feature-settings: "tnum" 1;
       color: var(--text);
       line-height: 1.15;
     }
 
-    .stat-val.primary { color: #1d68f6; }
-    .stat-val.success { color: #16a34a; }
+    .stat-val.primary { color: #3b82f6; }
+    .stat-val.success { color: #10b981; }
     .stat-val.warning { color: #f59e0b; }
-    .stat-val.danger { color: #dc2626; }
+    .stat-val.danger { color: #ef4444; }
     .stat-val.purple { color: #8b5cf6; }
 
     .title {
@@ -3882,24 +3901,24 @@ self.addEventListener('fetch', (event) => {
     }
 
     .badge {
-      background: rgba(29, 104, 246, 0.1);
+      background: rgba(37, 99, 235, 0.1);
       color: #3b82f6;
       padding: 4px 12px;
       border-radius: 9999px;
       font-size: 12px;
       font-weight: 600;
-      border: 1px solid rgba(29, 104, 246, 0.25);
+      border: 1px solid rgba(37, 99, 235, 0.22);
     }
 
     [data-theme="dark"] .badge {
-      color: #60a5fa;
+      color: #3b82f6;
     }
 
-    /* Appetite Buttons */
+    /* Revolut Action Buttons */
     .btn {
       background: var(--primary);
       color: #ffffff;
-      border: none;
+      border: 1px solid transparent;
       padding: 10px 18px;
       border-radius: 12px;
       font-weight: 600;
@@ -3910,13 +3929,12 @@ self.addEventListener('fetch', (event) => {
       align-items: center;
       justify-content: center;
       gap: 8px;
-      box-shadow: 0 2px 8px rgba(29, 104, 246, 0.25);
+      box-shadow: none;
     }
 
     .btn:hover {
       background: var(--primary-hover);
       transform: translateY(-1px);
-      box-shadow: 0 4px 14px rgba(29, 104, 246, 0.35);
     }
 
     .btn:active {
@@ -3924,7 +3942,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     .btn:disabled {
-      background: #475569;
+      background: #334155;
+      color: #94a3b8;
       cursor: not-allowed;
       opacity: 0.6;
       transform: none;
@@ -3940,24 +3959,24 @@ self.addEventListener('fetch', (event) => {
 
     .btn-secondary:hover {
       background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.16);
+      border-color: var(--border-hover);
       box-shadow: none;
     }
 
     [data-theme="light"] .btn-secondary {
       background: #f1f3f7 !important;
-      color: #0c0d0e !important;
-      border: 1px solid #eef0f3 !important;
+      color: #0f172a !important;
+      border: 1px solid #e2e8f0 !important;
     }
 
     [data-theme="light"] .btn-secondary:hover {
-      background: #e5e8ef !important;
+      background: #e2e8f0 !important;
     }
 
-    .btn-success { background: #16a34a; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.25); }
-    .btn-success:hover { background: #15803d; }
-    .btn-danger { background: #dc2626; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25); }
-    .btn-danger:hover { background: #b91c1c; }
+    .btn-success { background: #10b981; }
+    .btn-success:hover { background: #059669; }
+    .btn-danger { background: #ef4444; }
+    .btn-danger:hover { background: #dc2626; }
 
     /* Form Controls */
     .form-group {
@@ -3986,15 +4005,15 @@ self.addEventListener('fetch', (event) => {
 
     input:focus, select:focus, textarea:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(29, 104, 246, 0.15);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
     }
 
     [data-theme="light"] input,
     [data-theme="light"] select,
     [data-theme="light"] textarea {
-      background: #f6f7f9 !important;
-      color: #0c0d0e !important;
-      border: 1px solid #eef0f3 !important;
+      background: #f8fafc !important;
+      color: #0f172a !important;
+      border: 1px solid #e2e8f0 !important;
     }
 
     [data-theme="light"] input:focus,
@@ -4002,7 +4021,7 @@ self.addEventListener('fetch', (event) => {
     [data-theme="light"] textarea:focus {
       border-color: var(--primary) !important;
       background: #ffffff !important;
-      box-shadow: 0 0 0 3px rgba(29, 104, 246, 0.15) !important;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
     }
 
     [data-theme="light"] input::placeholder,
@@ -4010,7 +4029,7 @@ self.addEventListener('fetch', (event) => {
       color: #94a3b8 !important;
     }
 
-    /* Appetite UI Table System */
+    /* Revolut Table System */
     table {
       width: 100%;
       border-collapse: separate;
@@ -4031,15 +4050,15 @@ self.addEventListener('fetch', (event) => {
       font-weight: 600;
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.05em;
     }
 
     [data-theme="light"] th {
-      color: #737a85 !important;
+      color: #64748b !important;
     }
 
     [data-theme="light"] td {
-      color: #0c0d0e !important;
+      color: #0f172a !important;
     }
 
     tr:last-child td {
@@ -4096,19 +4115,22 @@ self.addEventListener('fetch', (event) => {
       top: calc(100% + 6px);
       left: 0;
       right: 0;
-      background: #11131a;
-      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 20px 48px -6px rgba(0, 0, 0, 0.85);
-      border-radius: 18px;
+      background: #141720;
+      border: 1px solid var(--border-hover);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+      border-radius: 16px;
       z-index: 1000;
       overflow: hidden;
       display: flex;
       flex-direction: column;
       max-height: 420px;
       min-width: 300px;
+      max-width: min(440px, calc(100vw - 24px));
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
     }
 
     .category-dropdown-search {
@@ -4122,7 +4144,7 @@ self.addEventListener('fetch', (event) => {
       width: 100%;
       padding: 9px 12px;
       border-radius: 10px;
-      background: #0d0f15;
+      background: #0f1118;
       border: 1px solid var(--border);
       color: var(--text);
     }
@@ -4130,12 +4152,13 @@ self.addEventListener('fetch', (event) => {
     .category-dropdown-list {
       flex: 1 1 auto;
       overflow-y: auto !important;
-      max-height: 300px;
+      max-height: 320px;
       padding: 6px 0;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain !important;
+      touch-action: pan-y !important;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.04);
+      scrollbar-color: rgba(255, 255, 255, 0.35) rgba(255, 255, 255, 0.04);
     }
 
     .category-dropdown-list::-webkit-scrollbar {
@@ -4148,7 +4171,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     .category-dropdown-list::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.25);
       border-radius: 9999px;
     }
 
@@ -4163,7 +4186,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     [data-theme="light"] .category-dropdown-list {
-      scrollbar-color: rgba(0, 0, 0, 0.3) rgba(0, 0, 0, 0.04);
+      scrollbar-color: rgba(0, 0, 0, 0.25) rgba(0, 0, 0, 0.04);
     }
 
     [data-theme="light"] .category-dropdown-list::-webkit-scrollbar-track {
@@ -4171,7 +4194,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     [data-theme="light"] .category-dropdown-list::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.25);
+      background: rgba(0, 0, 0, 0.2);
     }
 
     .cat-filter-btn {
@@ -4219,14 +4242,14 @@ self.addEventListener('fetch', (event) => {
     }
 
     .cat-dropdown-item:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.05);
       color: #ffffff;
       padding-left: 18px;
     }
 
     .cat-dropdown-item.active {
       background: rgba(37, 99, 235, 0.15);
-      color: #60a5fa;
+      color: #3b82f6;
       font-weight: 600;
     }
 
@@ -4254,7 +4277,7 @@ self.addEventListener('fetch', (event) => {
       background: var(--primary);
       color: #fff;
       border-color: var(--primary);
-      box-shadow: 0 2px 8px rgba(29, 104, 246, 0.25);
+      box-shadow: none;
     }
 
     /* Settings Sheet Modal */
@@ -4272,7 +4295,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     .settings-sheet {
-      border-radius: 24px !important;
+      border-radius: 20px !important;
       box-shadow: var(--shadow-lg) !important;
       border: 1px solid var(--border) !important;
     }
@@ -4288,19 +4311,19 @@ self.addEventListener('fetch', (event) => {
     }
 
     .alert-success {
-      background: rgba(22, 163, 74, 0.12);
-      border: 1px solid rgba(22, 163, 74, 0.3);
-      color: #16a34a;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #10b981;
     }
 
     [data-theme="dark"] .alert-success {
-      color: #4ade80;
+      color: #34d399;
     }
 
     .alert-error {
-      background: rgba(220, 38, 38, 0.12);
-      border: 1px solid rgba(220, 38, 38, 0.3);
-      color: #dc2626;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #ef4444;
     }
 
     [data-theme="dark"] .alert-error {
@@ -4316,27 +4339,28 @@ self.addEventListener('fetch', (event) => {
       .mobile-bottom-nav {
         display: flex !important;
         position: fixed !important;
-        bottom: 12px !important;
+        bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
         left: 12px !important;
         right: 12px !important;
         max-width: 440px !important;
         margin: 0 auto !important;
-        background: rgba(18, 20, 23, 0.85) !important;
-        backdrop-filter: blur(24px) !important;
-        -webkit-backdrop-filter: blur(24px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        background: rgba(20, 23, 32, 0.9) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
         border-radius: 9999px !important;
         z-index: 1000 !important;
         justify-content: space-around !important;
         align-items: center !important;
         padding: 6px 8px !important;
-        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;
+        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
       }
 
       [data-theme="light"] .mobile-bottom-nav {
-        background: rgba(255, 255, 255, 0.88) !important;
+        background: rgba(255, 255, 255, 0.92) !important;
         border: 1px solid rgba(0, 0, 0, 0.08) !important;
-        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12) !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
       }
 
       .mobile-nav-item {
@@ -4355,8 +4379,8 @@ self.addEventListener('fetch', (event) => {
       }
 
       .mobile-nav-item.active {
-        color: #1d68f6 !important;
-        background: rgba(29, 104, 246, 0.1) !important;
+        color: #3b82f6 !important;
+        background: rgba(37, 99, 235, 0.12) !important;
       }
 
       .mobile-nav-item .icon {
@@ -4368,7 +4392,7 @@ self.addEventListener('fetch', (event) => {
     /* Mobile Responsive Overrides */
     @media (max-width: 680px) {
       body {
-        padding: calc(10px + env(safe-area-inset-top)) 12px calc(88px + env(safe-area-inset-bottom)) 12px !important;
+        padding: calc(10px + env(safe-area-inset-top)) 12px calc(92px + env(safe-area-inset-bottom)) 12px !important;
       }
       .container {
         width: 100% !important;
@@ -4384,6 +4408,25 @@ self.addEventListener('fetch', (event) => {
       .family-scope-chip {
         display: none !important;
       }
+      .category-dropdown-menu {
+        max-width: calc(100vw - 24px) !important;
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+      .category-dropdown-list {
+        max-height: 250px !important;
+        -webkit-overflow-scrolling: touch !important;
+        touch-action: pan-y !important;
+        overscroll-behavior: contain !important;
+      }
+      #settingsModal {
+        align-items: flex-end !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
+        padding: 0 !important;
+        z-index: 100000 !important;
+      }
       .settings-sheet {
         position: fixed !important;
         bottom: 0 !important;
@@ -4393,21 +4436,47 @@ self.addEventListener('fetch', (event) => {
         max-width: 100% !important;
         width: 100% !important;
         border-radius: 28px 28px 0 0 !important;
-        max-height: 88vh !important;
+        max-height: calc(88vh - env(safe-area-inset-bottom, 0px)) !important;
         margin: 0 !important;
         box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6) !important;
         animation: slideUpSheet 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
+        padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)) !important;
       }
       @keyframes slideUpSheet {
         from { transform: translateY(100%); }
         to { transform: translateY(0); }
       }
       .nav-tabs {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        touch-action: pan-x !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: rgba(255, 255, 255, 0.45) rgba(255, 255, 255, 0.08) !important;
         gap: 4px !important;
         padding-bottom: 8px !important;
         margin-bottom: 16px !important;
       }
+      .nav-tabs::-webkit-scrollbar {
+        height: 5px !important;
+        display: block !important;
+      }
+      .nav-tabs::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.06) !important;
+        border-radius: 9999px !important;
+      }
+      .nav-tabs::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.4) !important;
+        border-radius: 9999px !important;
+      }
       .tab-btn {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
         padding: 7px 14px !important;
         font-size: 12px !important;
       }
@@ -4425,66 +4494,80 @@ self.addEventListener('fetch', (event) => {
       }
 
       /* Mobile Modal Viewport & Touch Scroll Fix */
-      #modalNewDebt, #modalEditTx, #modalPayDebt, #modalCardSettings, #modalEnvelope, #modalGoal, #modalObligation, #modalQrPair {
+      #modalNewDebt, #modalEditTx, #modalPayDebt, #modalCardSettings, #modalEnvelope, #modalGoal, #modalObligation, #modalQrPair, #modalNewTx, #modalContributeGoal, #modalEnvelopeDeposit, #modalEnvelopeWithdraw, #modalEnvelopeTransfer, #vaultModal, [id^="modal"] {
         align-items: flex-start !important;
         justify-content: center !important;
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch !important;
-        padding: 12px 10px 100px 10px !important;
+        touch-action: pan-y !important;
+        overscroll-behavior: contain !important;
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 10px calc(110px + env(safe-area-inset-bottom, 0px)) 10px !important;
         z-index: 100000 !important;
       }
-      #modalNewDebt .card, #modalEditTx .card, #modalPayDebt .card, #modalCardSettings .card, #modalEnvelope .card, #modalGoal .card, #modalObligation .card, #modalQrPair .card {
+      #modalNewDebt .card, #modalEditTx .card, #modalPayDebt .card, #modalCardSettings .card, #modalEnvelope .card, #modalGoal .card, #modalObligation .card, #modalQrPair .card, #modalNewTx .card, #modalContributeGoal .card, #modalEnvelopeDeposit .card, #modalEnvelopeWithdraw .card, #modalEnvelopeTransfer .card, #vaultModal .card, [id^="modal"] .card {
         max-height: none !important;
         width: 100% !important;
         max-width: 100% !important;
         margin-top: 10px !important;
         margin-bottom: 90px !important;
         overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
       }
     }
 
-    /* Appetite UI Hero Card & Actions */
-    .appetite-hero-card {
+    @media (max-width: 430px) {
+      .hero-actions-grid {
+        gap: 8px !important;
+      }
+      .hero-action-icon {
+        width: 46px !important;
+        height: 46px !important;
+      }
+      .hero-action-btn span {
+        font-size: 11px !important;
+      }
+    }
+
+    /* Revolut Hero Card & Actions (Clean Matte Surface, Anti-AI-Slop) */
+    .appetite-hero-card, .revolut-hero-card {
       position: relative;
-      border-radius: 26px;
-      padding: 28px 24px 22px 24px;
+      border-radius: 22px;
+      padding: 26px 24px 22px 24px;
       color: #ffffff;
       overflow: hidden;
       margin-bottom: 20px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: radial-gradient(circle at 100% 20%, #283048 0%, #151821 50%, #080808 100%);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--border);
+      background: var(--card-bg);
     }
 
-    [data-theme="light"] .appetite-hero-card {
-      background: linear-gradient(180deg, #1864f5 0%, #2f7cf7 55%, #76b1fb 95%, #ffffff 100%);
-      box-shadow: 0 10px 30px rgba(29, 104, 246, 0.25);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+    [data-theme="light"] .appetite-hero-card,
+    [data-theme="light"] .revolut-hero-card {
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .appetite-hero-stripes {
-      background-image: repeating-linear-gradient(
-        90deg,
-        rgba(255, 255, 255, 0.04) 0px,
-        rgba(255, 255, 255, 0.04) 1px,
-        transparent 1px,
-        transparent 28px
-      );
+      background-image: none !important;
     }
 
     .hero-label {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      color: rgba(255, 255, 255, 0.8);
+      color: var(--text-muted);
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
 
     .hero-balance-val {
-      font-size: 44px;
-      font-weight: 800;
-      letter-spacing: -0.025em;
+      font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      font-variant-numeric: tabular-nums lining-nums;
+      font-feature-settings: "tnum" 1;
       color: #ffffff;
       line-height: 1.1;
     }
@@ -4499,79 +4582,129 @@ self.addEventListener('fetch', (event) => {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(255, 255, 255, 0.16);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       padding: 4px 12px;
       border-radius: 9999px;
       font-size: 12px;
       font-weight: 500;
-      color: #ffffff;
-      margin-top: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: var(--text-soft);
+      margin-top: 10px;
     }
 
-    .hero-actions-grid {
+    /* Revolut Circular & Pill Hero Action Buttons */
+    .hero-actions-grid, .revolut-actions-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 12px;
       margin-top: 22px;
       padding-top: 20px;
-      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      border-top: 1px solid var(--border);
     }
 
-    .hero-action-btn {
+    .hero-action-btn, .revolut-action-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       background: transparent;
       border: none;
       cursor: pointer;
-      color: #ffffff;
+      color: var(--text);
       text-decoration: none;
-      transition: transform 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    .hero-action-btn:hover {
-      transform: translateY(-2px);
+    .hero-action-btn:hover, .revolut-action-btn:hover {
+      transform: translateY(-3px) scale(1.02);
+    }
+
+    .hero-action-btn:active, .revolut-action-btn:active {
+      transform: translateY(0) scale(0.96);
     }
 
     .hero-action-icon {
       width: 52px;
       height: 52px;
       border-radius: 50%;
-      background: #1e2229;
-      color: #60a5fa;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
       margin-bottom: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* Distinct active and colored states for Expense and Income Hero Action Buttons */
+    /* Distinct active and hover states for Action Buttons (Revolut Style) */
+    .revolut-icon-expense {
+      color: #f87171;
+    }
     .hero-action-btn.active-expense .hero-action-icon,
-    .hero-action-btn#heroBtnExpense:hover .hero-action-icon {
+    .hero-action-btn#heroBtnExpense:hover .hero-action-icon,
+    .revolut-action-btn:hover .revolut-icon-expense {
       background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
       color: #ffffff !important;
       border-color: #ef4444 !important;
-      box-shadow: 0 0 20px rgba(239, 68, 68, 0.5) !important;
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45) !important;
     }
 
+    .revolut-icon-income {
+      color: #34d399;
+    }
     .hero-action-btn.active-income .hero-action-icon,
-    .hero-action-btn#heroBtnIncome:hover .hero-action-icon {
+    .hero-action-btn#heroBtnIncome:hover .hero-action-icon,
+    .revolut-action-btn:hover .revolut-icon-income {
       background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
       color: #ffffff !important;
       border-color: #10b981 !important;
-      box-shadow: 0 0 20px rgba(16, 185, 129, 0.5) !important;
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important;
+    }
+
+    .revolut-icon-transfer {
+      color: #60a5fa;
+    }
+    .revolut-action-btn:hover .revolut-icon-transfer {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+      color: #ffffff !important;
+      border-color: #3b82f6 !important;
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45) !important;
+    }
+
+    .revolut-icon-goals {
+      color: #fbbf24;
+    }
+    .revolut-action-btn:hover .revolut-icon-goals {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+      color: #ffffff !important;
+      border-color: #f59e0b !important;
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45) !important;
     }
 
     [data-theme="light"] .hero-action-icon {
       background: #ffffff;
-      color: #1d68f6;
-      border: 1px solid rgba(0, 0, 0, 0.08);
+      color: #0f172a;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    .hero-action-btn span, .revolut-action-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text-soft);
+      text-align: center;
+      line-height: 1.25;
+    }
+
+    [data-theme="light"] .hero-action-btn span,
+    [data-theme="light"] .revolut-action-label {
+      color: #0f172a;
     }
 
     /* Segmented Toggle for Expense / Income in New Transaction Form */
@@ -4587,9 +4720,9 @@ self.addEventListener('fetch', (event) => {
       justify-content: center;
       gap: 8px;
       padding: 12px 16px;
-      border-radius: 14px;
+      border-radius: 12px;
       font-size: 14px;
-      font-weight: 700;
+      font-weight: 600;
       cursor: pointer;
       border: 1px solid var(--border);
       background: var(--card-hover);
@@ -4601,152 +4734,573 @@ self.addEventListener('fetch', (event) => {
       color: var(--text);
     }
     .tx-type-segment-btn.active-expense {
-      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+      background: #ef4444 !important;
       color: #ffffff !important;
       border-color: #ef4444 !important;
-      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45) !important;
     }
     .tx-type-segment-btn.active-income {
-      background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+      background: #10b981 !important;
       color: #ffffff !important;
       border-color: #10b981 !important;
-      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45) !important;
     }
 
     /* Vibrant Semantic Colors for Category Filter Buttons */
     .cat-filter-btn[data-filter="EXPENSE"].active,
     .cat-filter-btn.active-expense {
-      background: #dc2626 !important;
+      background: #ef4444 !important;
       color: #ffffff !important;
       border-color: #ef4444 !important;
-      box-shadow: 0 0 10px rgba(220, 38, 38, 0.45);
     }
     .cat-filter-btn[data-filter="INCOME"].active,
     .cat-filter-btn.active-income {
-      background: #16a34a !important;
+      background: #10b981 !important;
       color: #ffffff !important;
-      border-color: #22c55e !important;
-      box-shadow: 0 0 10px rgba(22, 163, 74, 0.45);
+      border-color: #10b981 !important;
     }
 
-    .hero-action-btn span {
-      font-size: 12px;
+    /* ==========================================================================
+       Revolut Modal & Authentic Mobile Bottom Sheet for #modalNewTx
+       ========================================================================== */
+    #modalNewTx {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #modalNewTx.hidden {
+      display: none !important;
+    }
+
+    #modalNewTx .bottom-sheet-card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--modal-bg, #11131a);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 24px;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      padding: 24px 26px 26px 26px;
+      position: relative;
+      max-height: 90vh;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    [data-theme="light"] #modalNewTx .bottom-sheet-card {
+      background: #ffffff;
+      border-color: rgba(0, 0, 0, 0.08);
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.15);
+    }
+
+    .bottom-sheet-handle-bar {
+      display: none;
+      width: 100%;
+      padding-top: 4px;
+      padding-bottom: 14px;
+      justify-content: center;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .bottom-sheet-handle {
+      width: 44px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 999px;
+      margin: 0 auto;
+      transition: background 0.2s ease;
+    }
+
+    [data-theme="light"] .bottom-sheet-handle {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .bottom-sheet-close-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .bottom-sheet-close-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text);
+    }
+    [data-theme="light"] .bottom-sheet-close-btn {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.08);
+    }
+
+    /* Prominent Revolut Hero Amount Input */
+    .revolut-amount-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 10px 16px;
+      margin-bottom: 12px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .revolut-amount-wrapper:focus-within {
+      border-color: var(--primary, #3b82f6);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+    }
+    [data-theme="light"] .revolut-amount-wrapper {
+      background: #f8fafc;
+      border-color: rgba(0, 0, 0, 0.1);
+    }
+    .revolut-amount-currency {
+      font-size: 32px;
+      font-weight: 800;
+      color: #f87171;
+      margin-right: 8px;
+      line-height: 1;
+      user-select: none;
+    }
+    .revolut-amount-input {
+      font-size: 34px;
+      font-weight: 800;
+      color: var(--text, #ffffff);
+      background: transparent;
+      border: none;
+      outline: none;
+      width: 100%;
+      text-align: left;
+      letter-spacing: -0.02em;
+    }
+    [data-theme="light"] .revolut-amount-input {
+      color: #0f172a;
+    }
+
+    /* Quick Amount Chips (+100, +500, +1000) */
+    .revolut-chips-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .revolut-chip {
+      flex: 1;
+      min-width: 65px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font-size: 13px;
       font-weight: 600;
-      letter-spacing: -0.01em;
-      color: #ffffff;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .revolut-chip:hover {
+      background: rgba(255, 255, 255, 0.14);
+      transform: translateY(-1px);
+    }
+    .revolut-chip:active {
+      transform: scale(0.96);
+    }
+    [data-theme="light"] .revolut-chip {
+      background: #f1f5f9;
+      border-color: rgba(0, 0, 0, 0.08);
+      color: #1e293b;
     }
 
-    /* Appetite Debit Card Component */
-    .appetite-debit-card {
+    /* Large CTA Button */
+    .revolut-cta-btn {
+      width: 100%;
+      padding: 15px 20px;
+      font-size: 16px;
+      font-weight: 700;
+      border-radius: 16px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(239, 68, 68, 0.4);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .revolut-cta-btn.cta-income {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+      box-shadow: 0 4px 18px rgba(16, 185, 129, 0.4) !important;
+    }
+    .revolut-cta-btn:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.05);
+    }
+    .revolut-cta-btn:active {
+      transform: translateY(0) scale(0.98);
+    }
+
+    /* Mobile Bottom Sheet Media Query (< 768px) */
+    @media (max-width: 768px) {
+      #modalNewTx {
+        align-items: flex-end !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        background: rgba(0, 0, 0, 0.65) !important;
+        touch-action: pan-y;
+      }
+      #modalNewTx .bottom-sheet-card {
+        max-width: 100% !important;
+        width: 100% !important;
+        border-radius: 24px 24px 0 0 !important;
+        margin: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+        border-bottom: none !important;
+        max-height: 85vh !important;
+        padding: 14px 20px calc(24px + env(safe-area-inset-bottom, 20px)) 20px !important;
+        animation: revolutSlideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5) !important;
+      }
+      .bottom-sheet-handle-bar {
+        display: flex !important;
+      }
+    }
+
+    @keyframes revolutSlideUp {
+      from {
+        transform: translateY(100%);
+      }
+      to {
+        transform: translateY(0);
+      }
+    }
+
+    /* Revolut Metal / Dark Debit Card Component */
+    .appetite-debit-card, .revolut-debit-card {
       position: relative;
       width: 100%;
       aspect-ratio: 1.58 / 1;
-      border-radius: 22px;
-      background: linear-gradient(135deg, #1765f6 0%, #1f71f9 45%, #0d52db 100%);
+      border-radius: 20px;
+      background: linear-gradient(145deg, #1b202c 0%, #10131a 100%);
       padding: 22px;
       color: #ffffff;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       overflow: hidden;
-      box-shadow: 0 8px 24px rgba(29, 104, 246, 0.25);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.09);
       user-select: none;
     }
 
     .appetite-card-sheen {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.14) 45%, transparent 65%);
-      pointer-events: none;
+      display: none;
     }
-  
-    /* --- APPETITE UI ENHANCEMENTS --- */
-    :root, [data-theme="dark"] {
-      --bg: #07090e;
-      --bg-gradient: radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.18) 0%, rgba(7, 9, 14, 0) 55%), radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 45%), #07090e;
-      --card-bg: rgba(15, 18, 26, 0.85);
-      --card-hover: rgba(22, 27, 39, 0.95);
-      --border: rgba(255, 255, 255, 0.08);
-      --border-focus: #3b82f6;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --text-soft: #cbd5e1;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
-      --accent-purple: #8b5cf6;
-      --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --input-bg: #0a0d14;
-      --modal-bg: #0f121a;
-      --box-bg: rgba(255, 255, 255, 0.025);
-      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
-      --shadow-lg: 0 24px 54px -6px rgba(0, 0, 0, 0.9);
-      --card-radius: 20px;
+
+    /* Dedicated Monospace Amount Classes */
+    .amount-mono,
+    .overview-balance-val,
+    #valLiquid,
+    #valSafeToSpend,
+    #valHeroTotalBalance,
+    #dashOverviewTotalDebt,
+    #dashMonthlyBurnRate,
+    #dashSavingsRate,
+    #analyticsSavingsRate,
+    .tx-amount {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace !important;
+      font-variant-numeric: tabular-nums lining-nums;
+      font-feature-settings: "tnum" 1;
+      letter-spacing: -0.015em;
+    }
+
+    /* ==========================================================================
+       CONCEPT 1 REVOLUT DESKTOP DASHBOARD & DESKTOP ERGONOMICS (>= 1024px)
+       ========================================================================== */
+    html {
+      overflow-x: hidden;
+      max-width: 100vw;
     }
 
     body {
-      background: var(--bg-gradient, var(--bg)) !important;
-      background-attachment: fixed !important;
+      overflow-x: hidden;
+      max-width: 100vw;
+      box-sizing: border-box;
     }
 
-    .header {
-      background: rgba(7, 9, 14, 0.8) !important;
-      backdrop-filter: blur(20px) !important;
-      -webkit-backdrop-filter: blur(20px) !important;
-      border-bottom: 1px solid var(--border) !important;
+    *, *::before, *::after {
+      box-sizing: border-box;
     }
 
-    .nav-tabs {
-      background: rgba(15, 18, 26, 0.85) !important;
-      backdrop-filter: blur(20px) !important;
-      -webkit-backdrop-filter: blur(20px) !important;
-      border: 1px solid rgba(255, 255, 255, 0.08) !important;
-      border-radius: 9999px !important;
-      padding: 6px !important;
-      margin-bottom: 24px !important;
-      gap: 6px !important;
+    /* Revolut Crisp Table System with Tabular Numbers & Right-aligned Amounts */
+    table, .revolut-ledger-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-top: 6px;
     }
 
-    .tab-btn {
-      border-radius: 9999px !important;
-      padding: 9px 20px !important;
-      font-size: 13px !important;
-      font-weight: 600 !important;
-      color: #94a3b8 !important;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-      border: none !important;
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text);
     }
 
-    .tab-btn:hover {
-      color: #ffffff !important;
-      background: rgba(255, 255, 255, 0.06) !important;
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     }
 
-    [data-theme="dark"] .tab-btn.active,
-    :root .tab-btn.active {
-      color: #ffffff !important;
-      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%) !important;
-      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45) !important;
-      border-color: transparent !important;
+    [data-theme="light"] th {
+      color: #737a85 !important;
+      border-bottom: 1px solid #e5e7eb;
     }
 
-    .card {
-      background: var(--card-bg) !important;
-      backdrop-filter: blur(20px) !important;
-      -webkit-backdrop-filter: blur(20px) !important;
-      border: 1px solid var(--border) !important;
-      border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
-      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    tbody tr {
+      transition: background 0.15s ease;
     }
 
-    .card:hover {
-      border-color: rgba(255, 255, 255, 0.16) !important;
-      box-shadow: 0 14px 40px -5px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.035);
     }
-    /* --- END APPETITE UI ENHANCEMENTS --- */
+
+    [data-theme="light"] tbody tr:hover td {
+      background: rgba(0, 0, 0, 0.02);
+    }
+
+    .amount-cell, td.amount-val, th.amount-header {
+      text-align: right !important;
+      font-variant-numeric: tabular-nums;
+    }
+
+    td.amount-val {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* Hero balance section with Safe-to-Spend & Total Balance */
+    .hero-balance-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .hero-primary-balance-box {
+      flex: 1;
+      min-width: 260px;
+    }
+
+    .hero-secondary-balance-box {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 10px 18px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 16px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .hero-secondary-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.85;
+      color: #ffffff;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .hero-secondary-val {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+    }
+
+    .hero-secondary-pill {
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.8);
+      margin-top: 4px;
+    }
+
+    [data-theme="light"] .hero-secondary-balance-box {
+      background: rgba(255, 255, 255, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      color: #0c0d0e;
+    }
+
+    [data-theme="light"] .hero-secondary-label,
+    [data-theme="light"] .hero-secondary-val,
+    [data-theme="light"] .hero-secondary-pill {
+      color: #0c0d0e;
+    }
+
+    body.privacy-masked #valHeroTotalBalance,
+    body.privacy-masked .hero-secondary-val {
+      filter: blur(7px);
+      user-select: none;
+      transition: filter 0.2s ease;
+    }
+
+    /* Desktop Dashboard Grid: Main Column + Right Side Widget Column */
+    .desktop-dashboard-grid {
+      display: block;
+      width: 100%;
+    }
+
+    .desktop-main-column {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .desktop-widget-column {
+      width: 100%;
+      min-width: 0;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 1023px) {
+      .desktop-dashboard-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .desktop-main-column,
+      .desktop-widget-column {
+        display: contents;
+      }
+      .hero-card-container { order: 1; }
+      .quick-entry-card { order: 2; }
+      .onboarding-card { order: 3; }
+      .core-financial-cards { order: 4; }
+      #dashEnvelopesCard { order: 5; }
+      #dashGoalsCard { order: 6; }
+      #dashLedgerCard { order: 7; }
+      .accounts-card { order: 8; }
+    }
+
+    /* Desktop Ergonomics (>= 1024px) */
+    @media (min-width: 1024px) {
+      .container {
+        max-width: 1400px !important;
+        width: 100% !important;
+        padding-left: 28px !important;
+        padding-right: 28px !important;
+        margin: 0 auto !important;
+      }
+
+      .header {
+        padding: 16px 0 18px 0 !important;
+        margin-bottom: 20px !important;
+      }
+
+      .month-navigator-bar {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        flex-wrap: nowrap !important;
+        padding: 12px 22px !important;
+        border-radius: 16px !important;
+        background: rgba(17, 24, 39, 0.75) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid var(--border) !important;
+        margin-bottom: 18px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+      }
+
+      .nav-tabs {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        padding: 8px 12px !important;
+        border-radius: 16px !important;
+        background: rgba(17, 24, 39, 0.6) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        margin-bottom: 24px !important;
+        overflow-x: visible !important;
+      }
+
+      .tab-btn {
+        padding: 8px 18px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        border-radius: 10px !important;
+        white-space: nowrap !important;
+      }
+
+      .hero-secondary-balance-box {
+        align-items: flex-end;
+        text-align: right;
+      }
+
+      .desktop-dashboard-grid {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) 390px !important;
+        gap: 24px !important;
+        align-items: start !important;
+      }
+
+      .desktop-main-column {
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+        gap: 0 !important;
+      }
+
+      .desktop-widget-column {
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+        margin-top: 0 !important;
+        position: sticky !important;
+        top: 90px !important;
+        gap: 0 !important;
+      }
+
+      .hero-card-container,
+      .quick-entry-card,
+      .onboarding-card,
+      .core-financial-cards,
+      #dashEnvelopesCard,
+      #dashGoalsCard,
+      #dashLedgerCard,
+      .accounts-card {
+        order: initial !important;
+      }
+    }
 
   </style>
 
@@ -5801,6 +6355,113 @@ self.addEventListener('fetch', (event) => {
 
     </div>
 
+    <!-- Modal: New Transaction (Revolut Modal on Desktop & Authentic Mobile Bottom Sheet) -->
+    <div id="modalNewTx" class="modal hidden" onclick="if(event.target===this) closeNewTxModal()">
+      <div class="card bottom-sheet-card" onclick="stopPropagation(event)">
+        <!-- Subtle swipe/drag handle at top for mobile -->
+        <div class="bottom-sheet-handle-bar">
+          <div class="bottom-sheet-handle"></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="modalTxHeaderIcon" style="font-size: 22px;">🔴</span>
+            <h3 id="modalTxHeaderTitle" style="font-size: 18px; font-weight: 700; color: var(--text); margin: 0;">Новый расход семьи</h3>
+          </div>
+          <button type="button" onclick="closeNewTxModal()" class="bottom-sheet-close-btn" aria-label="Закрыть">✕</button>
+        </div>
+
+        <div id="modalTxMsg"></div>
+
+        <!-- Expense / Income Segmented Switcher -->
+        <div class="tx-type-segment-group" style="margin-bottom: 16px;">
+          <button type="button" id="modalSegBtnExpense" class="tx-type-segment-btn active-expense" onclick="setModalTxType('EXPENSE')">
+            <span style="font-size: 16px;">🔴</span> Расход семьи
+          </button>
+          <button type="button" id="modalSegBtnIncome" class="tx-type-segment-btn" onclick="setModalTxType('INCOME')">
+            <span style="font-size: 16px;">🟢</span> Доход семьи
+          </button>
+        </div>
+
+        <!-- Prominent Hero Amount Input -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="margin-bottom: 0; font-weight: 600; font-size: 13px;">Сумма операции:</label>
+            <button type="button" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; border-radius: 8px;" onclick="resetModalTxAmount()">Сброс</button>
+          </div>
+          <div class="revolut-amount-wrapper">
+            <span class="revolut-amount-currency" id="modalTxCurrencySign">₽</span>
+            <input type="number" step="0.01" min="0" id="txInputAmount" class="revolut-amount-input" placeholder="0" oninput="syncTxAmount(this.value)" onkeydown="if(event.key==='Enter') submitModalTransaction()">
+          </div>
+          <!-- Quick Amount Chips (+100, +500, +1000) -->
+          <div class="revolut-chips-row">
+            <button type="button" class="revolut-chip" onclick="addTxInputAmount(100)">+100 ₽</button>
+            <button type="button" class="revolut-chip" onclick="addTxInputAmount(500)">+500 ₽</button>
+            <button type="button" class="revolut-chip" onclick="addTxInputAmount(1000)">+1 000 ₽</button>
+            <button type="button" class="revolut-chip" onclick="addTxInputAmount(5000)">+5 000 ₽</button>
+          </div>
+        </div>
+
+        <!-- Category Dropdown / Selector -->
+        <div class="form-group" style="position: relative; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="margin-bottom: 0; font-weight: 600; font-size: 13px;">Статья / Категория:</label>
+            <span id="modalTxCatBadge" class="badge" style="background: rgba(239,68,68,0.2); color: #fca5a5; font-size: 11px;">Расход</span>
+          </div>
+          <div id="modalTxCatTrigger" class="category-dropdown-trigger" onclick="toggleCategoryDropdown('modalTxCatMenu')">
+            <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+              <span id="modalTxCatSelectedIcon" style="font-size: 22px; line-height: 1;">🛒</span>
+              <div style="text-align: left; line-height: 1.25;">
+                <div id="modalTxCatSelectedName" style="font-size: 14px; font-weight: 600; color: var(--text);">Продукты и супермаркеты</div>
+                <div id="modalTxCatSelectedParent" style="font-size: 11px; color: var(--text-muted);">Нажмите для выбора из меню категорий</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 12px; color: #60a5fa; background: rgba(59,130,246,0.15); padding: 3px 8px; border-radius: 6px; font-weight: 600;">Выбрать ▼</span>
+            </div>
+          </div>
+          <div id="modalTxCatMenu" class="category-dropdown-menu hidden" style="position: absolute; width: 100%; z-index: 10001;">
+            <div class="category-dropdown-search">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 13px; font-weight: 700; color: var(--text);">🏷️ Выберите статью / категорию</span>
+                <button type="button" onclick="document.getElementById('modalTxCatMenu').classList.add('hidden')" style="background: transparent; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; padding: 0 4px; line-height: 1;">✕</button>
+              </div>
+              <input type="text" id="modalTxCatSearchInput" placeholder="🔍 Найти категорию (еда, бензин, аптека...)" oninput="filterCategoryDropdown('modalTxCatMenu', this.value)">
+            </div>
+            <div id="modalTxCatList" class="category-dropdown-list" style="max-height: 220px; overflow-y: auto;"></div>
+          </div>
+          <!-- Native select with ID txInputCategory required by specification -->
+          <select id="txInputCategory" style="display: none;"></select>
+        </div>
+
+        <!-- Account Selector -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="font-weight: 600; font-size: 13px;">Счет списания / зачисления:</label>
+          <select id="txInputAccount" class="form-control" style="width: 100%; padding: 10px; border-radius: 12px;"></select>
+        </div>
+
+        <!-- Date Selector -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="font-weight: 600; font-size: 13px;">📅 Дата операции:</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="date" id="txInputDate" class="form-control" style="flex: 1; padding: 10px 12px; font-size: 14px; border-radius: 12px;">
+            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 8px 12px; border-radius: 10px;" onclick="setModalTxDateToday()">Сегодня</button>
+          </div>
+        </div>
+
+        <!-- Description / Note -->
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label style="font-weight: 600; font-size: 13px;">Описание / комментарий:</label>
+          <input type="text" id="txInputDesc" class="form-control" placeholder="Например: Супермаркет Продукты" style="width: 100%; padding: 10px; border-radius: 12px;" oninput="autoSelectCategoryByDesc(this.value)" onkeydown="if(event.key==='Enter') submitModalTransaction()">
+        </div>
+
+        <!-- Large CTA Button -->
+        <button type="button" class="btn revolut-cta-btn" id="modalBtnSubmitTx" onclick="submitModalTransaction()">
+          <span id="modalBtnSubmitLabel">💾 Записать расход</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Modal: Edit Past / Existing Transaction -->
 <div id="modalEditTx" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
   <div class="card" style="max-width: 520px; width: 100%; border-color: var(--primary); position: relative; max-height: 90vh; overflow-y: auto;">
@@ -6100,62 +6761,78 @@ self.addEventListener('fetch', (event) => {
       <!-- Tab 1: Overview -->
       <div id="tab-overview">
 
-        <!-- Appetite UI Hero Balance Card -->
-        <div class="appetite-hero-card appetite-hero-stripes">
-          <div>
-            <div class="hero-label">Свободный баланс семьи (Safe-to-Spend)</div>
-            <div class="hero-balance-val" id="valSafeToSpend">0.00 ₽</div>
-            <div class="hero-badge-pill" id="valSafeToSpendBadge">
-              <span id="valSafeToSpendNote">Ликвидные активы за вычетом обязательств и кредиток</span>
+        <!-- Revolut Desktop Grid: Main Column (Hero, Metrics, Ledger, Accounts) + Widget Column (Envelopes, Goals) -->
+        <div class="desktop-dashboard-grid">
+
+          <!-- Left / Center Main Column -->
+          <div class="desktop-main-column">
+<!-- Revolut Hero Balance Card -->
+        <div class="appetite-hero-card revolut-hero-card appetite-hero-stripes hero-card-container">
+          <div class="hero-balance-header-row">
+            <div class="hero-primary-balance-box">
+              <div class="hero-label">Свободный баланс семьи (Safe-to-Spend)</div>
+              <div class="hero-balance-val" id="valSafeToSpend">0.00 ₽</div>
+              <div class="hero-badge-pill" id="valSafeToSpendBadge">
+                <span id="valSafeToSpendNote">Ликвидные активы за вычетом обязательств и кредиток</span>
+              </div>
+            </div>
+            <div class="hero-secondary-balance-box">
+              <div class="hero-secondary-label">Общий баланс счетов</div>
+              <div class="hero-secondary-val" id="valHeroTotalBalance">0.00 ₽</div>
+              <div class="hero-secondary-pill">
+                <span>💳 Всего на картах и счетах</span>
+              </div>
             </div>
           </div>
 
-          <!-- 4 Quick Actions (Exact Appetite UI Dashboard specification) -->
-          <div class="hero-actions-grid">
-            <button class="hero-action-btn" id="heroBtnExpense" onclick="openNewTxModal('EXPENSE')">
-              <div class="hero-action-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          <!-- 4 Quick Actions (Sleek Revolut Circular / Pill Style) -->
+          <div class="hero-actions-grid revolut-actions-grid">
+            <button class="hero-action-btn revolut-action-btn" id="heroBtnExpense" onclick="openNewTxModal('EXPENSE')">
+              <div class="hero-action-icon revolut-icon-expense">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </div>
-              <span style="font-weight: 700;">🔴 Расход</span>
+              <span class="revolut-action-label" style="font-weight: 700;">🔴 + Расход</span>
             </button>
 
-            <button class="hero-action-btn" id="heroBtnIncome" onclick="openNewTxModal('INCOME')">
-              <div class="hero-action-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="17" y1="7" x2="7" y2="17"></line>
-                  <polyline points="17 17 7 17 7 7"></polyline>
+            <button class="hero-action-btn revolut-action-btn" id="heroBtnIncome" onclick="openNewTxModal('INCOME')">
+              <div class="hero-action-icon revolut-icon-income">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </div>
-              <span style="font-weight: 700;">🟢 Доход</span>
+              <span class="revolut-action-label" style="font-weight: 700;">🟢 ＋ Доход</span>
             </button>
 
-            <button class="hero-action-btn" onclick="openPayDebtModal()">
-              <div class="hero-action-icon">
+            <button class="hero-action-btn revolut-action-btn" id="heroBtnTransfer" onclick="openTransferModal()">
+              <div class="hero-action-icon revolut-icon-transfer">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                  <line x1="2" y1="10" x2="22" y2="10"></line>
+                  <polyline points="17 1 21 5 17 9"></polyline>
+                  <path d="M3 5h18"></path>
+                  <polyline points="7 23 3 19 7 15"></polyline>
+                  <path d="M21 19H3"></path>
                 </svg>
               </div>
-              <span>Погасить</span>
+              <span class="revolut-action-label" style="font-weight: 600;">⇄ Перевод</span>
             </button>
 
-            <button class="hero-action-btn" onclick="openNewGoalModal()">
-              <div class="hero-action-icon">
+            <button class="hero-action-btn revolut-action-btn" id="heroBtnGoals" onclick="switchTab('goals')">
+              <div class="hero-action-icon revolut-icon-goals">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"></circle>
                   <circle cx="12" cy="12" r="6"></circle>
                   <circle cx="12" cy="12" r="2"></circle>
                 </svg>
               </div>
-              <span>Цель</span>
+              <span class="revolut-action-label" style="font-weight: 600;">🎯 Цели</span>
             </button>
           </div>
         </div>
 
-        <!-- Smart Quick Entry Bar (Appetite UI Style) -->
+        <!-- Smart Quick Entry Bar -->
         <div class="card" style="padding: 14px 18px; margin-bottom: 20px;">
           <div class="quick-input-bar" style="display: flex; gap: 8px; align-items: center; position: relative;">
             <div style="position: relative;">
@@ -6208,7 +6885,7 @@ self.addEventListener('fetch', (event) => {
         </div>
 
         <!-- Hidden Onboarding Form (preserved for state initialization if triggered) -->
-        <div id="onboardingBanner" class="card hidden" style="margin-bottom: 20px;">
+        <div id="onboardingBanner" class="card onboarding-card hidden" style="margin-bottom: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
             <h3 style="font-size: 16px; color: var(--primary);">✨ Мастер настройки семейного бюджета</h3>
             <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="document.getElementById('onboardingBanner').classList.add('hidden')">✕ Закрыть</button>
@@ -6235,13 +6912,13 @@ self.addEventListener('fetch', (event) => {
           <button class="btn" style="width: 100%; padding: 10px;" onclick="submitOnboarding()">Зафиксировать бюджет</button>
         </div>
 
-        <!-- Core Financial Cards: Appetite Debit Card + Meso Metrics -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px;">
-          <!-- Left: Appetite Family Debit Card -->
-          <div class="appetite-debit-card">
+        <!-- Core Financial Cards: Revolut Debit Card + Meso Metrics -->
+        <div class="core-financial-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px;">
+          <!-- Left: Revolut Family Debit Card -->
+          <div class="appetite-debit-card revolut-debit-card">
             <div class="appetite-card-sheen"></div>
             <div style="display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 2;">
-              <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Appetite Family Debit</span>
+              <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Revolut Family Debit</span>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
                 <path d="M8.5 16.5a5 5 0 0 1 0-7"></path>
                 <path d="M12 19a8.5 8.5 0 0 0 0-12"></path>
@@ -6266,7 +6943,7 @@ self.addEventListener('fetch', (event) => {
             </div>
           </div>
 
-          <!-- Right: Appetite Metric Cards Grid -->
+          <!-- Right: Revolut Metric Cards Grid -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div class="card" style="margin-bottom: 0; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
               <div>
@@ -6305,39 +6982,75 @@ self.addEventListener('fetch', (event) => {
           </div>
         </div>
 
-        <!-- Goals Progress Widget on Dashboard -->
-
-        <div class="card" style="margin-bottom: 18px;">
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-
-            <h3 style="font-size: 16px; display: flex; align-items: center; gap: 6px;">
-
-              <span>🎯</span> <span>Семейные цели накоплений</span>
-
-            </h3>
-
-            <div style="display: flex; gap: 8px;">
-
-              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="openNewGoalModal()">➕ Новая цель</button>
-
-              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="switchTab('tab-goals')">Все цели →</button>
-
+            <!-- Main Transaction Ledger Table (Revolut Desktop Ledger with crisp row borders & right-aligned amounts) -->
+            <div class="card desktop-ledger-card" id="dashLedgerCard" style="margin-bottom: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin: 0;">
+                  <span>📜</span> <span>Последние операции</span>
+                </h3>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="loadTransactions(currentSelectedMonth)">Обновить</button>
+                  <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="switchTab('tab-ledger')">Все проводки →</button>
+                </div>
+              </div>
+              <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                <table class="revolut-ledger-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 100px;">Дата</th>
+                      <th style="width: 140px;">Категория</th>
+                      <th>Описание</th>
+                      <th style="text-align: right; width: 130px;">Сумма</th>
+                      <th style="text-align: right; width: 50px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashTxTableBody">
+                    <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 18px;">Загрузка операций...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-          </div>
+<!-- Accounts Overview Table -->
 
-          <div id="dashGoalsContainer" style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="card accounts-card">
+          <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
 
-            <div style="color: var(--text-muted); font-size: 13px;">Загрузка целей...</div>
+          <h3 style="margin-bottom: 12px; font-size: 16px;">Балансы всех счетов семьи</h3>
 
+          <table>
+
+            <thead>
+
+              <tr>
+
+                <th>Код</th>
+
+                <th>Счет</th>
+
+                <th>Тип</th>
+
+                <th>Принадлежность</th>
+
+                <th style="text-align: right;">Текущий остаток</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="overviewAccountsBody"></tbody>
+
+          </table>
           </div>
 
         </div>
+          </div><!-- /desktop-main-column -->
 
-        <!-- Dashboard Envelopes & Piggy Banks Widget -->
+          <!-- Right Side Widget Column (Envelopes and Goal Progress) -->
+          <div class="desktop-widget-column">
+<!-- Dashboard Envelopes & Piggy Banks Widget -->
 
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="dashEnvelopesCard" style="margin-bottom: 20px;">
 
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
 
@@ -6366,38 +7079,38 @@ self.addEventListener('fetch', (event) => {
           </div>
 
         </div>
+<!-- Goals Progress Widget on Dashboard -->
 
-        <!-- Accounts Overview Table -->
+        <div class="card" id="dashGoalsCard" style="margin-bottom: 18px;">
 
-        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
 
-          <h3 style="margin-bottom: 12px; font-size: 16px;">Балансы всех счетов семьи</h3>
+            <h3 style="font-size: 16px; display: flex; align-items: center; gap: 6px;">
 
-          <table>
+              <span>🎯</span> <span>Семейные цели накоплений</span>
 
-            <thead>
+            </h3>
 
-              <tr>
+            <div style="display: flex; gap: 8px;">
 
-                <th>Код</th>
+              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="openNewGoalModal()">➕ Новая цель</button>
 
-                <th>Счет</th>
+              <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="switchTab('tab-goals')">Все цели →</button>
 
-                <th>Тип</th>
+            </div>
 
-                <th>Принадлежность</th>
+          </div>
 
-                <th>Текущий остаток</th>
+          <div id="dashGoalsContainer" style="display: flex; flex-direction: column; gap: 10px;">
 
-              </tr>
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка целей...</div>
 
-            </thead>
-
-            <tbody id="overviewAccountsBody"></tbody>
-
-          </table>
+          </div>
 
         </div>
+          </div><!-- /desktop-widget-column -->
+
+        </div><!-- /desktop-dashboard-grid -->
 
       </div>
 
@@ -7306,7 +8019,8 @@ self.addEventListener('fetch', (event) => {
 
           </div>
 
-          <table>
+          <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+          <table class="revolut-ledger-table">
 
             <thead>
 
@@ -7319,7 +8033,7 @@ self.addEventListener('fetch', (event) => {
                 <th>Описание</th>
 
                 <th>Проводки (Дт / Кт)</th>
-<th>Сумма</th>
+<th style="text-align: right;">Сумма</th>
 <th style="text-align: right; width: 120px;">Действия</th>
 </tr>
 
@@ -7328,6 +8042,7 @@ self.addEventListener('fetch', (event) => {
             <tbody id="txTableBody"></tbody>
 
           </table>
+          </div>
 
         </div>
 
@@ -7778,20 +8493,135 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-    // Open New Transaction Modal / Screen with active type indicator
+    let modalTxActiveType = 'EXPENSE';
+
+    // Open New Transaction Modal / Bottom Sheet (Revolut mobile bottom sheet & desktop modal)
     function openNewTxModal(type = 'EXPENSE') {
       type = (type || 'EXPENSE').toUpperCase();
-      switchTab('tab-tx');
-      setTxTypeSegment(type);
-      setTimeout(() => {
-        const amountEl = document.getElementById('txAmount');
-        if (amountEl) {
-          amountEl.focus();
-        } else {
-          const quickEl = document.getElementById('txQuickInput');
-          if (quickEl) quickEl.focus();
+      const modal = document.getElementById('modalNewTx');
+      if (modal) {
+        modal.classList.remove('hidden');
+        setModalTxType(type);
+        const dateEl = document.getElementById('txInputDate') || document.getElementById('txDate');
+        if (dateEl && !dateEl.value) {
+          dateEl.value = new Date().toISOString().slice(0, 10);
         }
-      }, 120);
+        setTimeout(() => {
+          const amountEl = document.getElementById('txInputAmount') || document.getElementById('txAmount');
+          if (amountEl) {
+            amountEl.focus();
+            if (amountEl.select) amountEl.select();
+          }
+        }, 150);
+      } else {
+        switchTab('tab-tx');
+        setTxTypeSegment(type);
+        setTimeout(() => {
+          const amountEl = document.getElementById('txAmount');
+          if (amountEl) {
+            amountEl.focus();
+          } else {
+            const quickEl = document.getElementById('txQuickInput');
+            if (quickEl) quickEl.focus();
+          }
+        }, 120);
+      }
+    }
+
+    function stopPropagation(e) {
+      if (e && e.stopPropagation) {
+        e.stopPropagation();
+      }
+    }
+
+    function closeNewTxModal() {
+      const modal = document.getElementById('modalNewTx');
+      if (modal) {
+        modal.classList.add('hidden');
+        const catMenu = document.getElementById('modalTxCatMenu');
+        if (catMenu) catMenu.classList.add('hidden');
+      }
+    }
+
+    function setModalTxType(type = 'EXPENSE') {
+      type = (type || 'EXPENSE').toUpperCase();
+      modalTxActiveType = type;
+      const btnExp = document.getElementById('modalSegBtnExpense');
+      const btnInc = document.getElementById('modalSegBtnIncome');
+      const ctaBtn = document.getElementById('modalBtnSubmitTx');
+      const ctaLabel = document.getElementById('modalBtnSubmitLabel');
+      const currSign = document.getElementById('modalTxCurrencySign');
+      const badgeEl = document.getElementById('modalTxCatBadge');
+      const headerIcon = document.getElementById('modalTxHeaderIcon');
+      const headerTitle = document.getElementById('modalTxHeaderTitle');
+
+      if (type === 'EXPENSE') {
+        if (btnExp) btnExp.classList.add('active-expense');
+        if (btnInc) btnInc.classList.remove('active-income');
+        if (ctaBtn) ctaBtn.classList.remove('cta-income');
+        if (ctaLabel) ctaLabel.innerText = '💾 Записать расход';
+        if (currSign) currSign.style.color = '#f87171';
+        if (badgeEl) {
+          badgeEl.innerText = 'Расход';
+          badgeEl.style.background = 'rgba(239,68,68,0.2)';
+          badgeEl.style.color = '#fca5a5';
+        }
+        if (headerIcon) headerIcon.innerText = '🔴';
+        if (headerTitle) headerTitle.innerText = 'Новый расход семьи';
+      } else {
+        if (btnInc) btnInc.classList.add('active-income');
+        if (btnExp) btnExp.classList.remove('active-expense');
+        if (ctaBtn) ctaBtn.classList.add('cta-income');
+        if (ctaLabel) ctaLabel.innerText = '💾 Записать доход';
+        if (currSign) currSign.style.color = '#34d399';
+        if (badgeEl) {
+          badgeEl.innerText = 'Доход';
+          badgeEl.style.background = 'rgba(16,185,129,0.2)';
+          badgeEl.style.color = '#6ee7b7';
+        }
+        if (headerIcon) headerIcon.innerText = '🟢';
+        if (headerTitle) headerTitle.innerText = 'Новый доход семьи';
+      }
+
+      setTxTypeSegment(type);
+      if (typeof filterCategoryDropdown === 'function') {
+        filterCategoryDropdown('modalTxCatMenu', '');
+      }
+    }
+
+    function addTxInputAmount(delta) {
+      const el = document.getElementById('txInputAmount');
+      const alt = document.getElementById('txAmount');
+      const current = parseFloat((el || alt)?.value) || 0;
+      const next = current + delta;
+      if (el) el.value = next;
+      if (alt) alt.value = next;
+    }
+
+    function resetModalTxAmount() {
+      const el = document.getElementById('txInputAmount');
+      const alt = document.getElementById('txAmount');
+      if (el) el.value = '';
+      if (alt) alt.value = '';
+    }
+
+    function syncTxAmount(val) {
+      const alt = document.getElementById('txAmount');
+      if (alt && alt !== document.activeElement) {
+        alt.value = val;
+      }
+    }
+
+    function setModalTxDateToday() {
+      const el = document.getElementById('txInputDate');
+      const alt = document.getElementById('txDate');
+      const today = new Date().toISOString().slice(0, 10);
+      if (el) el.value = today;
+      if (alt) alt.value = today;
+    }
+
+    function openTransferModal() {
+      switchTab('tab-transfer');
     }
 
     function setTxTypeSegment(type = 'EXPENSE') {
@@ -7829,6 +8659,12 @@ self.addEventListener('fetch', (event) => {
     }
 
     function switchTab(tabId) {
+      if (tabId === 'goals') tabId = 'tab-goals';
+      if (tabId === 'transfer') tabId = 'tab-transfer';
+      if (tabId === 'tx') tabId = 'tab-tx';
+      if (tabId && !tabId.startsWith('tab-') && document.getElementById('tab-' + tabId)) {
+        tabId = 'tab-' + tabId;
+      }
 
       ['tab-overview', 'tab-analytics', 'tab-accounts', 'tab-tx', 'tab-obligations', 'tab-categories', 'tab-transfer', 'tab-ledger', 'tab-import', 'tab-goals', 'tab-envelopes', 'tab-debts'].forEach(id => {
 
@@ -7850,7 +8686,12 @@ self.addEventListener('fetch', (event) => {
 
       document.querySelectorAll('.tab-btn').forEach(btn => {
 
-        if (btn.getAttribute('onclick')?.includes(tabId)) btn.classList.add('active');
+        if (btn.getAttribute('onclick')?.includes(tabId)) {
+          btn.classList.add('active');
+          try {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          } catch(e) {}
+        }
 
       });
 
@@ -8940,6 +9781,8 @@ self.addEventListener('fetch', (event) => {
       }
 
       document.getElementById('valLiquid').innerText = overviewData.common_liquid_assets_rub + ' ₽';
+      const heroTot = document.getElementById('valHeroTotalBalance');
+      if (heroTot) heroTot.innerText = overviewData.common_liquid_assets_rub + ' ₽';
 
       document.getElementById('valReserve').innerText = overviewData.emergency_reserves_rub + ' ₽';
 
@@ -8992,6 +9835,7 @@ self.addEventListener('fetch', (event) => {
       await loadGoalsWidget();
 
       await loadEnvelopesWidget();
+      await loadTransactions(currentSelectedMonth);
       if (document.getElementById('globalMonthSelect') && !document.getElementById('globalMonthSelect').options.length) {
         renderMonthSelector([currentSelectedMonth], currentSelectedMonth);
       }
@@ -9027,7 +9871,7 @@ self.addEventListener('fetch', (event) => {
 
           <td>${scopeBadge}</td>
 
-          <td style="font-weight:600;">${a.balance_rub} ₽</td>
+          <td style="font-weight:700; text-align: right; font-variant-numeric: tabular-nums;">${a.balance_rub} ₽</td>
 
         `;
 
@@ -9078,23 +9922,18 @@ self.addEventListener('fetch', (event) => {
       const assetLiabAccounts = overviewData.accounts.filter(a => a.type === 'ASSET' || a.type === 'LIABILITY');
 
       // 1. Transaction Account
-
       const txAcc = document.getElementById('txAccount');
-
-      txAcc.innerHTML = '';
+      const txInputAcc = document.getElementById('txInputAccount');
+      if (txAcc) txAcc.innerHTML = '';
+      if (txInputAcc) txInputAcc.innerHTML = '';
 
       assetLiabAccounts.forEach(a => {
-
         const opt = document.createElement('option');
-
         opt.value = a.id;
-
         opt.dataset.scope = a.scope;
-
         opt.innerText = `${a.name} (${a.scope}, ${a.balance_rub} ₽)`;
-
-        txAcc.appendChild(opt);
-
+        if (txAcc) txAcc.appendChild(opt);
+        if (txInputAcc) txInputAcc.appendChild(opt.cloneNode(true));
       });
 
       // 2. Transfer Accounts
@@ -9243,7 +10082,10 @@ self.addEventListener('fetch', (event) => {
 
       query = (query || '').toLowerCase().trim();
 
-      const listContainer = menuId === 'txCatMenu' ? document.getElementById('txCatList') : document.getElementById('dashCatList');
+      let listContainer = null;
+      if (menuId === 'txCatMenu') listContainer = document.getElementById('txCatList');
+      else if (menuId === 'modalTxCatMenu') listContainer = document.getElementById('modalTxCatList');
+      else listContainer = document.getElementById('dashCatList');
 
       if (!listContainer || !categoryData || !categoryData.tree) return;
 
@@ -9317,52 +10159,74 @@ self.addEventListener('fetch', (event) => {
 
     }
 
-    function onSelectCategory(catId, menuId) {
+    function onSelectCategory(catId, menuId, maybeType) {
 
       if (!categoryData || !categoryData.flat) return;
 
-      const cat = categoryData.flat.find(c => c.id === catId);
+      let targetMenuId = menuId;
+      if (menuId !== 'txCatMenu' && menuId !== 'modalTxCatMenu' && menuId !== 'dashCatMenu') {
+        targetMenuId = 'txCatMenu';
+      }
 
+      let cat = categoryData.flat.find(c => c.id === catId);
+      if (!cat && typeof menuId === 'string' && menuId !== 'txCatMenu' && menuId !== 'modalTxCatMenu' && menuId !== 'dashCatMenu') {
+        cat = categoryData.flat.find(c => c.name.toLowerCase() === menuId.toLowerCase());
+      }
+      if (!cat && catId) {
+        cat = categoryData.flat.find(c => c.name.toLowerCase() === String(catId).toLowerCase());
+      }
       if (!cat) return;
 
       selectedCategoryId = cat.id;
 
-      const menu = document.getElementById(menuId);
-
+      const menu = document.getElementById(targetMenuId);
       if (menu) menu.classList.add('hidden');
+      const mMenu = document.getElementById('modalTxCatMenu');
+      if (mMenu) mMenu.classList.add('hidden');
 
-      if (menuId === 'txCatMenu') {
+      if (targetMenuId === 'txCatMenu' || targetMenuId === 'modalTxCatMenu') {
 
         const iconEl = document.getElementById('txCatSelectedIcon');
-
         const nameEl = document.getElementById('txCatSelectedName');
-
         const parentEl = document.getElementById('txCatSelectedParent');
-
         const badgeEl = document.getElementById('txCatBadge');
-
         const selectEl = document.getElementById('txCategorySelect');
 
-        if (iconEl) iconEl.innerText = cat.icon || '🏷️';
+        const mIconEl = document.getElementById('modalTxCatSelectedIcon');
+        const mNameEl = document.getElementById('modalTxCatSelectedName');
+        const mParentEl = document.getElementById('modalTxCatSelectedParent');
+        const mBadgeEl = document.getElementById('modalTxCatBadge');
+        const mSelectEl = document.getElementById('txInputCategory');
 
-        if (nameEl) nameEl.innerText = cat.name;
+        const iconVal = cat.icon || '🏷️';
+        const nameVal = cat.name;
+        const parentVal = cat.parent_name ? `${cat.parent_name}` : (cat.type === 'INCOME' ? 'Доход семьи' : 'Расход семьи');
+        const badgeText = cat.type === 'INCOME' ? 'Доход' : 'Расход';
+        const badgeBg = cat.type === 'INCOME' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
+        const badgeColor = cat.type === 'INCOME' ? '#6ee7b7' : '#fca5a5';
 
-        if (parentEl) parentEl.innerText = cat.parent_name ? `${cat.parent_name}` : (cat.type === 'INCOME' ? 'Доход семьи' : 'Расход семьи');
-
+        if (iconEl) iconEl.innerText = iconVal;
+        if (nameEl) nameEl.innerText = nameVal;
+        if (parentEl) parentEl.innerText = parentVal;
         if (badgeEl) {
-
-          badgeEl.innerText = cat.type === 'INCOME' ? 'Доход' : 'Расход';
-
-          badgeEl.style.background = cat.type === 'INCOME' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
-
-          badgeEl.style.color = cat.type === 'INCOME' ? '#6ee7b7' : '#fca5a5';
-
+          badgeEl.innerText = badgeText;
+          badgeEl.style.background = badgeBg;
+          badgeEl.style.color = badgeColor;
+        }
+        if (selectEl) {
+          selectEl.value = cat.id;
         }
 
-        if (selectEl) {
-
-          selectEl.value = cat.id;
-
+        if (mIconEl) mIconEl.innerText = iconVal;
+        if (mNameEl) mNameEl.innerText = nameVal;
+        if (mParentEl) mParentEl.innerText = parentVal;
+        if (mBadgeEl) {
+          mBadgeEl.innerText = badgeText;
+          mBadgeEl.style.background = badgeBg;
+          mBadgeEl.style.color = badgeColor;
+        }
+        if (mSelectEl) {
+          mSelectEl.value = cat.id;
         }
 
         const txTypeEl = document.getElementById('txType');
@@ -9414,7 +10278,7 @@ self.addEventListener('fetch', (event) => {
     function renderCategoryCustomDropdowns() {
 
       filterCategoryDropdown('txCatMenu', '');
-
+      filterCategoryDropdown('modalTxCatMenu', '');
       filterCategoryDropdown('dashCatMenu', '');
 
       if (!selectedCategoryId && categoryData && categoryData.flat) {
@@ -9435,60 +10299,52 @@ self.addEventListener('fetch', (event) => {
 
       if (!categoryData || !categoryData.tree) return;
 
-      const txType = document.getElementById('txType') ? document.getElementById('txType').value : 'EXPENSE';
+      const txType = document.getElementById('txType') ? document.getElementById('txType').value : (modalTxActiveType || 'EXPENSE');
 
       const select = document.getElementById('txCategorySelect');
+      const selectModal = document.getElementById('txInputCategory');
 
-      if (select) {
+      if (select) select.innerHTML = '';
+      if (selectModal) selectModal.innerHTML = '';
 
-        select.innerHTML = '';
+      categoryData.tree.filter(root => root.type === txType).forEach(root => {
 
-        categoryData.tree.filter(root => root.type === txType).forEach(root => {
+        if (root.subcategories && root.subcategories.length > 0) {
 
-          if (root.subcategories && root.subcategories.length > 0) {
+          const grp = document.createElement('optgroup');
+          grp.label = `${root.icon || ''} ${root.name}`;
 
-            const grp = document.createElement('optgroup');
+          const rootOpt = document.createElement('option');
+          rootOpt.value = root.id;
+          rootOpt.innerText = `${root.icon || ''} ${root.name} (Основная)`;
+          grp.appendChild(rootOpt);
 
-            grp.label = `${root.icon || ''} ${root.name}`;
-
-            const rootOpt = document.createElement('option');
-
-            rootOpt.value = root.id;
-
-            rootOpt.innerText = `${root.icon || ''} ${root.name} (Основная)`;
-
-            grp.appendChild(rootOpt);
-
-            root.subcategories.forEach(sub => {
-
-              const opt = document.createElement('option');
-
-              opt.value = sub.id;
-
-              opt.innerText = `${sub.icon || ''} ${sub.name}`;
-
-              grp.appendChild(opt);
-
-            });
-
-            select.appendChild(grp);
-
-          } else {
-
+          root.subcategories.forEach(sub => {
             const opt = document.createElement('option');
+            opt.value = sub.id;
+            opt.innerText = `${sub.icon || ''} ${sub.name}`;
+            grp.appendChild(opt);
+          });
 
-            opt.value = root.id;
+          if (select) select.appendChild(grp);
+          if (selectModal) selectModal.appendChild(grp.cloneNode(true));
 
-            opt.innerText = `${root.icon || ''} ${root.name}`;
+        } else {
 
-            select.appendChild(opt);
+          const opt = document.createElement('option');
+          opt.value = root.id;
+          opt.innerText = `${root.icon || ''} ${root.name}`;
 
-          }
+          if (select) select.appendChild(opt);
+          if (selectModal) selectModal.appendChild(opt.cloneNode(true));
 
-        });
+        }
 
-        if (selectedCategoryId) select.value = selectedCategoryId;
+      });
 
+      if (selectedCategoryId) {
+        if (select) select.value = selectedCategoryId;
+        if (selectModal) selectModal.value = selectedCategoryId;
       }
 
       const oblCatSelect = document.getElementById('newOblCategory');
@@ -10221,22 +11077,35 @@ self.addEventListener('fetch', (event) => {
       }
     }
 
-    async function submitTransaction() {
-      const txType = document.getElementById('txType').value;
-      const account_id = document.getElementById('txAccount').value;
-      const category_id = document.getElementById('txCategorySelect').value || selectedChipCategoryId || null;
-      const defaultChartAcc = overviewData.accounts.find(a => a.type === txType) || overviewData.accounts[0];
-      const category_account_id = defaultChartAcc.id;
+    async function submitModalTransaction() {
+      await submitTransaction(true);
+    }
 
-      const description = document.getElementById('txDescription').value.trim() || 'Операция';
-      const amount_rub = document.getElementById('txAmount').value;
-      const isPersonalCommon = document.getElementById('chkPersonalForCommon').checked;
-      const tx_date = document.getElementById('txDate') ? document.getElementById('txDate').value : undefined;
+    async function submitTransaction(isModal = false) {
+      const txType = (isModal ? modalTxActiveType : null) || document.getElementById('txType')?.value || modalTxActiveType || 'EXPENSE';
+      const account_id = (isModal ? document.getElementById('txInputAccount')?.value : null) || document.getElementById('txAccount')?.value || document.getElementById('txInputAccount')?.value;
+      const category_id = (isModal ? document.getElementById('txInputCategory')?.value : null) || document.getElementById('txCategorySelect')?.value || document.getElementById('txInputCategory')?.value || selectedChipCategoryId || selectedCategoryId || null;
+      const defaultChartAcc = (overviewData && overviewData.accounts) ? (overviewData.accounts.find(a => a.type === txType) || overviewData.accounts[0]) : null;
+      const category_account_id = defaultChartAcc ? defaultChartAcc.id : account_id;
 
-      if (!amount_rub || parseFloat(amount_rub) <= 0) { alert('Введите корректную сумму'); return; }
+      const description = ((isModal ? document.getElementById('txInputDesc')?.value : null) || document.getElementById('txDescription')?.value || document.getElementById('txInputDesc')?.value || '').trim() || 'Операция';
+      const amount_rub = (isModal ? document.getElementById('txInputAmount')?.value : null) || document.getElementById('txAmount')?.value || document.getElementById('txInputAmount')?.value;
+      const isPersonalCommon = document.getElementById('chkPersonalForCommon')?.checked || false;
+      const tx_date = (isModal ? document.getElementById('txInputDate')?.value : null) || document.getElementById('txDate')?.value || document.getElementById('txInputDate')?.value || undefined;
 
-      const btn = document.getElementById('btnSubmitTx');
-      btn.disabled = true;
+      const msgEl = isModal ? document.getElementById('modalTxMsg') : document.getElementById('txMsg');
+
+      if (!amount_rub || parseFloat(amount_rub) <= 0) {
+        if (msgEl) {
+          msgEl.innerHTML = '<div class="alert alert-error">Введите корректную сумму</div>';
+        } else {
+          alert('Введите корректную сумму');
+        }
+        return;
+      }
+
+      const btn = isModal ? document.getElementById('modalBtnSubmitTx') : document.getElementById('btnSubmitTx');
+      if (btn) btn.disabled = true;
 
       try {
         const res = await fetch('/api/transaction/create', {
@@ -10257,19 +11126,28 @@ self.addEventListener('fetch', (event) => {
         const data = await res.json();
         if (data.status === 'success') {
           activeTxIdempotencyKey = generateFormKey('tx');
-          document.getElementById('txAmount').value = '';
-          document.getElementById('txDescription').value = '';
-          document.getElementById('chkPersonalForCommon').checked = false;
-          document.getElementById('txMsg').innerHTML = `<div class="alert alert-success">Операция записана!</div>`;
-          setTimeout(() => { document.getElementById('txMsg').innerHTML = ''; }, 3000);
+          if (document.getElementById('txAmount')) document.getElementById('txAmount').value = '';
+          if (document.getElementById('txInputAmount')) document.getElementById('txInputAmount').value = '';
+          if (document.getElementById('txDescription')) document.getElementById('txDescription').value = '';
+          if (document.getElementById('txInputDesc')) document.getElementById('txInputDesc').value = '';
+          if (document.getElementById('chkPersonalForCommon')) document.getElementById('chkPersonalForCommon').checked = false;
+
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-success">Операция записана!</div>`;
+          setTimeout(() => {
+            if (msgEl) msgEl.innerHTML = '';
+            if (isModal) closeNewTxModal();
+          }, isModal ? 600 : 3000);
+
           await loadDashboard();
           await loadTransactions(currentSelectedMonth);
           await loadAnalytics(currentSelectedMonth);
         } else {
-          document.getElementById('txMsg').innerHTML = `<div class="alert alert-error">${data.message}</div>`;
+          if (msgEl) msgEl.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
         }
+      } catch (err) {
+        if (msgEl) msgEl.innerHTML = `<div class="alert alert-error">Ошибка: ${err.message}</div>`;
       } finally {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -10289,30 +11167,58 @@ self.addEventListener('fetch', (event) => {
       }
       cachedTransactions = txs;
       const tbody = document.getElementById('txTableBody');
-      if (!tbody) return;
-      if (!txs || txs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">В периоде ' + formatMonthRu(targetMonth) + ' операций не найдено</td></tr>';
-        return;
+      if (tbody) {
+        if (!txs || txs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">В периоде ' + formatMonthRu(targetMonth) + ' операций не найдено</td></tr>';
+        } else {
+          tbody.innerHTML = '';
+          txs.forEach(t => {
+            const tr = document.createElement('tr');
+            const postingSummary = t.postings.map(p => `${p.type === 'DEBIT' ? 'Дт' : 'Кт'} ${p.account_name} (${p.amount_rub} ₽)`).join('<br>');
+            const mainAmount = t.postings[0] ? t.postings[0].amount_rub + ' ₽' : '0.00 ₽';
+            const safeDesc = encodeURIComponent(t.description || '');
+            const isExpense = (t.tx_type === 'EXPENSE');
+            tr.innerHTML = `
+              <td><strong>${t.tx_date}</strong></td>
+              <td><span class="badge" style="background:var(--card-bg); border:1px solid var(--border);">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
+              <td>${t.description}</td>
+              <td style="font-size: 13px;">${postingSummary}</td>
+              <td style="font-weight: 700; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: ${isExpense ? '#f87171' : '#34d399'};">${isExpense ? '-' : '+'}${mainAmount}</td>
+              <td style="text-align: right; white-space: nowrap;">
+                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="openEditTxModal('${t.id}')" title="Редактировать операцию">✏️</button>
+                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; color: #f87171;" onclick="deleteTransaction('${t.id}', '${safeDesc}', '${mainAmount}')" title="Удалить операцию">🗑️</button>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
       }
-      tbody.innerHTML = '';
-      txs.forEach(t => {
-        const tr = document.createElement('tr');
-        const postingSummary = t.postings.map(p => `${p.type === 'DEBIT' ? 'Дт' : 'Кт'} ${p.account_name} (${p.amount_rub} ₽)`).join('<br>');
-        const mainAmount = t.postings[0] ? t.postings[0].amount_rub + ' ₽' : '0.00 ₽';
-        const safeDesc = encodeURIComponent(t.description || '');
-        tr.innerHTML = `
-          <td><strong>${t.tx_date}</strong></td>
-          <td><span class="badge" style="background:var(--card-bg); border:1px solid var(--border);">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
-          <td>${t.description}</td>
-          <td style="font-size: 13px;">${postingSummary}</td>
-          <td style="font-weight: 700; color: ${t.tx_type === 'EXPENSE' ? '#f87171' : '#34d399'};">${mainAmount}</td>
-          <td style="text-align: right; white-space: nowrap;">
-            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="openEditTxModal('${t.id}')" title="Редактировать операцию">✏️</button>
-            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; color: #f87171;" onclick="deleteTransaction('${t.id}', '${safeDesc}', '${mainAmount}')" title="Удалить операцию">🗑️</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+
+      const dashTbody = document.getElementById('dashTxTableBody');
+      if (dashTbody) {
+        if (!txs || txs.length === 0) {
+          dashTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">В периоде ' + formatMonthRu(targetMonth) + ' операций не найдено</td></tr>';
+        } else {
+          dashTbody.innerHTML = '';
+          const recentTxs = txs.slice(0, 10);
+          recentTxs.forEach(t => {
+            const tr = document.createElement('tr');
+            const mainAmount = t.postings[0] ? t.postings[0].amount_rub + ' ₽' : '0.00 ₽';
+            const safeDesc = encodeURIComponent(t.description || '');
+            const isExpense = (t.tx_type === 'EXPENSE');
+            tr.innerHTML = `
+              <td style="white-space: nowrap; font-size: 13px; color: var(--text-muted);">${t.tx_date}</td>
+              <td><span class="badge" style="background:var(--card-bg); border:1px solid var(--border); font-size: 12px;">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
+              <td style="font-weight: 500; font-size: 14px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.description}</td>
+              <td style="font-weight: 700; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: ${isExpense ? '#f87171' : '#34d399'};">${isExpense ? '-' : '+'}${mainAmount}</td>
+              <td style="text-align: right; white-space: nowrap;">
+                <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 11px;" onclick="openEditTxModal('${t.id}')" title="Редактировать">✏️</button>
+              </td>
+            `;
+            dashTbody.appendChild(tr);
+          });
+        }
+      }
     }
 
     function openEditTxModal(txId) {
@@ -10438,6 +11344,10 @@ self.addEventListener('fetch', (event) => {
       } finally {
         btn.disabled = false;
       }
+    }
+
+    async function submitEditTx() {
+      return await submitEditTransaction();
     }
 
     async function deleteTransaction(txId, encodedDesc, amount) {
@@ -11051,6 +11961,12 @@ self.addEventListener('fetch', (event) => {
 
     }
 
+    async function submitSmartTx(inputId = 'txQuickInput', msgId = 'txQuickMsg') {
+
+      return await submitQuickInput(inputId, msgId);
+
+    }
+
     function applyQuickPreset(text) {
 
       const inputEl = document.getElementById('dashQuickInput') || document.getElementById('txQuickInput');
@@ -11108,15 +12024,13 @@ self.addEventListener('fetch', (event) => {
       });
 
       if (match) {
-
         const select = document.getElementById('txCategorySelect');
-
+        const selectModal = document.getElementById('txInputCategory');
         if (select) select.value = match.id;
-
+        if (selectModal) selectModal.value = match.id;
         selectedCategoryId = match.id;
-
         onSelectCategory(match.id, 'txCatMenu');
-
+        onSelectCategory(match.id, 'modalTxCatMenu');
       }
 
     }
@@ -12584,6 +13498,7 @@ self.addEventListener('fetch', (event) => {
       const liability_account_id = document.getElementById('payDebtLiabilityAccount').value;
       const source_account_id = document.getElementById('payDebtSourceAccount').value;
       const amount_rub = document.getElementById('payDebtAmount').value;
+      const parsedAmount = (typeof parseMobileFloat === 'function') ? parseMobileFloat(amount_rub, 0) : (parseFloat(amount_rub) || 0);
       const amount_percent = document.getElementById('payDebtAmountPercent')?.value || null;
       const description = document.getElementById('payDebtDesc').value.trim();
       const msgEl = document.getElementById('payDebtMsg');
@@ -12596,7 +13511,7 @@ self.addEventListener('fetch', (event) => {
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Выберите счет списания</div>';
         return;
       }
-      if (!amount_rub || parseFloat(amount_rub) <= 0) {
+      if (!amount_rub || parsedAmount <= 0) {
         msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите сумму погашения больше нуля</div>';
         return;
       }
@@ -13837,6 +14752,100 @@ self.addEventListener('fetch', (event) => {
       const pIcon = document.getElementById('privacyIcon');
       if (pIcon) pIcon.innerText = '🙈';
     }
+
+    // Bottom Sheet Swipe / Drag dismiss interaction for mobile devices
+    function initBottomSheetTouch() {
+      const modal = document.getElementById('modalNewTx');
+      if (!modal) return;
+      const card = modal.querySelector('.bottom-sheet-card');
+      const handle = modal.querySelector('.bottom-sheet-handle-bar');
+      if (!card || !handle) return;
+
+      let startY = 0;
+      let currentY = 0;
+      let isDragging = false;
+
+      handle.addEventListener('touchstart', (e) => {
+        if (window.innerWidth >= 768) return;
+        startY = e.touches[0].clientY;
+        currentY = startY;
+        isDragging = true;
+        card.style.transition = 'none';
+      }, { passive: true });
+
+      window.addEventListener('touchmove', (e) => {
+        if (!isDragging || window.innerWidth >= 768) return;
+        currentY = e.touches[0].clientY;
+        const delta = currentY - startY;
+        if (delta > 0) {
+          card.style.transform = `translateY(${delta}px)`;
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchend', () => {
+        if (!isDragging || window.innerWidth >= 768) return;
+        isDragging = false;
+        card.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        const delta = currentY - startY;
+        if (delta > 85) {
+          card.style.transform = 'translateY(100%)';
+          setTimeout(() => {
+            closeNewTxModal();
+            card.style.transform = '';
+          }, 200);
+        } else {
+          card.style.transform = 'translateY(0)';
+        }
+      }, { passive: true });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initBottomSheetTouch);
+    } else {
+      initBottomSheetTouch();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeNewTxModal();
+      }
+    });
+
+    // Expose core transaction and category methods on window
+    window.openNewTxModal = openNewTxModal;
+    window.closeNewTxModal = closeNewTxModal;
+    window.setModalTxType = setModalTxType;
+    window.addTxInputAmount = addTxInputAmount;
+    window.resetModalTxAmount = resetModalTxAmount;
+    window.syncTxAmount = syncTxAmount;
+    window.setModalTxDateToday = setModalTxDateToday;
+    window.openTransferModal = openTransferModal;
+    window.submitModalTransaction = submitModalTransaction;
+    window.submitTransaction = submitTransaction;
+    window.setTxTypeSegment = setTxTypeSegment;
+    window.onTxTypeChange = onTxTypeChange;
+    window.toggleCategoryDropdown = toggleCategoryDropdown;
+    window.filterCategoryDropdown = filterCategoryDropdown;
+    window.onSelectCategory = onSelectCategory;
+    window.submitSmartTx = submitSmartTx;
+    window.submitQuickInput = submitQuickInput;
+    window.openEditTxModal = openEditTxModal;
+    window.submitEditTx = submitEditTx;
+    window.submitEditTransaction = submitEditTransaction;
+    window.deleteTransaction = deleteTransaction;
+
+    // Expose core debt and credit card methods on window
+    window.openNewDebtModal = openNewDebtModal;
+    window.closeNewDebtModal = closeNewDebtModal;
+    window.selectDebtType = selectDebtType;
+    window.submitNewDebt = submitNewDebt;
+    window.openPayDebtModal = openPayDebtModal;
+    window.closePayDebtModal = closePayDebtModal;
+    window.submitPayDebt = submitPayDebt;
+    window.setPayDebtPercent = setPayDebtPercent;
+    window.setPayDebtFull = setPayDebtFull;
+    window.archiveDebt = archiveDebt;
+    window.updatePayDebtForecast = updatePayDebtForecast;
 
     window.addEventListener('load', loadStatus);
 

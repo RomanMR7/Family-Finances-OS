@@ -942,6 +942,16 @@ class LedgerEngine:
 
         try:
 
+            # Sanitize created_by_member_id to prevent FOREIGN KEY constraint failed
+            created_by = tx.created_by_member_id
+            if created_by:
+                created_by = str(created_by).strip()
+                cursor.execute("SELECT id FROM members WHERE id = ?;", (created_by,))
+                if not cursor.fetchone():
+                    created_by = None
+            else:
+                created_by = None
+
             # 1. Insert Transaction Header
 
             cursor.execute("""
@@ -952,11 +962,20 @@ class LedgerEngine:
 
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
 
-            """, (tx.id, tx.tx_date, tx.tx_type, tx.description, tx.created_by_member_id, idempotency_key, payload_hash, tx.created_at))
+            """, (tx.id, tx.tx_date, tx.tx_type, tx.description, created_by, idempotency_key, payload_hash, tx.created_at))
 
             # 2. Insert Postings
 
             for p in tx.postings:
+
+                p_cat_id = getattr(p, "category_id", None)
+                if p_cat_id:
+                    p_cat_id = str(p_cat_id).strip()
+                    cursor.execute("SELECT id FROM categories WHERE id = ?;", (p_cat_id,))
+                    if not cursor.fetchone():
+                        p_cat_id = None
+                else:
+                    p_cat_id = None
 
                 cursor.execute("""
 
@@ -966,7 +985,7 @@ class LedgerEngine:
 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
-                """, (p.id, tx.id, p.account_id, p.amount_cents, p.posting_type, p.ownership_scope, p.purpose_allocation, p.note, getattr(p, "category_id", None), current_iso_time()))
+                """, (p.id, tx.id, p.account_id, p.amount_cents, p.posting_type, p.ownership_scope, p.purpose_allocation, p.note, p_cat_id, current_iso_time()))
 
             # 3. Log change for peer sync with full transaction snapshot
 
@@ -980,7 +999,7 @@ class LedgerEngine:
 
                 "description": tx.description,
 
-                "created_by_member_id": tx.created_by_member_id,
+                "created_by_member_id": created_by,
 
                 "idempotency_key": idempotency_key,
 
@@ -2363,15 +2382,15 @@ class LedgerEngine:
 
         try:
 
+            cursor.execute("SELECT amount_cents FROM obligations WHERE id = ?;", (obligation_id,))
+
+            row = cursor.fetchone()
+
+            if not row:
+
+                return False
+
             if paid_amount_cents is None:
-
-                cursor.execute("SELECT amount_cents FROM obligations WHERE id = ?;", (obligation_id,))
-
-                row = cursor.fetchone()
-
-                if not row:
-
-                    return False
 
                 paid_amount_cents = row["amount_cents"]
 
@@ -4916,7 +4935,36 @@ class LedgerEngine:
 
         tx_date = current_iso_time()[:10]
 
-        cat = category_id or DEBT_CATEGORY_MAP.get(liability_acc.subtype, "cat_debts")
+        # Sanitize member_id and ensure obligation/repayment category exists
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            if member_id:
+                member_id = str(member_id).strip()
+                cursor.execute("SELECT id FROM members WHERE id = ?;", (member_id,))
+                if not cursor.fetchone():
+                    member_id = None
+            else:
+                member_id = None
+
+            cat = category_id or DEBT_CATEGORY_MAP.get(liability_acc.subtype, "cat_debts")
+            if cat:
+                cat = str(cat).strip()
+                cursor.execute("SELECT id FROM categories WHERE id = ?;", (cat,))
+                if not cursor.fetchone():
+                    cursor.execute("SELECT id FROM categories WHERE id = 'cat_debts';")
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                        INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
+                        VALUES ('cat_debts', 'Кредиты, долги и займы', 'EXPENSE', NULL, '💳', 80, 1);
+                        """)
+                    cursor.execute("""
+                    INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
+                    VALUES (?, 'Погашение задолженности', 'EXPENSE', 'cat_debts', '💳', 81, 1);
+                    """, (cat,))
+                    conn.commit()
+        finally:
+            self._close_if_local(conn)
 
         postings = [
 

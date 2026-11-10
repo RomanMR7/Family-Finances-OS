@@ -84,6 +84,58 @@ class TestStage18DebtsLoadingRobustness(unittest.TestCase):
         # 3. Check for !res.ok check in loadDebts
         self.assertIn("if (!res.ok)", html)
 
+    def test_foreign_key_safety_debt_creation_and_repayment(self):
+        """Verify NO foreign key constraint errors occur with invalid or missing references."""
+        import tempfile
+        import shutil
+        from pathlib import Path
+        from family_finances_os.db import init_database, get_connection
+
+        test_dir = tempfile.mkdtemp(prefix="ffos_s18_fk_")
+        try:
+            db_path = Path(test_dir) / "test_fk.db"
+            init_database(db_path)
+            conn = get_connection(db_path)
+            ledger = LedgerEngine(conn_or_path=conn)
+            ledger.seed_default_chart_of_accounts()
+
+            # 1. create_debt with non-existent owner_member_id and destination_account_id
+            res = ledger.create_debt(
+                name="Тестовый кредит FK Safety",
+                subtype="CONSUMER_LOAN",
+                credit_limit_cents=0,
+                initial_debt_cents=1000000,
+                monthly_payment_cents=50000,
+                due_day=10,
+                receive_money=True,
+                destination_account_id="non_existent_account_12345",
+                owner_member_id="non_existent_member_99999"
+            )
+            self.assertEqual(res["status"], "success")
+            acc_id = res["account_id"]
+
+            # 2. Verify account 3010 was ensured
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM accounts WHERE code = '3010';")
+            eq_row = cur.fetchone()
+            self.assertIsNotNone(eq_row)
+
+            # 3. record_debt_repayment with non-existent member_id, invalid category_id, invalid obligation_id
+            repay_id = ledger.record_debt_repayment(
+                source_account_id="acc_core_1010",
+                liability_account_id=acc_id,
+                amount_cents=100000,
+                description="Тест погашения с невалидными FK",
+                obligation_id="non_existent_obligation_77777",
+                member_id="ghost_member_88888",
+                category_id="ghost_cat_99999"
+            )
+            self.assertIsNotNone(repay_id)
+
+            conn.close()
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
