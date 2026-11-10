@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v20';
+const CACHE_NAME = 'ffos-shell-v22';
 
 const STATIC_SHELL = [
 
@@ -3475,13 +3475,14 @@ self.addEventListener('fetch', (event) => {
 
         return """<!DOCTYPE html>
 
-<html lang="ru">
+<html lang="ru" translate="no" class="notranslate">
 
 <head>
 
   <meta charset="UTF-8">
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="google" content="notranslate">
 
   <meta name="theme-color" content="#0b1120">
 
@@ -3509,70 +3510,106 @@ self.addEventListener('fetch', (event) => {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* Concept 1: Revolut / Cash App Dark Design System Tokens */
+    /* ==========================================================================
+       Option 3: Apple HIG Clean & Human Interface Design System Tokens
+       DTCG / Apple Human Interface Guidelines Compliant (Zero AI-Slop)
+       ========================================================================== */
     :root, [data-theme="dark"] {
-      --bg: #0c0d12;
-      --card-bg: #141720;
-      --card-hover: #1a1e2b;
-      --border: rgba(255, 255, 255, 0.07);
-      --border-hover: rgba(255, 255, 255, 0.14);
-      --border-focus: #2563eb;
-      --text: #ffffff;
-      --text-muted: #8b929e;
-      --text-soft: #a8b0bd;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --primary-accent: #3b82f6;
-      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-      --accent-blue: #3b82f6;
-      --accent-purple: #8b5cf6;
-      --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --purple: #8b5cf6;
-      --input-bg: #0f1118;
-      --modal-bg: #141720;
-      --box-bg: rgba(255, 255, 255, 0.025);
-      --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
-      --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.7);
-      --card-radius: 18px;
+      /* Radius Tokens (Apple Squircle Geometry) */
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 22px;
+      --radius-xl: 26px;
+      --radius-pill: 9999px;
+      --card-radius: var(--radius-lg);
+
+      /* Palette: Apple Dark Mode (OLED Pure Depth) */
+      --bg: #000000;
+      --bg-secondary: #1c1c1e;
+      --bg-gradient: linear-gradient(180deg, #000000 0%, #121214 100%);
+      --card-bg: #1c1c1e;
+      --card-hover: #2c2c2e;
+      --border: rgba(255, 255, 255, 0.12);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.22);
+      --border-focus: #0071e3;
+      
+      /* Typography Colors */
+      --text: #f5f5f7;
+      --text-muted: #8e8e93;
+      --text-soft: #aeaeb2;
+
+      /* Apple System Colors (Dark) */
+      --primary: #0071e3;
+      --primary-hover: #0077ed;
+      --primary-accent: #0071e3;
+      --primary-gradient: linear-gradient(180deg, #0077ed 0%, #0071e3 100%);
+      --accent-blue: #0071e3;
+      --accent-purple: #af52de;
+      --success: #30d158;
+      --danger: #ff453a;
+      --warning: #ff9f0a;
+      --purple: #af52de;
+
+      /* Surface, Modals & Shadows */
+      --input-bg: #1c1c1e;
+      --modal-bg: #1c1c1e;
+      --box-bg: rgba(255, 255, 255, 0.04);
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+      --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.75);
     }
 
     [data-theme="light"] {
-      --bg: #f8fafc;
-      --bg-gradient: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+      /* Radius Tokens (Apple Squircle Geometry) */
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 22px;
+      --radius-xl: 26px;
+      --radius-pill: 9999px;
+      --card-radius: var(--radius-lg);
+
+      /* Palette: Apple Light Mode (Clean Studio Aesthetic) */
+      --bg: #f5f5f7;
+      --bg-secondary: #ffffff;
+      --bg-gradient: linear-gradient(180deg, #f5f5f7 0%, #ebebf0 100%);
       --card-bg: #ffffff;
-      --card-hover: #f0f2f5;
-      --border: #e4e7ec;
-      --border-hover: #d0d5dd;
-      --border-focus: #2563eb;
-      --text: #0f172a;
-      --text-muted: #64748b;
-      --text-soft: #475569;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --primary-accent: #3b82f6;
-      --primary-gradient: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-      --accent-blue: #3b82f6;
-      --accent-purple: #8b5cf6;
-      --success: #16a34a;
-      --danger: #dc2626;
-      --warning: #d97706;
-      --purple: #8b5cf6;
-      --input-bg: #f8fafc;
+      --card-hover: #f2f2f7;
+      --border: #d1d1d6;
+      --border-subtle: #e5e5ea;
+      --border-hover: #babbbe;
+      --border-focus: #0071e3;
+
+      /* Typography Colors */
+      --text: #1d1d1f;
+      --text-muted: #86868b;
+      --text-soft: #6e6e73;
+
+      /* Apple System Colors (Light) */
+      --primary: #0071e3;
+      --primary-hover: #0077ed;
+      --primary-accent: #0071e3;
+      --primary-gradient: linear-gradient(180deg, #0077ed 0%, #0071e3 100%);
+      --accent-blue: #0071e3;
+      --accent-purple: #af52de;
+      --success: #34c759;
+      --danger: #ff3b30;
+      --warning: #ff9500;
+      --purple: #af52de;
+
+      /* Surface, Modals & Shadows */
+      --input-bg: #ffffff;
       --modal-bg: #ffffff;
-      --box-bg: #f1f5f9;
-      --shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-      --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.1);
-      --card-radius: 18px;
+      --box-bg: #f2f2f7;
+      --shadow: 0 2px 12px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+      --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
     }
 
-    /* Base Reset & Crisp Typography */
+    /* Base Reset & Crisp Apple Typography */
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
@@ -3590,7 +3627,7 @@ self.addEventListener('fetch', (event) => {
       margin: 0 auto;
     }
 
-    /* Revolut Header & Top Bar */
+    /* FamilyOS Apple HIG Header & Navigation Bar (Clean Geometric Design) */
     .header {
       display: flex;
       justify-content: space-between;
@@ -3603,8 +3640,8 @@ self.addEventListener('fetch', (event) => {
       top: 0;
       z-index: 100;
       background: var(--bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       transition: background-color 0.2s, border-color 0.2s;
     }
 
@@ -3612,6 +3649,8 @@ self.addEventListener('fetch', (event) => {
       display: flex;
       align-items: center;
       gap: 12px;
+      min-width: 0;
+      flex-shrink: 0;
     }
 
     .brand-logo {
@@ -3620,28 +3659,52 @@ self.addEventListener('fetch', (event) => {
       gap: 10px;
       text-decoration: none;
       cursor: pointer;
+      user-select: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .brand-logo:hover {
+      opacity: 0.92;
     }
 
     .brand-icon {
-      font-size: 18px;
-      line-height: 1;
       width: 36px;
       height: 36px;
       border-radius: 10px;
-      background: var(--primary-gradient);
+      background: linear-gradient(145deg, #0071e3 0%, #0056b3 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #ffffff;
-      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+      box-shadow: 0 2px 8px rgba(0, 113, 227, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      flex-shrink: 0;
       filter: none !important;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    }
+
+    .brand-logo:hover .brand-icon {
+      transform: scale(1.04);
+      box-shadow: 0 4px 12px rgba(0, 113, 227, 0.36), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    }
+
+    .brand-logo-svg {
+      width: 22px;
+      height: 22px;
+      display: block;
+      color: #ffffff;
+    }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
 
     .brand-title {
       font-size: 18px;
       font-weight: 700;
       color: var(--text);
-      letter-spacing: -0.02em;
+      letter-spacing: -0.025em;
       line-height: 1.15;
     }
 
@@ -3650,24 +3713,29 @@ self.addEventListener('fetch', (event) => {
       font-size: 11px;
       font-weight: 500;
       color: var(--text-muted);
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
+      line-height: 1.2;
     }
 
     .family-scope-chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(37, 99, 235, 0.08);
-      border: 1px solid rgba(37, 99, 235, 0.22);
-      color: #3b82f6;
-      padding: 4px 12px;
+      background: rgba(0, 113, 227, 0.08);
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      color: #0071e3;
+      padding: 4px 10px;
       border-radius: 9999px;
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 600;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
     }
 
     [data-theme="dark"] .family-scope-chip {
-      color: #3b82f6;
+      background: rgba(0, 113, 227, 0.16);
+      border-color: rgba(0, 113, 227, 0.35);
+      color: #38bdf8;
     }
 
     .header-actions {
@@ -3677,86 +3745,112 @@ self.addEventListener('fetch', (event) => {
       flex-wrap: nowrap;
     }
 
-    .btn-icon-round {
-      padding: 7px 14px !important;
-      border-radius: 9999px !important;
-      font-size: 13px !important;
-      font-weight: 600 !important;
+    /* Apple HIG Action Pills & Circular Buttons */
+    .btn-icon-circle {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
-      gap: 6px !important;
-      cursor: pointer;
-      background: var(--card-hover) !important;
+      background: var(--card-bg) !important;
       border: 1px solid var(--border) !important;
       color: var(--text) !important;
+      cursor: pointer !important;
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      padding: 0 !important;
+      flex-shrink: 0 !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
     }
 
-    .btn-icon-round:hover {
-      transform: translateY(-1px);
-      background: rgba(255, 255, 255, 0.08) !important;
+    .btn-icon-circle:hover {
+      background: var(--card-hover) !important;
       border-color: var(--border-hover) !important;
+      transform: scale(1.04);
     }
 
-    [data-theme="light"] .btn-icon-round:hover {
-      background: #e5e8ef !important;
+    .btn-icon-circle:active {
+      transform: scale(0.96);
+    }
+
+    .privacy-mask-pill {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 7px 12px !important;
+      border-radius: 9999px !important;
+      background: var(--card-bg) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text) !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    .privacy-mask-pill:hover {
+      background: var(--card-hover) !important;
+      border-color: var(--border-hover) !important;
+      transform: scale(1.02);
     }
 
     .status-indicator-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(16, 185, 129, 0.1);
-      border: 1px solid rgba(16, 185, 129, 0.25);
-      color: #10b981;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 6px 12px;
-      border-radius: 9999px;
-      cursor: pointer;
-      transition: all 0.2s;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 6px 11px !important;
+      border-radius: 9999px !important;
+      background: rgba(48, 209, 88, 0.1) !important;
+      border: 1px solid rgba(48, 209, 88, 0.25) !important;
+      color: #30d158 !important;
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
     }
 
-    [data-theme="dark"] .status-indicator-btn {
-      color: #34d399;
+    [data-theme="light"] .status-indicator-btn {
+      background: rgba(52, 199, 89, 0.12) !important;
+      border-color: rgba(52, 199, 89, 0.3) !important;
+      color: #248a3d !important;
     }
 
     .status-dot {
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-      animation: pulseDot 2.5s infinite;
+      background: #30d158;
+      box-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
+      display: inline-block;
     }
 
-    @keyframes pulseDot {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.15); opacity: 1; }
-      100% { transform: scale(0.95); opacity: 0.8; }
+    [data-theme="light"] .status-dot {
+      background: #34c759;
     }
 
-    .desktop-only-text {
-      display: inline;
+    /* Apple Cards (Continuous 22px Squircle Radius) */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--card-radius);
+      padding: 22px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+      transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* Privacy Mask Mode */
-    body.privacy-masked .stat-val,
-    body.privacy-masked .hero-balance-val,
-    body.privacy-masked .overview-balance-val,
-    body.privacy-masked #overviewAccountsBody td:last-child {
-      filter: blur(7px);
-      user-select: none;
-      transition: filter 0.2s ease;
+    .card:hover {
+      border-color: var(--border);
     }
-    body.privacy-masked .stat-val:active,
-    body.privacy-masked .stat-val:hover,
-    body.privacy-masked .hero-balance-val:active,
-    body.privacy-masked .hero-balance-val:hover,
-    body.privacy-masked #overviewAccountsBody td:last-child:active,
-    body.privacy-masked #overviewAccountsBody td:last-child:hover {
-      filter: none;
+
+    /* Apple Monospace Financial Numbers */
+    .stat-val, .hero-balance-val, .table-amount {
+      font-family: "SF Mono", "SF Pro Display", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+      font-variant-numeric: tabular-nums lining-nums;
+      font-feature-settings: "tnum" 1;
     }
 
     /* Apple HIG iOS Segmented Control Navigation Tabs */
@@ -5888,15 +5982,26 @@ self.addEventListener('fetch', (event) => {
 
       .nav-tabs {
         display: flex !important;
-        flex-wrap: wrap !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
         gap: 3px !important;
-        padding: 3px !important;
-        border-radius: 12px !important;
+        padding: 4px !important;
+        border-radius: 9999px !important;
         background: rgba(118, 118, 128, 0.24) !important;
-        backdrop-filter: blur(20px) !important;
-        -webkit-backdrop-filter: blur(20px) !important;
+        backdrop-filter: blur(25px) !important;
+        -webkit-backdrop-filter: blur(25px) !important;
         margin-bottom: 24px !important;
-        overflow-x: visible !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+
+      .nav-tabs::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
       }
 
       .tab-btn {
@@ -6848,6 +6953,193 @@ self.addEventListener('fetch', (event) => {
        MODAL NEW TRANSACTION SCREENSHOT DEFECT FIXES (Apple HIG)
        ============================================================== */
 
+    /* Universal anti-artifact rules for modal text elements */
+    #modalTxHeaderTitle,
+    #modalTxCatSelectedName,
+    #modalTxCatSelectedParent,
+    #modalBtnSubmitLabel,
+    #modalTxMsg,
+    .category-dropdown-trigger span,
+    .category-dropdown-trigger div {
+      background: transparent !important;
+      background-color: transparent !important;
+      box-shadow: none !important;
+    }
+
+    /* 1. Hide ugly HTML5 number spinners */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none !important;
+      margin: 0 !important;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield !important;
+    }
+
+    /* 2. Amount Input & Currency Sign (Perfect Apple HIG Layout) */
+    .revolut-amount-wrapper {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      border-radius: 16px !important;
+      padding: 12px 18px !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      min-height: 64px !important;
+    }
+    .revolut-amount-wrapper:focus-within {
+      outline: none !important;
+      border-color: #0071e3 !important;
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.25) !important;
+    }
+    [data-theme="light"] .revolut-amount-wrapper {
+      background: #ffffff !important;
+      border: 1.5px solid #d1d1d6 !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    }
+    [data-theme="dark"] .revolut-amount-wrapper {
+      background: #2c2c2e !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    }
+    .revolut-amount-currency {
+      font-size: 32px !important;
+      font-weight: 700 !important;
+      color: #ff3b30 !important;
+      margin-right: 12px !important;
+      line-height: 1 !important;
+      user-select: none !important;
+      flex-shrink: 0 !important;
+    }
+    .revolut-amount-currency.currency-income {
+      color: #34c759 !important;
+    }
+    .revolut-amount-input {
+      font-size: 36px !important;
+      font-weight: 700 !important;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
+      width: 100% !important;
+      padding: 0 !important;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif !important;
+      font-variant-numeric: tabular-nums lining-nums !important;
+      font-feature-settings: "tnum" 1 !important;
+      line-height: 1 !important;
+    }
+    [data-theme="light"] .revolut-amount-input {
+      color: #1d1d1f !important;
+    }
+    [data-theme="dark"] .revolut-amount-input {
+      color: #f5f5f7 !important;
+    }
+    .revolut-amount-input::placeholder {
+      color: #8e8e93 !important;
+      opacity: 0.6 !important;
+    }
+
+    /* 3. Category Selector Box (#modalTxCatTrigger) - 100% Readable */
+    .category-dropdown-trigger {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      border-radius: 14px !important;
+      padding: 12px 16px !important;
+      cursor: pointer !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      user-select: none !important;
+      min-height: 54px !important;
+    }
+    [data-theme="light"] .category-dropdown-trigger,
+    [data-theme="light"] #modalTxCatTrigger {
+      background: #ffffff !important;
+      border: 1.5px solid #d1d1d6 !important;
+      color: #1d1d1f !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    }
+    [data-theme="light"] .category-dropdown-trigger:hover,
+    [data-theme="light"] #modalTxCatTrigger:hover {
+      background: #f2f2f7 !important;
+      border-color: #0071e3 !important;
+    }
+    [data-theme="dark"] .category-dropdown-trigger,
+    [data-theme="dark"] #modalTxCatTrigger {
+      background: #2c2c2e !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      color: #f5f5f7 !important;
+    }
+    [data-theme="dark"] .category-dropdown-trigger:hover,
+    [data-theme="dark"] #modalTxCatTrigger:hover {
+      background: #3a3a3c !important;
+      border-color: #0071e3 !important;
+    }
+    #modalTxCatSelectedName {
+      font-size: 15px !important;
+      font-weight: 600 !important;
+      line-height: 1.25 !important;
+    }
+    [data-theme="light"] #modalTxCatSelectedName {
+      color: #1d1d1f !important;
+    }
+    [data-theme="dark"] #modalTxCatSelectedName {
+      color: #f5f5f7 !important;
+    }
+    #modalTxCatSelectedParent {
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      line-height: 1.2 !important;
+      margin-top: 2px !important;
+    }
+    [data-theme="light"] #modalTxCatSelectedParent {
+      color: #86868b !important;
+    }
+    [data-theme="dark"] #modalTxCatSelectedParent {
+      color: #8e8e93 !important;
+    }
+
+    /* 4. Large CTA Submit Button (Clean Apple HIG Action) */
+    .revolut-cta-btn,
+    #modalBtnSubmitTx {
+      width: 100% !important;
+      padding: 15px 20px !important;
+      font-size: 16px !important;
+      font-weight: 600 !important;
+      border-radius: 14px !important;
+      letter-spacing: -0.01em !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 8px !important;
+      background: #ff3b30 !important;
+      color: #ffffff !important;
+      border: none !important;
+      cursor: pointer !important;
+      box-shadow: 0 4px 16px rgba(255, 59, 48, 0.3) !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      -webkit-tap-highlight-color: transparent !important;
+      min-height: 52px !important;
+    }
+    .revolut-cta-btn.cta-income,
+    #modalBtnSubmitTx.cta-income {
+      background: #34c759 !important;
+      box-shadow: 0 4px 16px rgba(52, 199, 89, 0.3) !important;
+    }
+    .revolut-cta-btn:hover,
+    #modalBtnSubmitTx:hover {
+      transform: translateY(-1px) !important;
+      filter: brightness(1.06) !important;
+    }
+    .revolut-cta-btn:active,
+    #modalBtnSubmitTx:active {
+      transform: scale(0.98) !important;
+      filter: brightness(0.96) !important;
+    }
+    #modalBtnSubmitLabel {
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      font-size: 16px !important;
+      background: transparent !important;
+    }
+
     /* 1. Hide ugly HTML5 number spinners */
     input[type="number"]::-webkit-outer-spin-button,
     input[type="number"]::-webkit-inner-spin-button {
@@ -7078,7 +7370,20 @@ self.addEventListener('fetch', (event) => {
     <div class="header">
       <div class="brand-block">
         <div class="brand-logo" onclick="switchTab('tab-overview')">
-          <span class="brand-icon">💎</span>
+          <div class="brand-icon" aria-label="FamilyOS">
+            <!-- Apple HIG Geometric Mark: Concentric Financial Shields + Interconnected Family & Capital Circles -->
+            <svg class="brand-logo-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <!-- Outer Vault Shield -->
+              <path d="M12 2.5C12 2.5 19.5 5.5 19.5 5.5C19.5 5.5 19.5 12 19.5 12C19.5 16.8 16.3 20.2 12 21.5C7.7 20.2 4.5 16.8 4.5 12C4.5 12 4.5 5.5 4.5 5.5C4.5 5.5 12 2.5 12 2.5Z" />
+              <!-- Concentric Inner Protection Shield -->
+              <path d="M12 6C12 6 17 8 17 8C17 8 17 12 17 12C17 15.2 14.8 17.6 12 18.5C9.2 17.6 7 15.2 7 12C7 12 7 8 7 8C7 8 12 6 12 6Z" stroke-width="1.2" stroke-opacity="0.65" />
+              <!-- Interconnected Family Nodes -->
+              <circle cx="10" cy="12" r="2.2" stroke-width="1.3" />
+              <circle cx="14" cy="12" r="2.2" stroke-width="1.3" />
+              <!-- Shared Capital Core -->
+              <circle cx="12" cy="12" r="0.75" fill="currentColor" />
+            </svg>
+          </div>
           <div class="brand-text">
             <span class="brand-title">FamilyOS</span>
             <span class="brand-tag">Семейный бюджет</span>
@@ -7091,26 +7396,30 @@ self.addEventListener('fetch', (event) => {
       </div>
 
       <div class="header-actions">
-        <!-- Privacy Masking Button (Mask balances in public) -->
-        <button id="btnPrivacyToggle" class="btn btn-secondary btn-icon-round hidden" onclick="togglePrivacyMask()" title="Скрыть/показать суммы (режим приватности)">
+        <!-- 1. Privacy Mask Toggle Button: Clean iOS-Style Pill with Eye Icon -->
+        <button id="btnPrivacyToggle" class="privacy-mask-pill hidden" onclick="togglePrivacyMask()" title="Скрыть/показать суммы (режим приватности)">
           <span id="privacyIcon">👁️</span>
+          <span class="desktop-only-text">Маска</span>
         </button>
 
-        <!-- Discreet Status Dot -->
-        <button id="btnStatusIndicator" class="status-indicator-btn hidden" onclick="openSettingsModal()" title="Система защищена AES-256 • Данные на телефоне">
+        <!-- 2. Status Indicator: Clean iOS System Pill (Green Dot + 'Локально AES-256') -->
+        <button id="btnStatusIndicator" class="status-indicator-btn hidden" onclick="openSettingsModal()" title="Система защищена AES-256 • Данные хранятся локально">
           <span class="status-dot"></span>
-          <span class="status-dot-label desktop-only-text">Защищено</span>
+          <span class="status-dot-label desktop-only-text">Локально AES-256</span>
         </button>
 
-        <!-- Theme Toggle -->
-        <button id="themeToggleBtn" class="btn btn-secondary btn-icon-round" onclick="toggleTheme()" title="Переключить тему оформления">
-          <span id="themeToggleIcon">☀️</span> <span id="themeToggleText" class="desktop-only-text">Светлая</span>
+        <!-- 3. Theme Toggle: Clean iOS Circular Icon Button ('☀️' / '🌙') -->
+        <button id="themeToggleBtn" class="btn-icon-circle" onclick="toggleTheme()" title="Переключить тему оформления" aria-label="Переключить тему">
+          <span id="themeToggleIcon" style="font-size: 15px; line-height: 1;">☀️</span>
+          <span id="themeToggleText" style="display: none;">Светлая</span>
         </button>
 
-        <!-- Settings & Security Modal Trigger -->
-        <button id="btnOpenSettings" class="btn btn-secondary btn-icon-round hidden" onclick="openSettingsModal()" title="Настройки и безопасность">
-          <span>⚙️</span>
-          <span class="desktop-only-text">Настройки</span>
+        <!-- 4. Settings Button: Clean iOS Circular Button with SF-Style Gear Icon -->
+        <button id="btnOpenSettings" class="btn-icon-circle hidden" onclick="openSettingsModal()" title="Настройки и безопасность" aria-label="Настройки">
+          <svg class="header-gear-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
         </button>
       </div>
     </div>
@@ -8131,7 +8440,7 @@ self.addEventListener('fetch', (event) => {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span id="modalTxHeaderIcon" style="font-size: 22px;">🔴</span>
-            <h3 id="modalTxHeaderTitle" style="font-size: 18px; font-weight: 700; color: var(--text); margin: 0;">Новый расход семьи</h3>
+            <h3 id="modalTxHeaderTitle" style="font-size: 18px; font-weight: 700; margin: 0; background: transparent;">Новый расход семьи</h3>
           </div>
           <button type="button" onclick="closeNewTxModal()" class="bottom-sheet-close-btn" aria-label="Закрыть">✕</button>
         </div>
@@ -8177,8 +8486,8 @@ self.addEventListener('fetch', (event) => {
             <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
               <span id="modalTxCatSelectedIcon" style="font-size: 22px; line-height: 1;">🛒</span>
               <div style="text-align: left; line-height: 1.25;">
-                <div id="modalTxCatSelectedName" style="font-size: 14px; font-weight: 600; color: var(--text);">Продукты и супермаркеты</div>
-                <div id="modalTxCatSelectedParent" style="font-size: 11px; color: var(--text-muted);">Нажмите для выбора из меню категорий</div>
+                <div id="modalTxCatSelectedName" style="font-size: 14px; font-weight: 600; background: transparent;">Продукты и супермаркеты</div>
+                <div id="modalTxCatSelectedParent" style="font-size: 11px; background: transparent;">Нажмите для выбора из меню категорий</div>
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
