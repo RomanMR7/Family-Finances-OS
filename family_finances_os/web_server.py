@@ -337,7 +337,7 @@ class FamilyFinancesHandler(http.server.BaseHTTPRequestHandler):
 
         sw_code = """// Family Finances OS - PWA Service Worker
 
-const CACHE_NAME = 'ffos-shell-v14';
+const CACHE_NAME = 'ffos-shell-v15';
 
 const STATIC_SHELL = [
 
