@@ -8585,7 +8585,7 @@ self.addEventListener('fetch', (event) => {
 
         </p>
 
-        <div id="payDebtMsg"></div>
+        <div id="payDebtMsg" role="alert" aria-live="assertive" tabindex="-1"></div>
 
         <div class="form-group">
 
@@ -8684,7 +8684,7 @@ self.addEventListener('fetch', (event) => {
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
-          <button class="btn btn-danger" style="flex: 1;" onclick="submitPayDebt()">✅ Оплатить задолженность</button>
+          <button id="btnSubmitPayDebt" type="button" class="btn btn-danger" style="flex: 1;" onclick="submitPayDebt()">✅ Оплатить задолженность</button>
 
           <button class="btn btn-secondary" onclick="closePayDebtModal()">Отмена</button>
 
@@ -16061,7 +16061,20 @@ self.addEventListener('fetch', (event) => {
       }
     }
 
+    function showPayDebtError(message) {
+      const box = document.getElementById('payDebtMsg');
+      const alert = document.createElement('div');
+      alert.className = 'alert alert-danger';
+      alert.style.cssText = 'padding:10px; font-size:13px;';
+      alert.textContent = message;
+      box.replaceChildren(alert);
+      box.focus({preventScroll: true});
+      box.scrollIntoView({block: 'center', behavior: 'instant'});
+    }
+
     async function submitPayDebt() {
+      const button = document.getElementById('btnSubmitPayDebt');
+      if (button.disabled) return;
       const liability_account_id = document.getElementById('payDebtLiabilityAccount').value;
       const source_account_id = document.getElementById('payDebtSourceAccount').value;
       const amount_rub = document.getElementById('payDebtAmount').value;
@@ -16071,18 +16084,23 @@ self.addEventListener('fetch', (event) => {
       const msgEl = document.getElementById('payDebtMsg');
 
       if (!liability_account_id) {
-        msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Выберите задолженность для погашения</div>';
+        showPayDebtError('Выберите задолженность для погашения');
         return;
       }
       if (!source_account_id) {
-        msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Выберите счет списания</div>';
+        showPayDebtError('Выберите счет списания');
         return;
       }
       if (!amount_rub || parsedAmount <= 0) {
-        msgEl.innerHTML = '<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Укажите сумму погашения больше нуля</div>';
+        showPayDebtError('Укажите сумму погашения больше нуля');
         return;
       }
 
+      const originalLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Сохраняем платёж…';
+      button.setAttribute('aria-busy', 'true');
+      msgEl.replaceChildren();
       try {
         const category_id = document.getElementById('payDebtCategory')?.value || null;
         const res = await fetch('/api/debts/pay', {
@@ -16098,16 +16116,20 @@ self.addEventListener('fetch', (event) => {
           })
         });
         const data = await res.json();
-        if (data.status === 'success') {
+        if (res.ok && data.status === 'success') {
           closePayDebtModal();
           await loadDashboard();
           await loadDebts();
           await loadTransactions(currentSelectedMonth);
         } else {
-          msgEl.innerHTML = `<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Ошибка: ${data.message}</div>`;
+          showPayDebtError('Ошибка: ' + (data.message || 'Платёж не принят. Попробуйте ещё раз.'));
         }
       } catch (e) {
-        msgEl.innerHTML = `<div class="alert alert-danger" style="padding:6px 10px; font-size:12px;">Ошибка связи: ${e.message}</div>`;
+        showPayDebtError('Ошибка связи: ' + e.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+        button.removeAttribute('aria-busy');
       }
     }
 
