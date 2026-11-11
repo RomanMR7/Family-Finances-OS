@@ -8,8 +8,11 @@ Family Finances OS - Главный исполняемый скрипт запу
     python run_app.py --port 8080  # Выбор альтернативного порта
 """
 import argparse
+import ipaddress
+import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -24,6 +27,24 @@ if str(PROJECT_ROOT) not in sys.path:
 
 def get_local_ip() -> str:
     """Определяет IP-адрес текущего компьютера в домашней сети Wi-Fi."""
+    if sys.platform == "win32":
+        try:
+            # Prefer a physical LAN adapter over a VPN default route.
+            query = "Get-NetIPConfiguration | Where-Object { $_.NetAdapter.HardwareInterface -and $_.NetAdapter.Status -eq 'Up' -and $_.IPv4DefaultGateway } | ForEach-Object { $_.IPv4Address.IPAddress } | ConvertTo-Json -Compress"
+            result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query],
+                capture_output=True, text=True, timeout=8,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            addresses = json.loads(result.stdout) if result.returncode == 0 and result.stdout.strip() else []
+            if isinstance(addresses, str):
+                addresses = [addresses]
+            for address in addresses:
+                ip = ipaddress.ip_address(address)
+                if ip.version == 4 and ip.is_private and not ip.is_loopback and not ip.is_link_local:
+                    return str(ip)
+        except (ValueError, OSError, subprocess.TimeoutExpired):
+            pass
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.5)
@@ -54,7 +75,11 @@ def print_banner(host: str, port: int, local_ip: str):
     print("      Закрытая автономная система управления финансами семьи")
     print("=" * 68)
     print(f"[*] Локальный веб-интерфейс:   http://127.0.0.1:{port}")
-    print("[*] Сетевой режим:             100% Автономно на ПК (Wi-Fi синхронизация отключена)")
+    if host in ("0.0.0.0", "::"):
+        print(f"[*] Адрес для телефона:       http://{local_ip}:{port}")
+        print("[*] Телефон и компьютер должны быть в одной домашней сети Wi-Fi.")
+    else:
+        print("[*] Для доступа с телефона запустите start_lan.bat.")
     print("[*] Безопасность хранилища:    Envelope Encryption (AES-256-GCM + PBKDF2 600k)")
     print("[*] База данных:               Локально на диске (SQLite)")
     print("[*] Для остановки сервера нажмите Ctrl + C")

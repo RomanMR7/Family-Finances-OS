@@ -79,6 +79,14 @@ def get_lan_ip_candidates() -> List[str]:
     """Discover candidate LAN IPv4 addresses of the host machine."""
 
     candidates = []
+    if os.name == "nt":
+        try:
+            from run_app import get_local_ip
+            local_ip = get_local_ip()
+            if local_ip != "127.0.0.1":
+                candidates.append(local_ip)
+        except (ImportError, OSError):
+            pass
 
     try:
 

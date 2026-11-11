@@ -8,4 +8,4 @@ echo   Запуск Family Finances OS в режиме общего доступ
 echo ================================================================
 echo.
 
-call start.bat --lan
+call start.bat --lan %*
