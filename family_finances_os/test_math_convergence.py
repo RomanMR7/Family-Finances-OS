@@ -169,8 +169,15 @@ class TestOfflineConservation(unittest.TestCase):
 
 class TestPublicHostedBoundary(unittest.TestCase):
     def test_real_http_health_landing_and_finance_refusal(self):
-        from family_finances_os.hosted import handler
-        server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+        import ast
+        import importlib.util
+        entry = Path(__file__).resolve().parents[1]/'api'/'index.py'
+        definitions = ast.parse(entry.read_text(encoding='utf-8')).body
+        self.assertTrue(any(isinstance(node, ast.ClassDef) and node.name == 'handler' for node in definitions))
+        spec = importlib.util.spec_from_file_location('ffos_vercel_entry', entry)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), module.handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         url = f'http://127.0.0.1:{server.server_port}'
