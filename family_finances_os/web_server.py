@@ -7814,6 +7814,89 @@ self.addEventListener('fetch', (event) => {
       body #mainDashboard #tab-envelopes .grid-3 p { overflow-wrap: anywhere; }
     }
 
+    /* Dialogs share one scroll area, touch-sized controls and theme colours. */
+    body :is(#vaultModal, .app-dialog) {
+      align-items: center !important;
+      overflow-y: auto !important;
+      padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px)) !important;
+      overscroll-behavior: contain;
+    }
+    body :is(#vaultModal, .app-dialog) > .card {
+      flex: 0 1 auto;
+      min-width: 0;
+      width: 100% !important;
+      max-width: 560px !important;
+      max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      overscroll-behavior: contain;
+      margin: 0 !important;
+      padding: 24px !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 20px !important;
+      color: var(--text) !important;
+      background: var(--modal-bg) !important;
+      line-height: 1.5;
+      text-align: left;
+    }
+    body :is(#vaultModal, .app-dialog) :is(h2,h3) {
+      font-size: 20px !important; line-height: 1.3 !important;
+      letter-spacing: normal !important; overflow-wrap: anywhere;
+      margin-top: 0; padding-right: 32px;
+    }
+    body :is(#vaultModal, .app-dialog) :is(input,select,textarea) {
+      box-sizing: border-box; width: 100%; min-width: 0;
+      min-height: 48px !important; padding: 11px 12px !important;
+      font-size: 16px !important; line-height: 1.4 !important;
+      color: var(--text) !important; background-color: var(--input-bg) !important;
+      border: 1px solid var(--border) !important; border-radius: 12px !important;
+    }
+    body :is(#vaultModal, .app-dialog) select { padding-right: 36px !important; text-overflow: ellipsis; }
+    body :is(#vaultModal, .app-dialog) input[type="checkbox"], body :is(#vaultModal, .app-dialog) input[type="radio"] {
+      width: auto; min-height: auto !important;
+    }
+    body :is(#vaultModal, .app-dialog) label { font-size: 13px !important; line-height: 1.4; color: var(--text-muted) !important; margin-bottom: 7px; }
+    body :is(#vaultModal, .app-dialog) .form-group { min-width: 0; margin-bottom: 16px; }
+    body :is(#vaultModal, .app-dialog) button { min-height: 44px !important; font-size: 14px !important; }
+    body :is(#vaultModal, .app-dialog) button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+    body :is(#vaultModal, .app-dialog) [style*="position: absolute"][onclick^="close"] {
+      top: 10px !important; right: 10px !important; width: 40px;
+      color: var(--text-muted) !important; background: var(--card-hover) !important; border-radius: 50%;
+    }
+    body :is(#vaultModal, .app-dialog) [style*="color: #94a3b8"],
+    body :is(#vaultModal, .app-dialog) [style*="color: #fbbf24"] { color: var(--text-muted) !important; }
+    body :is(#vaultModal, .app-dialog) [style*="color: #f87171"],
+    body :is(#vaultModal, .app-dialog) [style*="color: #fca5a5"] { color: var(--danger) !important; }
+    body :is(#vaultModal, .app-dialog) [style*="color: #60a5fa"],
+    body :is(#vaultModal, .app-dialog) [style*="color: #38bdf8"] { color: var(--primary) !important; }
+    body :is(#vaultModal, .app-dialog) [style*="color: #34d399"] { color: var(--success) !important; }
+    body #modalPayDebt #payDebtInfoBox { background: var(--card-hover) !important; border: 1px solid var(--border) !important; }
+    body #modalPayDebt #payDebtInfoBox > div { gap: 12px; flex-wrap: wrap; }
+    body #modalPayDebt #payDebtForecastBox { border-color: var(--border) !important; }
+    body #modalPayDebt #payDebtForecastBox > div:first-child { display: block !important; }
+    body #modalPayDebt #payDebtForecastStatus { display: block; font-size: 13px !important; font-weight: 400; margin-top: 6px; }
+    body #modalPayDebt #payDebtForecastBox summary { font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; min-height: 24px; }
+    body #modalPayDebt #payDebtForecastBox summary:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+    body #modalPayDebt .debt-field-hint { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+    body #modalPayDebt #payDebtMsg { font-size: 14px; overflow-wrap: anywhere; }
+    body #modalPayDebt #payDebtAmountPercent { padding-right: 32px !important; }
+    body #modalPayDebt #btnSubmitPayDebt { background: var(--primary) !important; color: var(--workspace-accent-ink) !important; border-color: var(--primary) !important; }
+    body #modalPayDebt #btnSubmitPayDebt:disabled { opacity: .55; cursor: not-allowed; }
+    @media (max-width: 768px) {
+      body #modalNewTx.app-dialog { align-items: flex-end !important; padding: 0 !important; }
+      body #modalNewTx.app-dialog > .card {
+        max-width: 100% !important; max-height: 92dvh !important;
+        border-radius: 24px 24px 0 0 !important;
+        padding-bottom: max(20px, env(safe-area-inset-bottom, 0px)) !important;
+      }
+    }
+    @media (max-width: 430px) {
+      body :is(#vaultModal, .app-dialog) > .card { padding: 20px 16px !important; border-radius: 16px !important; }
+      body :is(#vaultModal, .app-dialog) :is(h2,h3) { font-size: 19px !important; }
+      body #modalPayDebt #payDebtForecastBox > div:last-child { grid-template-columns: minmax(0,1fr) !important; }
+      body #modalPayDebt > .card > div:last-child { flex-direction: column; }
+    }
+
   </style>
 
 </head>
@@ -7963,7 +8046,7 @@ self.addEventListener('fetch', (event) => {
     </div>
 
     <!-- Modal: Local Phone Database Vault -->
-    <div id="vaultModal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="vaultModal" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
       <div class="card" style="max-width: 440px; width: 100%; border-color: #6366f1; position: relative; max-height: 90vh; overflow-y: auto;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <h3 style="margin: 0; font-size: 17px; display: flex; align-items: center; gap: 8px;">💾 Хранилище на телефоне</h3>
@@ -7987,7 +8070,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: QR-Code Pairing for Smartphones -->
 
-    <div id="modalQrPair" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalQrPair" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 440px; width: 100%; text-align: center; border-color: #10b981; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8057,7 +8140,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Create / Edit Envelope (Конверт-копилка) -->
 
-    <div id="modalEnvelope" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalEnvelope" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 460px; width: 100%; border-color: #3b82f6; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8187,7 +8270,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Deposit into Envelope (Положить в конверт) -->
 
-    <div id="modalEnvelopeDeposit" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalEnvelopeDeposit" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 440px; width: 100%; border-color: #10b981; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8255,7 +8338,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Withdraw from Envelope (Взять из конверта) -->
 
-    <div id="modalEnvelopeWithdraw" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalEnvelopeWithdraw" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 440px; width: 100%; border-color: #f59e0b; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8321,7 +8404,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Transfer between Envelopes (Переложить между конвертами) -->
 
-    <div id="modalEnvelopeTransfer" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalEnvelopeTransfer" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 440px; width: 100%; border-color: #8b5cf6; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8385,7 +8468,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Create / Edit Financial Goal -->
 
-    <div id="modalGoal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalGoal" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 480px; width: 100%; border-color: #10b981; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8499,7 +8582,7 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Contribute to Financial Goal -->
 
-    <div id="modalContributeGoal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalContributeGoal" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 440px; width: 100%; border-color: #3b82f6; position: relative; max-height: 90vh; overflow-y: auto;">
 
@@ -8567,21 +8650,21 @@ self.addEventListener('fetch', (event) => {
 
     <!-- Modal: Pay Debt / Liabilities -->
 
-    <div id="modalPayDebt" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div id="modalPayDebt" class="hidden app-dialog" role="dialog" aria-modal="true" aria-labelledby="payDebtTitle" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
 
       <div class="card" style="max-width: 480px; width: 100%; border-color: #ef4444; position: relative; max-height: 90vh; overflow-y: auto;">
 
-        <button onclick="closePayDebtModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
+        <button type="button" aria-label="Закрыть окно погашения" onclick="closePayDebtModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
 
         <h3 style="font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
 
-          <span>💳</span> <span>Погашение задолженности</span>
+          <span id="payDebtTitle">Погасить долг</span>
 
         </h3>
 
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
 
-          Двойная бухгалтерская запись (Дт Обязательства / Кт Активы). Погашает долг и мгновенно восстанавливает Safe-to-Spend.
+          Проверьте долг, счёт и сумму. После оплаты остатки обновятся автоматически.
 
         </p>
 
@@ -8589,9 +8672,10 @@ self.addEventListener('fetch', (event) => {
 
         <div class="form-group">
 
-          <label>Выберите задолженность для погашения:</label>
+          <label for="payDebtLiabilityAccount">Долг</label>
 
           <select id="payDebtLiabilityAccount" onchange="onDebtLiabilityChanged()"></select>
+          <p id="payDebtSelectedName" class="debt-field-hint"></p>
 
         </div>
 
@@ -8617,19 +8701,20 @@ self.addEventListener('fetch', (event) => {
 
         <div class="form-group">
 
-          <label>Счет списания (Откуда оплатить):</label>
+          <label for="payDebtSourceAccount">Откуда оплатить</label>
 
-          <select id="payDebtSourceAccount"></select>
+          <select id="payDebtSourceAccount" aria-describedby="payDebtSourceHint" onchange="updatePayDebtSourceHint()"></select>
+          <p id="payDebtSourceHint" class="debt-field-hint"></p>
 
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px;">
+        <div class="debt-amount-fields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 12px;">Сумма в рублях (₽):</label>
+            <label id="payDebtAmountLabel" for="payDebtAmount" style="font-size: 12px;">Сумма, RUB</label>
             <input type="number" step="0.01" id="payDebtAmount" placeholder="0.00" style="font-size: 17px; font-weight: 700; color: #60a5fa;" oninput="onPayDebtAmountRubChanged()">
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 12px;">Или в процентах (% от долга):</label>
+            <label for="payDebtAmountPercent" style="font-size: 12px;">Процент от долга</label>
             <div style="position: relative;">
               <input type="number" step="0.1" id="payDebtAmountPercent" placeholder="0.0" style="font-size: 17px; font-weight: 700; color: #34d399; padding-right: 28px;" oninput="onPayDebtAmountPercentChanged()">
               <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: 700;">%</span>
@@ -8638,7 +8723,7 @@ self.addEventListener('fetch', (event) => {
         </div>
 
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
-          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; border-color: rgba(251,191,36,0.4); color: #fbbf24;" onclick="setPayDebtPercent(3.0)">3% (Мин. платеж)</button>
+          <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; border-color: rgba(251,191,36,0.4); color: #fbbf24;" onclick="setPayDebtPercent(3.0)">3%</button>
           <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(5.0)">5%</button>
           <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(10.0)">10%</button>
           <button type="button" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px;" onclick="setPayDebtPercent(25.0)">25%</button>
@@ -8653,9 +8738,9 @@ self.addEventListener('fetch', (event) => {
         </div>
 
         <!-- Live Payoff Forecast Box -->
-        <div id="payDebtForecastBox" style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
+        <details id="payDebtForecastBox" style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
+          <summary>Прогноз погашения</summary>
           <div style="font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span>🚀 Прогноз погашения при таком платеже:</span>
             <span id="payDebtForecastStatus" style="font-size: 11px; color: #94a3b8;"></span>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: var(--text-muted); line-height: 1.4;">
@@ -8664,11 +8749,11 @@ self.addEventListener('fetch', (event) => {
             <div>Переплата банку: <strong id="payDebtForecastInterest" style="color: #fca5a5;">—</strong></div>
             <div>Экономия семейного бюджета: <strong id="payDebtForecastSavings" style="color: #34d399;">—</strong></div>
           </div>
-        </div>
+        </details>
 
         <div class="form-group">
 
-          <label>Категория погашения задолженности:</label>
+          <label for="payDebtCategory">Категория платежа</label>
 
           <select id="payDebtCategory"></select>
 
@@ -8676,7 +8761,7 @@ self.addEventListener('fetch', (event) => {
 
         <div class="form-group">
 
-          <label>Назначение платежа:</label>
+          <label for="payDebtDesc">Назначение платежа</label>
 
           <input type="text" id="payDebtDesc" value="Погашение задолженности">
 
@@ -8684,7 +8769,7 @@ self.addEventListener('fetch', (event) => {
 
         <div style="display: flex; gap: 10px; margin-top: 14px;">
 
-          <button id="btnSubmitPayDebt" type="button" class="btn btn-danger" style="flex: 1;" onclick="submitPayDebt()">✅ Оплатить задолженность</button>
+          <button id="btnSubmitPayDebt" type="button" class="btn btn-danger" style="flex: 1;" onclick="submitPayDebt()">Погасить долг</button>
 
           <button class="btn btn-secondary" onclick="closePayDebtModal()">Отмена</button>
 
@@ -8885,7 +8970,7 @@ self.addEventListener('fetch', (event) => {
     </div>
 
     <!-- Modal: New Transaction (Revolut Modal on Desktop & Authentic Mobile Bottom Sheet) -->
-    <div id="modalNewTx" class="modal hidden" onclick="if(event.target===this) closeNewTxModal()">
+    <div id="modalNewTx" class="modal hidden app-dialog" onclick="if(event.target===this) closeNewTxModal()">
       <div class="card bottom-sheet-card" onclick="stopPropagation(event)">
         <!-- Subtle swipe/drag handle at top for mobile -->
         <div class="bottom-sheet-handle-bar">
@@ -8992,7 +9077,7 @@ self.addEventListener('fetch', (event) => {
     </div>
 
     <!-- Modal: Edit Past / Existing Transaction -->
-<div id="modalEditTx" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+<div id="modalEditTx" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
   <div class="card" style="max-width: 520px; width: 100%; border-color: var(--primary); position: relative; max-height: 90vh; overflow-y: auto;">
     <button onclick="closeEditTxModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
@@ -9050,7 +9135,7 @@ self.addEventListener('fetch', (event) => {
 
 
       <!-- Modal: Add New Debt / Loan / Credit Card -->
-      <div id="modalNewDebt" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div id="modalNewDebt" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px;">
         <div class="card" style="max-width: 600px; width: 100%; border-color: var(--primary); position: relative; max-height: 90vh; overflow-y: auto;">
           <button onclick="closeNewDebtModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
           
@@ -9178,7 +9263,7 @@ self.addEventListener('fetch', (event) => {
       </div>
 
       <!-- Modal: Card Banking Settings & Due Date Modification -->
-      <div id="modalCardSettings" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <div id="modalCardSettings" class="hidden app-dialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
         <div class="card" style="max-width: 520px; width: 100%; border-color: #38bdf8; position: relative; max-height: 90vh; overflow-y: auto;">
           <button onclick="closeCardSettingsModal()" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer;">✕</button>
           
@@ -15854,10 +15939,10 @@ self.addEventListener('fetch', (event) => {
       // Populate Liability Accounts
       liabSel.innerHTML = '';
       if (allDebtsData && allDebtsData.debts) {
-        allDebtsData.debts.forEach(d => {
+        allDebtsData.debts.filter(d => Number(d.debt_rub) > 0).forEach(d => {
           const opt = document.createElement('option');
           opt.value = d.id;
-          opt.innerText = `${d.name} (долг: ${d.debt_rub} ${d.currency || 'RUB'})`;
+          opt.innerText = d.name;
           if (selectedLiabilityId && d.id === selectedLiabilityId) opt.selected = true;
           liabSel.appendChild(opt);
         });
@@ -15869,7 +15954,7 @@ self.addEventListener('fetch', (event) => {
         overviewData.accounts.filter(a => a.type === 'ASSET' && (a.subtype === 'CHECKING' || a.subtype === 'CASH' || a.subtype === 'SAVINGS' || a.subtype === 'DEBIT_CARD')).forEach(a => {
           const opt = document.createElement('option');
           opt.value = a.id;
-          opt.innerText = `${a.name} (${a.scope || a.ownership_scope || ''}, ${a.balance_rub} ${a.currency || 'RUB'})`;
+          opt.innerText = `${a.name} — ${a.balance_rub} ${a.currency || 'RUB'}`;
           srcSel.appendChild(opt);
         });
       }
@@ -15890,23 +15975,45 @@ self.addEventListener('fetch', (event) => {
       }
     }
 
-    function openPayDebtModal(targetLiabilityId, presetAmount, presetPercent) {
-      if (!allDebtsData) {
-        try {
-          fetch('/api/debts', { headers: authHeaders() }).then(r => r.json()).then(d => {
-            allDebtsData = d;
-            populatePayDebtSelects(targetLiabilityId);
-            onDebtLiabilityChanged();
-            applyPresetPayDebt(presetAmount, presetPercent);
-          });
-        } catch (e) {}
-      } else {
-        populatePayDebtSelects(targetLiabilityId);
-        onDebtLiabilityChanged();
-        applyPresetPayDebt(presetAmount, presetPercent);
-      }
-      document.getElementById('payDebtMsg').innerHTML = '';
+    let payDebtOpenSequence = 0;
+    async function openPayDebtModal(targetLiabilityId, presetAmount, presetPercent) {
+      const sequence = ++payDebtOpenSequence;
+      const button = document.getElementById('btnSubmitPayDebt');
+      button.disabled = true;
+      document.getElementById('payDebtLiabilityAccount').replaceChildren();
+      document.getElementById('payDebtSourceAccount').replaceChildren();
+      document.getElementById('payDebtAmount').value = '';
+      document.getElementById('payDebtAmountPercent').value = '';
+      document.getElementById('payDebtCurrentAmount').textContent = '—';
+      document.getElementById('payDebtLimitAmount').textContent = '—';
+      document.getElementById('payDebtSelectedName').textContent = '';
+      document.getElementById('payDebtSourceHint').textContent = '';
+      document.getElementById('payDebtMsg').textContent = 'Загружаем актуальный остаток долга…';
       document.getElementById('modalPayDebt').classList.remove('hidden');
+      updatePayDebtForecast();
+      try {
+        const response = await fetch('/api/debts', {headers: authHeaders(), cache: 'no-store'});
+        const data = await response.json();
+        if (sequence !== payDebtOpenSequence) return;
+        if (!response.ok || !Array.isArray(data.debts)) throw new Error(data.message || 'Не удалось загрузить долги');
+        allDebtsData = data;
+        populatePayDebtSelects(targetLiabilityId);
+        document.getElementById('payDebtMsg').replaceChildren();
+        if (targetLiabilityId && document.getElementById('payDebtLiabilityAccount').value !== targetLiabilityId) {
+          document.getElementById('payDebtLiabilityAccount').value = '';
+          showPayDebtError('Этот долг уже погашен или недоступен. Выберите другой долг или обновите список.');
+          return;
+        }
+        if (!document.getElementById('payDebtLiabilityAccount').value) {
+          showPayDebtError('Нет долгов с непогашенным остатком.');
+          return;
+        }
+        onDebtLiabilityChanged();
+        applyPresetPayDebt(presetAmount, presetPercent ?? 100);
+        button.disabled = !document.getElementById('payDebtSourceAccount').value;
+      } catch (error) {
+        if (sequence === payDebtOpenSequence) showPayDebtError('Не удалось открыть платёж: ' + error.message);
+      }
     }
 
     function applyPresetPayDebt(presetAmount, presetPercent) {
@@ -15924,6 +16031,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     function closePayDebtModal() {
+      ++payDebtOpenSequence;
       document.getElementById('modalPayDebt').classList.add('hidden');
     }
 
@@ -15932,10 +16040,27 @@ self.addEventListener('fetch', (event) => {
       if (!allDebtsData || !allDebtsData.debts) return;
       const d = allDebtsData.debts.find(x => x.id === liabId);
       if (!d) return;
+      document.getElementById('payDebtSelectedName').textContent = d.name;
       const curEl = document.getElementById('payDebtCurrentAmount');
       if (curEl) curEl.innerText = d.debt_rub + ' ' + (d.currency || 'RUB');
       const limEl = document.getElementById('payDebtLimitAmount');
       if (limEl) limEl.innerText = (d.credit_limit_rub || '0.00') + ' ' + (d.currency || 'RUB');
+      document.getElementById('payDebtLimitRow').hidden = !(Number(d.credit_limit_rub) > 0);
+      const source = document.getElementById('payDebtSourceAccount');
+      const previousSource = source.value;
+      source.replaceChildren();
+      (overviewData?.accounts || []).filter(a => a.type === 'ASSET' &&
+        ['CHECKING', 'CASH', 'SAVINGS', 'DEBIT_CARD'].includes(a.subtype) &&
+        (a.currency || 'RUB') === (d.currency || 'RUB')).forEach(a => {
+          const option = document.createElement('option');
+          option.value = a.id;
+          option.textContent = a.name;
+          option.selected = a.id === previousSource;
+          source.appendChild(option);
+        });
+      document.getElementById('btnSubmitPayDebt').disabled = !source.value;
+      updatePayDebtSourceHint();
+      document.getElementById('payDebtAmountLabel').textContent = 'Сумма, ' + (d.currency || 'RUB');
 
       // Auto-select category corresponding to debt subtype
       const catSel = document.getElementById('payDebtCategory');
@@ -15955,6 +16080,14 @@ self.addEventListener('fetch', (event) => {
         }
       }
       onPayDebtAmountRubChanged();
+    }
+
+    function updatePayDebtSourceHint() {
+      const id = document.getElementById('payDebtSourceAccount').value;
+      const account = overviewData?.accounts?.find(a => a.id === id);
+      document.getElementById('payDebtSourceHint').textContent = account
+        ? `${account.name}. Остаток: ${account.balance_rub} ${account.currency || 'RUB'}.`
+        : 'Нет счёта для оплаты в валюте долга. Добавьте его в разделе «Счета».';
     }
 
     function onPayDebtAmountRubChanged() {
