@@ -99,7 +99,12 @@ class TestStage18DebtsLoadingRobustness(unittest.TestCase):
             ledger = LedgerEngine(conn_or_path=conn)
             ledger.seed_default_chart_of_accounts()
 
-            # 1. create_debt with non-existent owner_member_id and destination_account_id
+            # A missing destination must reject the whole creation instead of
+            # silently converting borrowed cash into an opening-balance debt.
+            with self.assertRaises(ValueError):
+                ledger.create_debt(name="Invalid destination", receive_money=True,
+                    destination_account_id="non_existent_account_12345", initial_debt_cents=1000000)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM accounts WHERE name = 'Invalid destination'").fetchone()[0], 0)
             res = ledger.create_debt(
                 name="Тестовый кредит FK Safety",
                 subtype="CONSUMER_LOAN",
@@ -107,9 +112,7 @@ class TestStage18DebtsLoadingRobustness(unittest.TestCase):
                 initial_debt_cents=1000000,
                 monthly_payment_cents=50000,
                 due_day=10,
-                receive_money=True,
-                destination_account_id="non_existent_account_12345",
-                owner_member_id="non_existent_member_99999"
+                receive_money=False
             )
             self.assertEqual(res["status"], "success")
             acc_id = res["account_id"]
@@ -120,8 +123,10 @@ class TestStage18DebtsLoadingRobustness(unittest.TestCase):
             eq_row = cur.fetchone()
             self.assertIsNotNone(eq_row)
 
-            # 3. record_debt_repayment with non-existent member_id, invalid category_id, invalid obligation_id
-            repay_id = ledger.record_debt_repayment(
+            # Invalid financial references reject without moving money.
+            before = ledger.get_account_balance_cents(acc_id)
+            with self.assertRaises(ValueError):
+                ledger.record_debt_repayment(
                 source_account_id="acc_core_1010",
                 liability_account_id=acc_id,
                 amount_cents=100000,
@@ -129,8 +134,8 @@ class TestStage18DebtsLoadingRobustness(unittest.TestCase):
                 obligation_id="non_existent_obligation_77777",
                 member_id="ghost_member_88888",
                 category_id="ghost_cat_99999"
-            )
-            self.assertIsNotNone(repay_id)
+                )
+            self.assertEqual(ledger.get_account_balance_cents(acc_id), before)
 
             conn.close()
         finally:

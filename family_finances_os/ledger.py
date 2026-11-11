@@ -12,6 +12,10 @@ Personal-for-Common Expense Tracking, and Multi-Balance Financial Overviews.
 import hashlib
 
 import sqlite3
+from contextlib import contextmanager, nullcontext
+from functools import wraps
+import threading
+from datetime import date
 
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -48,6 +52,15 @@ from family_finances_os.models import (
     cents_to_rubles
 
 )
+from family_finances_os.models import require_cents
+
+
+def atomic_operation(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self.atomic():
+            return method(self, *args, **kwargs)
+    return wrapped
 
 def compute_tx_payload_hash(tx: Transaction) -> str:
 
@@ -60,16 +73,12 @@ def compute_tx_payload_hash(tx: Transaction) -> str:
     """
 
     postings_repr = sorted([
-
-        (p.account_id, p.amount_cents, p.posting_type, p.ownership_scope)
-
-        for p in tx.postings
-
+        (p.account_id, p.amount_cents, p.posting_type, p.ownership_scope,
+         p.purpose_allocation, p.category_id or "") for p in tx.postings
     ])
-
-    canonical_str = f"{tx.tx_type}:{tx.description}:{postings_repr}"
-
-    return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+    canonical_str = json.dumps([tx.tx_date, tx.tx_type, tx.description,
+        tx.created_by_member_id, postings_repr], ensure_ascii=False, separators=(",", ":"))
+    return "v2:" + hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
 
 
 DEBT_CATEGORY_MAP = {
@@ -89,6 +98,9 @@ class LedgerEngine:
         self.conn_or_path = conn_or_path
 
         self._sync_engine = None
+        self._atomic_depth = 0
+        self._atomic_conn = None
+        self._command_lock = threading.RLock()
 
         try:
 
@@ -112,11 +124,17 @@ class LedgerEngine:
 
     def _get_conn(self) -> sqlite3.Connection:
 
+        if self._atomic_conn is not None:
+            return self._atomic_conn
+
         from family_finances_os.db import get_db_connection
 
         return get_db_connection(self.conn_or_path)
 
     def _close_if_local(self, conn: sqlite3.Connection):
+
+        if self._atomic_depth:
+            return
 
         if isinstance(self.conn_or_path, sqlite3.Connection):
 
@@ -142,11 +160,103 @@ class LedgerEngine:
 
     def _save_if_encrypted(self):
 
+        if self._atomic_depth:
+            return
+
         from family_finances_os.db import GLOBAL_STORAGE
 
-        if GLOBAL_STORAGE.is_unlocked():
+        if GLOBAL_STORAGE.is_unlocked() and (self.conn_or_path is None or self.conn_or_path is GLOBAL_STORAGE._active_conn):
 
             GLOBAL_STORAGE.save()
+
+    def _commit(self, conn):
+        if not self._atomic_depth:
+            conn.commit()
+
+    @contextmanager
+    def atomic(self):
+        """Serialize commands and use one connection/rollback boundary for nested calls."""
+        from family_finances_os.db import GLOBAL_STORAGE
+        storage_lock = GLOBAL_STORAGE._lock if self.conn_or_path is None or self.conn_or_path is GLOBAL_STORAGE._active_conn else nullcontext()
+        with self._command_lock, storage_lock:
+            outer = self._atomic_depth == 0
+            if outer:
+                conn = self._get_conn()
+                self._atomic_conn = conn
+                had_transaction = conn.in_transaction
+            else:
+                conn = self._atomic_conn
+                had_transaction = True
+            savepoint = "ffos_" + generate_uuid().replace("-", "")
+            conn.execute("SAVEPOINT " + savepoint)
+            self._atomic_depth += 1
+            try:
+                if outer:
+                    from .reservation_events import ensure_baseline
+                    for kind, table in (("GOAL", "goals"), ("ENVELOPE", "envelopes")):
+                        for row in conn.execute(f"SELECT id FROM {table}").fetchall():
+                            ensure_baseline(conn.cursor(), kind, row["id"])
+                yield conn
+                if outer:
+                    from .reservation_events import recompute
+                    recompute(conn.cursor())
+                if outer and not had_transaction and conn is GLOBAL_STORAGE._active_conn and GLOBAL_STORAGE.is_unlocked():
+                    # Serialize the pending state before releasing its rollback boundary.
+                    # A failed encrypted atomic write therefore leaves no committed mutation.
+                    GLOBAL_STORAGE.save()
+                conn.execute("RELEASE SAVEPOINT " + savepoint)
+            except Exception:
+                if conn.in_transaction:
+                    try:
+                        conn.execute("ROLLBACK TO SAVEPOINT " + savepoint)
+                        conn.execute("RELEASE SAVEPOINT " + savepoint)
+                    except sqlite3.OperationalError:
+                        conn.rollback()
+                raise
+            finally:
+                self._atomic_depth -= 1
+                if outer:
+                    self._atomic_conn = None
+                    self._close_if_local(conn)
+
+    def _transaction_snapshot(self, cursor, transaction_id):
+        cursor.execute("SELECT * FROM transactions WHERE id = ?", (transaction_id,))
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError("Операция не найдена.")
+        payload = dict(row)
+        cursor.execute("SELECT p.*,a.code AS account_code FROM postings p JOIN accounts a ON a.id=p.account_id WHERE p.transaction_id = ? ORDER BY p.id", (transaction_id,))
+        payload["postings"] = [dict(p) for p in cursor.fetchall()]
+        return payload
+
+    @staticmethod
+    def _obligation_month(value):
+        from datetime import datetime
+        value = value or datetime.now().strftime("%Y-%m")
+        if not isinstance(value, str) or len(value) != 7:
+            raise ValueError("Месяц должен быть в формате ГГГГ-ММ.")
+        try:
+            date.fromisoformat(value + "-01")
+        except ValueError:
+            raise ValueError("Некорректный календарный месяц.") from None
+        return value
+
+    @staticmethod
+    def _obligation_components_key(obligation_id, month):
+        return f"obligation_payment_components:{obligation_id}:{month}"
+
+    def _obligation_paid_total(self, cursor, components, currency=None):
+        total = require_cents(components.get("manual_cents", 0), allow_zero=True)
+        for transaction_id, amount in components.get("transactions", {}).items():
+            require_cents(amount)
+            if currency:
+                currencies = {r['currency'] for r in cursor.execute("SELECT DISTINCT a.currency FROM postings p JOIN accounts a ON a.id=p.account_id WHERE p.transaction_id=? AND a.account_type IN ('ASSET','LIABILITY')", (transaction_id,))}
+                if currencies and currencies != {currency}:
+                    continue
+            cursor.execute("SELECT COALESCE(SUM(p.amount_cents),0) AS amount FROM postings p JOIN transactions t ON t.id=p.transaction_id JOIN accounts a ON a.id=p.account_id WHERE t.id=? AND t.is_voided=0 AND p.posting_type='DEBIT' AND a.account_type IN ('EXPENSE','LIABILITY')", (transaction_id,))
+            current = cursor.fetchone()["amount"]
+            total += min(amount, current)
+        return total
 
     # ---------------------------------------------------------
 
@@ -234,6 +344,7 @@ class LedgerEngine:
 
         return created_ids
 
+    @atomic_operation
     def create_account(
 
         self,
@@ -274,6 +385,13 @@ class LedgerEngine:
 
             raise ValueError(f"Недопустимый тип счета: {account_type}")
 
+        require_cents(credit_limit_cents, allow_zero=True)
+        require_cents(initial_balance_cents, allow_zero=True)
+        currency = str(currency).strip().upper()
+        if len(currency) != 3 or not currency.isascii() or not currency.isalpha():
+            raise ValueError("Валюта должна быть трёхбуквенным кодом.")
+        if initial_balance_cents and account_type not in ("ASSET", "LIABILITY"):
+            raise ValueError("Начальный остаток поддерживается для активов и обязательств.")
         if credit_limit_cents < 0:
 
             raise ValueError("Кредитный лимит не может быть отрицательным.")
@@ -417,8 +535,11 @@ class LedgerEngine:
             }
 
             self._get_sync_engine().record_change_event("ACCOUNT", account.id, "INSERT", acc_payload, cursor=cursor)
+            if initial_balance_cents > 0:
+                self._get_sync_engine().record_change_event("TRANSACTION", tx_id, "INSERT",
+                    self._transaction_snapshot(cursor, tx_id), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -428,6 +549,7 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def update_account(
 
         self,
@@ -470,6 +592,8 @@ class LedgerEngine:
 
             if credit_limit_cents is not None:
 
+                require_cents(credit_limit_cents, allow_zero=True)
+
                 if credit_limit_cents < 0:
 
                     raise ValueError("Кредитный лимит не может быть отрицательным.")
@@ -504,7 +628,7 @@ class LedgerEngine:
 
                     self._get_sync_engine().record_change_event("ACCOUNT", account_id, "UPDATE", dict(a_row), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -514,10 +638,13 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def archive_account(self, account_id: str) -> bool:
 
         """Soft-archive account by setting is_active = 0."""
 
+        if self.get_account_balance_cents(account_id) != 0:
+            raise ValueError("Перед закрытием счёта переведите его остаток: баланс должен быть нулевым.")
         conn = self._get_conn()
 
         cursor = conn.cursor()
@@ -530,7 +657,7 @@ class LedgerEngine:
 
                 self._get_sync_engine().record_change_event("ACCOUNT", account_id, "UPDATE", {"id": account_id, "is_active": 0}, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -540,6 +667,7 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def void_transaction(self, transaction_id: str, reason: str = "Аннулирование операции") -> bool:
 
         """
@@ -568,7 +696,7 @@ class LedgerEngine:
 
                 )
 
-                conn.commit()
+                self._commit(conn)
 
                 self._save_if_encrypted()
 
@@ -580,209 +708,68 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
-    def update_transaction(
-
-        self,
-
-        transaction_id: str,
-
-        tx_date: str = None,
-
-        description: str = None,
-
-        amount_cents: int = None,
-
-        category_id: str = None,
-
-        account_id: str = None,
-
-        tx_type: str = None
-
-    ) -> bool:
-
-        """
-
-        Update an existing non-voided transaction and its postings.
-
-        Preserves double-entry balance: if amount_cents is updated, all postings are updated.
-
-        Allows modifying tx_date to move transaction to past/future months.
-
-        Updates category on expense/income posting and source/destination account on asset/liability posting.
-
-        """
-
+    @atomic_operation
+    def update_transaction(self, transaction_id: str, tx_date: str = None,
+                           description: str = None, amount_cents: int = None,
+                           category_id: str = None, account_id: str = None,
+                           tx_type: str = None) -> bool:
+        """Edit a simple journal entry without inventing a split allocation rule."""
         conn = self._get_conn()
-
         cursor = conn.cursor()
-
-        try:
-
-            cursor.execute("SELECT * FROM transactions WHERE id = ? AND is_voided = 0;", (transaction_id,))
-
-            tx_row = cursor.fetchone()
-
-            if not tx_row:
-
-                return False
-
-            updates = []
-
-            params = []
-
-            if tx_date:
-
-                updates.append("tx_date = ?")
-
-                params.append(tx_date)
-
-            if description is not None:
-
-                updates.append("description = ?")
-
-                params.append(description)
-
-            if tx_type:
-
-                updates.append("tx_type = ?")
-
-                params.append(tx_type)
-
-            if updates:
-
-                params.append(transaction_id)
-
-                cursor.execute(f"UPDATE transactions SET {', '.join(updates)} WHERE id = ?;", params)
-
-            cursor.execute("SELECT * FROM postings WHERE transaction_id = ?;", (transaction_id,))
-
-            postings = cursor.fetchall()
-
-            current_tx_type = tx_type or tx_row["tx_type"]
-
-            cat_account_id = None
-
-            if category_id:
-
-                cursor.execute("SELECT * FROM categories WHERE id = ?;", (category_id,))
-
-                cat_row = cursor.fetchone()
-
-                if cat_row:
-
-                    cat_acc_code = "5010" if cat_row["category_type"] == "EXPENSE" else "4010"
-
-                    cursor.execute("SELECT id FROM accounts WHERE code = ? LIMIT 1;", (cat_acc_code,))
-
-                    c_acc = cursor.fetchone()
-
-                    if c_acc:
-
-                        cat_account_id = c_acc["id"]
-
-            for p in postings:
-
-                p_id = p["id"]
-
-                p_type = p["posting_type"]
-
-                p_updates = []
-
-                p_params = []
-
-                if amount_cents is not None and amount_cents > 0:
-
-                    p_updates.append("amount_cents = ?")
-
-                    p_params.append(amount_cents)
-
-                if current_tx_type == "EXPENSE":
-
-                    if p_type == "DEBIT":
-
-                        if category_id:
-
-                            p_updates.append("category_id = ?")
-
-                            p_params.append(category_id)
-
-                        if cat_account_id:
-
-                            p_updates.append("account_id = ?")
-
-                            p_params.append(cat_account_id)
-
-                    elif p_type == "CREDIT":
-
-                        if account_id:
-
-                            p_updates.append("account_id = ?")
-
-                            p_params.append(account_id)
-
-                elif current_tx_type == "INCOME":
-
-                    if p_type == "CREDIT":
-
-                        if category_id:
-
-                            p_updates.append("category_id = ?")
-
-                            p_params.append(category_id)
-
-                        if cat_account_id:
-
-                            p_updates.append("account_id = ?")
-
-                            p_params.append(cat_account_id)
-
-                    elif p_type == "DEBIT":
-
-                        if account_id:
-
-                            p_updates.append("account_id = ?")
-
-                            p_params.append(account_id)
-
-                if p_updates:
-
-                    p_params.append(p_id)
-
-                    cursor.execute(f"UPDATE postings SET {', '.join(p_updates)} WHERE id = ?;", p_params)
-
-            self._get_sync_engine().record_change_event(
-
-                "TRANSACTION", transaction_id, "UPDATE",
-
-                {
-
-                    "id": transaction_id,
-
-                    "tx_date": tx_date or tx_row["tx_date"],
-
-                    "description": description if description is not None else tx_row["description"],
-
-                    "amount_cents": amount_cents,
-
-                    "category_id": category_id,
-
-                    "account_id": account_id
-
-                },
-
-                cursor=cursor
-
-            )
-
-            conn.commit()
-
-            self._save_if_encrypted()
-
-            return True
-
-        finally:
-
-            self._close_if_local(conn)
+        cursor.execute("SELECT * FROM transactions WHERE id = ? AND is_voided = 0", (transaction_id,))
+        old = cursor.fetchone()
+        if old is None:
+            return False
+        if tx_date is not None:
+            date.fromisoformat(tx_date)
+        if amount_cents is not None:
+            require_cents(amount_cents)
+        if tx_type is not None and tx_type != old["tx_type"]:
+            raise ValueError("Изменение типа существующей операции запрещено. Отмените её и создайте новую.")
+        cursor.execute("SELECT p.*,a.account_type,a.currency FROM postings p JOIN accounts a ON a.id=p.account_id WHERE p.transaction_id=?", (transaction_id,))
+        postings = [dict(row) for row in cursor.fetchall()]
+        if len(postings) != 2 and any(v is not None for v in (amount_cents,category_id,account_id)):
+            raise ValueError("Составную операцию можно изменить только явным распределением проводок. Отмените её и создайте новую.")
+        category_account = None
+        if category_id:
+            cursor.execute("SELECT category_type FROM categories WHERE id=? AND is_active=1", (category_id,))
+            category = cursor.fetchone()
+            expected_category = "EXPENSE" if old["tx_type"] == "CREDIT_PURCHASE" else old["tx_type"]
+            if category is None or category["category_type"] != expected_category:
+                raise ValueError("Категория не соответствует типу операции.")
+            cursor.execute("SELECT id FROM accounts WHERE code=?", ("5010" if category["category_type"]=="EXPENSE" else "4010",))
+            category_account = cursor.fetchone()["id"]
+        if account_id:
+            cursor.execute("SELECT account_type,currency,is_active FROM accounts WHERE id=?", (account_id,))
+            target = cursor.fetchone()
+            if target is None or target["account_type"] not in ("ASSET","LIABILITY") or not target["is_active"]:
+                raise ValueError("Выбранный финансовый счёт не найден или закрыт.")
+            old_currencies = {p["currency"] for p in postings if p["account_type"] in ("ASSET","LIABILITY")}
+            if old_currencies and target["currency"] not in old_currencies:
+                raise ValueError("Изменение валюты операции без обмена не поддерживается.")
+            if old["tx_type"] not in ("INCOME","EXPENSE","CREDIT_PURCHASE"):
+                raise ValueError("Для изменения счёта этой операции используйте отмену и новую операцию.")
+        for post in postings:
+            if amount_cents is not None:
+                post["amount_cents"] = amount_cents
+            if post["account_type"] in ("ASSET","LIABILITY") and account_id:
+                post["account_id"] = account_id
+            if post["account_type"] in ("INCOME","EXPENSE") and category_id:
+                post["account_id"] = category_account
+                post["category_id"] = category_id
+        debits = sum(p["amount_cents"] for p in postings if p["posting_type"]=="DEBIT")
+        credits = sum(p["amount_cents"] for p in postings if p["posting_type"]=="CREDIT")
+        if debits != credits or debits <= 0:
+            raise ValueError("Нарушено равенство дебета и кредита.")
+        cursor.execute("UPDATE transactions SET tx_date=?,description=? WHERE id=?", (tx_date or old["tx_date"], description if description is not None else old["description"], transaction_id))
+        for post in postings:
+            cursor.execute("UPDATE postings SET account_id=?,amount_cents=?,category_id=? WHERE id=?", (post["account_id"],post["amount_cents"],post.get("category_id"),post["id"]))
+        payload=self._transaction_snapshot(cursor,transaction_id)
+        updated=Transaction(id=transaction_id,tx_date=payload["tx_date"],tx_type=payload["tx_type"],description=payload["description"],created_by_member_id=payload.get("created_by_member_id"),postings=[Posting(id=p["id"],transaction_id=transaction_id,account_id=p["account_id"],amount_cents=p["amount_cents"],posting_type=p["posting_type"],ownership_scope=p["ownership_scope"],purpose_allocation=p["purpose_allocation"],category_id=p.get("category_id")) for p in payload["postings"]])
+        payload["payload_hash"]=compute_tx_payload_hash(updated)
+        cursor.execute("UPDATE transactions SET payload_hash=? WHERE id=?",(payload["payload_hash"],transaction_id))
+        self._get_sync_engine().record_change_event("TRANSACTION",transaction_id,"UPDATE",payload,cursor=cursor)
+        return True
 
     def get_account_by_code(self, code: str) -> Optional[Account]:
 
@@ -888,6 +875,7 @@ class LedgerEngine:
 
     # ---------------------------------------------------------
 
+    @atomic_operation
     def record_transaction(self, tx: Transaction, idempotency_key: Optional[str] = None) -> str:
 
         """
@@ -898,6 +886,11 @@ class LedgerEngine:
 
         """
 
+        date.fromisoformat(tx.tx_date)
+        for p in tx.postings:
+            require_cents(p.amount_cents)
+            if p.posting_type not in ("DEBIT", "CREDIT"):
+                raise ValueError("Недопустимое направление проводки.")
         if not tx.validate_double_entry():
 
             debits = sum(p.amount_cents for p in tx.postings if p.posting_type == "DEBIT")
@@ -906,11 +899,20 @@ class LedgerEngine:
 
             raise ValueError(f"Double-entry balance check failed! Total Debits: {debits} cents != Total Credits: {credits} cents")
 
-        payload_hash = compute_tx_payload_hash(tx)
-
         conn = self._get_conn()
 
         cursor = conn.cursor()
+        # Hash exactly the normalized payload that will be persisted and replicated.
+        if tx.created_by_member_id:
+            cursor.execute("SELECT id FROM members WHERE id=?", (str(tx.created_by_member_id).strip(),))
+            if cursor.fetchone() is None:
+                tx.created_by_member_id = None
+        for posting in tx.postings:
+            if posting.category_id:
+                cursor.execute("SELECT id FROM categories WHERE id=?", (str(posting.category_id).strip(),))
+                if cursor.fetchone() is None:
+                    posting.category_id = None
+        payload_hash = compute_tx_payload_hash(tx)
 
         # Idempotency check with payload verification
 
@@ -924,6 +926,16 @@ class LedgerEngine:
 
                 existing_hash = existing["payload_hash"]
 
+                if not existing_hash or not existing_hash.startswith("v2:"):
+                    existing_payload = self._transaction_snapshot(cursor, existing["id"])
+                    old_tx = Transaction(id=existing["id"], tx_date=existing_payload["tx_date"],
+                        tx_type=existing_payload["tx_type"], description=existing_payload["description"],
+                        created_by_member_id=existing_payload.get("created_by_member_id"),
+                        postings=[Posting(id=p["id"], transaction_id=existing["id"], account_id=p["account_id"],
+                            amount_cents=p["amount_cents"], posting_type=p["posting_type"],
+                            ownership_scope=p["ownership_scope"], purpose_allocation=p["purpose_allocation"],
+                            category_id=p.get("category_id")) for p in existing_payload["postings"]])
+                    existing_hash = compute_tx_payload_hash(old_tx)
                 if existing_hash and existing_hash != payload_hash:
 
                     self._close_if_local(conn)
@@ -941,6 +953,17 @@ class LedgerEngine:
                 return existing["id"]
 
         try:
+
+            financial_currencies = set()
+            for p in tx.postings:
+                cursor.execute("SELECT account_type,currency,is_active FROM accounts WHERE id = ?", (p.account_id,))
+                acc = cursor.fetchone()
+                if acc is None or not acc["is_active"]:
+                    raise ValueError("Счёт проводки не найден или закрыт.")
+                if acc["account_type"] in ("ASSET", "LIABILITY"):
+                    financial_currencies.add(acc["currency"])
+            if len(financial_currencies) > 1:
+                raise ValueError("Межвалютная операция требует отдельной модели обмена и курса.")
 
             # Sanitize created_by_member_id to prevent FOREIGN KEY constraint failed
             created_by = tx.created_by_member_id
@@ -1045,7 +1068,7 @@ class LedgerEngine:
 
             self._get_sync_engine().record_change_event("TRANSACTION", tx.id, "INSERT", tx_payload, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -1053,25 +1076,28 @@ class LedgerEngine:
 
         except sqlite3.IntegrityError as e:
 
-            conn.rollback()
+            if not self._atomic_depth:
+                conn.rollback()
 
             # If concurrent race condition triggered UNIQUE constraint on idempotency_key:
 
             if "transactions.idempotency_key" in str(e) and idempotency_key:
 
-                cursor.execute("SELECT id FROM transactions WHERE idempotency_key = ?", (idempotency_key,))
+                cursor.execute("SELECT id,payload_hash FROM transactions WHERE idempotency_key = ?", (idempotency_key,))
 
                 winner = cursor.fetchone()
 
                 if winner:
-
-                    return winner["id"]
+                    if winner["payload_hash"] == payload_hash:
+                        return winner["id"]
+                    raise ValueError("Конфликт идемпотентности при конкурентной записи.") from e
 
             raise e
 
         except Exception as e:
 
-            conn.rollback()
+            if not self._atomic_depth:
+                conn.rollback()
 
             raise e
 
@@ -1085,6 +1111,7 @@ class LedgerEngine:
 
     # ---------------------------------------------------------
 
+    @atomic_operation
     def record_transfer(
 
         self,
@@ -1123,6 +1150,7 @@ class LedgerEngine:
 
             raise ValueError("Счет списания и счет зачисления не могут совпадать.")
 
+        require_cents(amount_cents)
         if amount_cents <= 0:
 
             raise ValueError("Сумма перевода должна быть строго больше нуля.")
@@ -1138,8 +1166,10 @@ class LedgerEngine:
         if not to_acc:
 
             raise ValueError(f"Счет зачисления {to_account_id} не найден.")
+        if from_acc.currency != to_acc.currency:
+            raise ValueError("Межвалютный перевод без курса не поддерживается.")
 
-        tx_id = generate_uuid()
+        tx_id = ("transfer-v2:" + hashlib.sha256(str(idempotency_key).encode("utf-8")).hexdigest()) if idempotency_key else generate_uuid()
 
         date_str = tx_date or current_iso_time()[:10]
 
@@ -1431,11 +1461,11 @@ class LedgerEngine:
 
         SELECT 
 
-            a.id, a.code, a.name, a.account_type, a.subtype, a.ownership_scope, a.owner_member_id, a.credit_limit_cents, a.is_active,
+            a.id, a.code, a.name, a.account_type, a.subtype, a.currency, a.ownership_scope, a.owner_member_id, a.credit_limit_cents, a.is_active,
 
-            COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) AS total_debit,
+            COALESCE(SUM(CASE WHEN t.id IS NOT NULL AND p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) AS total_debit,
 
-            COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) AS total_credit
+            COALESCE(SUM(CASE WHEN t.id IS NOT NULL AND p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) AS total_credit
 
         FROM accounts a
 
@@ -1474,6 +1504,7 @@ class LedgerEngine:
         total_liabilities_cents = 0
 
         accounts_list = []
+        by_currency = {}
 
         for r in rows:
 
@@ -1491,6 +1522,20 @@ class LedgerEngine:
 
             bal = (debit - credit) if acc_type in ("ASSET", "EXPENSE") else (credit - debit)
 
+            currency=r["currency"]
+            totals=by_currency.setdefault(currency,{"assets_cents":0,"liabilities_cents":0,"liquid_cents":0,"net_worth_cents":0})
+            if acc_type == "ASSET":
+                totals["assets_cents"] += bal
+                if subtype in ("DEBIT_CARD","CASH","CHECKING","SAVINGS_LIQUID"):
+                    totals["liquid_cents"] += bal
+            elif acc_type == "LIABILITY":
+                totals["liabilities_cents"] += bal
+            totals["net_worth_cents"]=totals["assets_cents"]-totals["liabilities_cents"]
+            native_bal=bal
+            # Compatibility totals are explicitly RUB-only; native rows are retained below.
+            if currency != "RUB":
+                bal=0
+                limit=0
             # Assets
 
             if acc_type == "ASSET":
@@ -1523,6 +1568,9 @@ class LedgerEngine:
 
             elif acc_type == "LIABILITY":
 
+                # Preserve signed historic overpayments; only RUB enters legacy totals.
+                total_liabilities_cents += bal
+
                 if subtype == "CREDIT_CARD":
 
                     debt = max(0, bal)
@@ -1531,7 +1579,6 @@ class LedgerEngine:
 
                     total_credit_limit_cents += limit
 
-                    total_liabilities_cents += debt
 
                 elif subtype in ("LOAN", "MORTGAGE", "CONSUMER_LOAN", "AUTO_LOAN", "PERSONAL_DEBT", "INSTALLMENT_BNPL"):
 
@@ -1539,7 +1586,6 @@ class LedgerEngine:
 
                     loans_debt_cents += loan_debt
 
-                    total_liabilities_cents += loan_debt
 
             accounts_list.append({
 
@@ -1557,13 +1603,15 @@ class LedgerEngine:
 
                 "owner_member_id": r["owner_member_id"],
 
-                "balance_cents": bal,
+                "balance_cents": native_bal,
 
-                "balance_rub": cents_to_rubles(bal),
+                "balance_rub": cents_to_rubles(native_bal),
 
-                "credit_limit_cents": limit,
+                "currency": r["currency"],
 
-                "credit_limit_rub": cents_to_rubles(limit)
+                "credit_limit_cents": r["credit_limit_cents"] or 0,
+
+                "credit_limit_rub": cents_to_rubles(r["credit_limit_cents"] or 0)
 
             })
 
@@ -1584,6 +1632,10 @@ class LedgerEngine:
         net_worth_cents = total_assets_cents - total_liabilities_cents
 
         return {
+            "base_currency": "RUB",
+            "totals_scope": "RUB_ONLY",
+            "by_currency": by_currency,
+            "non_base_excluded": sorted(c for c in by_currency if c != "RUB"),
 
             "common_liquid_assets_cents": common_liquid_cents,
 
@@ -1805,7 +1857,7 @@ class LedgerEngine:
 
             self._get_sync_engine().record_change_event("CATEGORY", cat_id, "INSERT", cat_payload, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -1989,7 +2041,7 @@ class LedgerEngine:
 
                     self._get_sync_engine().record_change_event("CATEGORY", category_id, "UPDATE", dict(c_row), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -2015,7 +2067,7 @@ class LedgerEngine:
 
                 self._get_sync_engine().record_change_event("CATEGORY", category_id, "UPDATE", {"id": category_id, "is_active": 0}, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -2031,6 +2083,7 @@ class LedgerEngine:
 
     # ---------------------------------------------------------
 
+    @atomic_operation
     def create_obligation(
 
         self,
@@ -2051,11 +2104,9 @@ class LedgerEngine:
 
         """Register a new recurring fixed obligation (rent, utilities, loan, subscription)."""
 
-        if amount_cents <= 0:
+        require_cents(amount_cents)
 
-            raise ValueError("Сумма обязательства должна быть больше нуля.")
-
-        if not (1 <= due_day <= 31):
+        if type(due_day) is not int or not (1 <= due_day <= 31):
 
             raise ValueError("День списания должен быть от 1 до 31.")
 
@@ -2114,7 +2165,7 @@ class LedgerEngine:
 
             self._get_sync_engine().record_change_event("OBLIGATION", obl_id, "INSERT", obl_payload, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -2124,6 +2175,7 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def update_obligation(
 
         self,
@@ -2164,7 +2216,7 @@ class LedgerEngine:
 
             if amount_cents is not None:
 
-                if amount_cents <= 0: raise ValueError("Сумма должна быть больше нуля.")
+                require_cents(amount_cents)
 
                 updates.append("amount_cents = ?")
 
@@ -2172,7 +2224,7 @@ class LedgerEngine:
 
             if due_day is not None:
 
-                if not (1 <= due_day <= 31): raise ValueError("День списания от 1 до 31.")
+                if type(due_day) is not int or not (1 <= due_day <= 31): raise ValueError("День списания от 1 до 31.")
 
                 updates.append("due_day = ?")
 
@@ -2214,7 +2266,7 @@ class LedgerEngine:
 
                     self._get_sync_engine().record_change_event("OBLIGATION", obligation_id, "UPDATE", dict(o_row), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -2224,6 +2276,7 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def archive_obligation(self, obligation_id: str) -> bool:
 
         """Soft-archive obligation."""
@@ -2240,7 +2293,7 @@ class LedgerEngine:
 
                 self._get_sync_engine().record_change_event("OBLIGATION", obligation_id, "UPDATE", {"id": obligation_id, "is_active": 0}, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -2251,337 +2304,116 @@ class LedgerEngine:
             self._close_if_local(conn)
 
     def get_obligations(self, month_year: Optional[str] = None) -> List[Dict[str, Any]]:
-
-        """
-
-        Get all active obligations with monthly payment fulfillment status.
-
-        """
-
-        if not month_year:
-
-            from datetime import datetime
-
-            month_year = datetime.now().strftime("%Y-%m")
-
-        conn = self._get_conn()
-
-        cursor = conn.cursor()
-
-        cursor.execute("""
-
-        SELECT 
-
-            o.id, o.name, o.amount_cents, o.due_day, o.note, o.category_id, o.payment_account_id,
-
-            c.name AS category_name, c.icon AS category_icon,
-
-            a.name AS payment_account_name,
-
-            op.id AS payment_id, op.paid_amount_cents, op.paid_at, op.transaction_id
-
-        FROM obligations o
-
-        LEFT JOIN categories c ON o.category_id = c.id
-
-        LEFT JOIN accounts a ON o.payment_account_id = a.id
-
-        LEFT JOIN obligation_payments op ON o.id = op.obligation_id AND op.month_year = ?
-
-        WHERE o.is_active = 1
-
-        ORDER BY o.due_day ASC, o.name ASC;
-
-        """, (month_year,))
-
-        rows = cursor.fetchall()
-
-        self._close_if_local(conn)
-
-        result = []
-
-        for r in rows:
-
-            is_paid = r["payment_id"] is not None
-
-            paid_cents = r["paid_amount_cents"] or 0
-
-            amount_cents = r["amount_cents"]
-
-            remaining_cents = 0 if is_paid else amount_cents
-
-            result.append({
-
-                "id": r["id"],
-
-                "name": r["name"],
-
-                "amount_cents": amount_cents,
-
-                "amount_rub": cents_to_rubles(amount_cents),
-
-                "due_day": r["due_day"],
-
-                "note": r["note"],
-
-                "category_id": r["category_id"],
-
-                "category_name": r["category_name"] or "Без категории",
-
-                "category_icon": r["category_icon"] or "tag",
-
-                "payment_account_id": r["payment_account_id"],
-
-                "payment_account_name": r["payment_account_name"] or "Не назначен",
-
-                "is_paid_this_month": is_paid,
-
-                "paid_amount_cents": paid_cents,
-
-                "paid_amount_rub": cents_to_rubles(paid_cents),
-
-                "remaining_cents": remaining_cents,
-
-                "remaining_rub": cents_to_rubles(remaining_cents),
-
-                "paid_at": r["paid_at"],
-
-                "transaction_id": r["transaction_id"],
-
-                "month_year": month_year
-
-            })
-
-        return result
-
-    def mark_obligation_paid(
-
-        self,
-
-        obligation_id: str,
-
-        month_year: Optional[str] = None,
-
-        transaction_id: Optional[str] = None,
-
-        paid_amount_cents: Optional[int] = None
-
-    ) -> bool:
-
-        """Mark an obligation as fulfilled for the specified month."""
-
-        if not month_year:
-
-            from datetime import datetime
-
-            month_year = datetime.now().strftime("%Y-%m")
-
-        conn = self._get_conn()
-
-        cursor = conn.cursor()
-
+        month_year=self._obligation_month(month_year)
+        conn=self._get_conn(); cursor=conn.cursor()
         try:
-
-            cursor.execute("SELECT amount_cents FROM obligations WHERE id = ?;", (obligation_id,))
-
-            row = cursor.fetchone()
-
-            if not row:
-
-                return False
-
-            if paid_amount_cents is None:
-
-                paid_amount_cents = row["amount_cents"]
-
-            pay_id = generate_uuid()
-
-            cursor.execute("""
-
-            INSERT OR REPLACE INTO obligation_payments (id, obligation_id, month_year, transaction_id, paid_amount_cents, paid_at)
-
-            VALUES (?, ?, ?, ?, ?, ?);
-
-            """, (pay_id, obligation_id, month_year, transaction_id, paid_amount_cents, current_iso_time()))
-
-            pay_payload = {
-
-                "id": pay_id,
-
-                "obligation_id": obligation_id,
-
-                "month_year": month_year,
-
-                "transaction_id": transaction_id,
-
-                "paid_amount_cents": paid_amount_cents,
-
-                "paid_at": current_iso_time()
-
-            }
-
-            self._get_sync_engine().record_change_event("OBLIGATION_PAYMENT", pay_id, "INSERT", pay_payload, cursor=cursor)
-
-            conn.commit()
-
-            self._save_if_encrypted()
-
-            return True
-
+            cursor.execute("""SELECT o.*,c.name AS category_name,c.icon AS category_icon,
+                a.name AS payment_account_name,a.currency AS payment_currency,
+                op.id AS payment_id,op.paid_amount_cents,op.paid_at,op.transaction_id
+                FROM obligations o LEFT JOIN categories c ON o.category_id=c.id
+                LEFT JOIN accounts a ON o.payment_account_id=a.id
+                LEFT JOIN obligation_payments op ON op.obligation_id=o.id AND op.month_year=?
+                WHERE o.is_active=1 ORDER BY o.due_day,o.name""",(month_year,))
+            rows=cursor.fetchall(); result=[]
+            for row in rows:
+                r=dict(row); paid=r.get("paid_amount_cents") or 0
+                cursor.execute("SELECT value FROM system_meta WHERE key=?",(self._obligation_components_key(r["id"],month_year),))
+                components=cursor.fetchone()
+                if components:
+                    paid=self._obligation_paid_total(cursor,json.loads(components["value"]),r.get('payment_currency') or 'RUB')
+                elif r.get("transaction_id"):
+                    paid=self._obligation_paid_total(cursor,{"transactions":{r["transaction_id"]:paid}},r.get('payment_currency') or 'RUB') if paid>0 else 0
+                remaining=max(0,r["amount_cents"]-paid)
+                result.append({"id":r["id"],"name":r["name"],"amount_cents":r["amount_cents"],
+                    "amount_rub":cents_to_rubles(r["amount_cents"]),"due_day":r["due_day"],"note":r["note"],
+                    "category_id":r["category_id"],"category_name":r.get("category_name") or "Без категории",
+                    "category_icon":r.get("category_icon") or "tag","payment_account_id":r["payment_account_id"],
+                    "payment_account_name":r.get("payment_account_name") or "Не назначен",
+                    "currency":r.get("payment_currency") or "RUB",
+                    "is_paid_this_month":remaining==0,"paid_amount_cents":paid,"paid_amount_rub":cents_to_rubles(paid),
+                    "remaining_cents":remaining,"remaining_rub":cents_to_rubles(remaining),"paid_at":r.get("paid_at"),
+                    "transaction_id":r.get("transaction_id"),"month_year":month_year})
+            return result
         finally:
-
             self._close_if_local(conn)
 
-    def set_initial_balance(
-
-        self,
-
-        account_id: str,
-
-        balance_cents: int,
-
-        date: Optional[str] = None
-
-    ) -> str:
-
-        """
-
-        Record or update initial opening balance for an account using strict double-entry:
-
-        - For ASSET accounts:
-
-          Debit: account_id (balance_cents)
-
-          Credit: 3010 Общий семейный капитал (balance_cents)
-
-        - For LIABILITY accounts (credit card opening debt):
-
-          Debit: 3010 Общий семейный капитал (balance_cents)
-
-          Credit: account_id (balance_cents)
-
-        """
-
-        conn = self._get_conn()
-
-        try:
-
-            with conn:
-
-                cursor = conn.cursor()
-
-                cursor.execute("SELECT id, name, account_type, ownership_scope, initial_balance_cents FROM accounts WHERE id = ?;", (account_id,))
-
-                acc = cursor.fetchone()
-
-                if not acc:
-
-                    raise ValueError(f"Счет {account_id} не найден.")
-
-                # Locate Common Family Equity Account 3010
-
-                cursor.execute("SELECT id FROM accounts WHERE code = '3010';")
-
-                eq_row = cursor.fetchone()
-
-                if not eq_row:
-
-                    raise RuntimeError("Счет капитала '3010' не найден.")
-
-                equity_id = eq_row["id"]
-
-                # Check if an existing opening balance transaction exists for this account
-
-                idem_key = f"init_bal_{account_id}"
-
-                cursor.execute("SELECT id FROM transactions WHERE idempotency_key = ?;", (idem_key,))
-
-                existing_tx = cursor.fetchone()
-
-                # If existing tx found, remove previous postings to replace cleanly
-
-                if existing_tx:
-
-                    cursor.execute("DELETE FROM postings WHERE transaction_id = ?;", (existing_tx["id"],))
-
-                    cursor.execute("DELETE FROM transactions WHERE id = ?;", (existing_tx["id"],))
-
-                # Update initial_balance_cents column on account
-
-                cursor.execute("UPDATE accounts SET initial_balance_cents = ? WHERE id = ?;", (balance_cents, account_id))
-
-                if balance_cents > 0:
-
-                    tx_id = generate_uuid()
-
-                    tx_date = date or current_iso_time()[:10]
-
-                    cursor.execute("""
-
-                    INSERT INTO transactions (id, tx_date, tx_type, description, idempotency_key, is_voided, created_at)
-
-                    VALUES (?, ?, 'ADJUSTMENT', ?, ?, 0, ?);
-
-                    """, (tx_id, tx_date, f"Начальный остаток счета '{acc['name']}'", idem_key, current_iso_time()))
-
-                    postings = []
-
-                    if acc["account_type"] == "LIABILITY":
-
-                        postings.append(Posting(id=generate_uuid(), transaction_id=tx_id, account_id=equity_id, amount_cents=balance_cents, posting_type="DEBIT", ownership_scope=acc["ownership_scope"]))
-
-                        postings.append(Posting(id=generate_uuid(), transaction_id=tx_id, account_id=account_id, amount_cents=balance_cents, posting_type="CREDIT", ownership_scope=acc["ownership_scope"]))
-
-                    else:
-
-                        postings.append(Posting(id=generate_uuid(), transaction_id=tx_id, account_id=account_id, amount_cents=balance_cents, posting_type="DEBIT", ownership_scope=acc["ownership_scope"]))
-
-                        postings.append(Posting(id=generate_uuid(), transaction_id=tx_id, account_id=equity_id, amount_cents=balance_cents, posting_type="CREDIT", ownership_scope=acc["ownership_scope"]))
-
-                    for p in postings:
-
-                        cursor.execute("""
-
-                        INSERT INTO postings (id, transaction_id, account_id, amount_cents, posting_type, ownership_scope, purpose_allocation, created_at)
-
-                        VALUES (?, ?, ?, ?, ?, ?, 'SAFE_TO_SPEND', ?);
-
-                        """, (p.id, tx_id, p.account_id, p.amount_cents, p.posting_type, p.ownership_scope, current_iso_time()))
-
-                    # Record CDC event
-
-                    tx_payload = {
-
-                        "id": tx_id,
-
-                        "tx_date": tx_date,
-
-                        "tx_type": "ADJUSTMENT",
-
-                        "description": f"Начальный остаток счета '{acc['name']}'",
-
-                        "postings": [
-
-                            {"id": p.id, "account_id": p.account_id, "amount_cents": p.amount_cents, "posting_type": p.posting_type, "ownership_scope": p.ownership_scope}
-
-                            for p in postings
-
-                        ]
-
-                    }
-
-                    self._get_sync_engine().record_change_event("TRANSACTION", tx_id, "INSERT", tx_payload, cursor=cursor)
-
-                conn.commit()
-
-                self._save_if_encrypted()
-
-                return account_id
-
-        finally:
-
-            self._close_if_local(conn)
-
+    @atomic_operation
+    def mark_obligation_paid(self, obligation_id: str, month_year: Optional[str] = None,
+                             transaction_id: Optional[str] = None, paid_amount_cents: Optional[int] = None) -> bool:
+        month_year=self._obligation_month(month_year)
+        conn=self._get_conn();cursor=conn.cursor()
+        cursor.execute("SELECT o.amount_cents,COALESCE(a.currency,'RUB') AS currency FROM obligations o LEFT JOIN accounts a ON a.id=o.payment_account_id WHERE o.id=? AND o.is_active=1",(obligation_id,))
+        obligation=cursor.fetchone()
+        if obligation is None: return False
+        amount=obligation["amount_cents"] if paid_amount_cents is None else paid_amount_cents
+        require_cents(amount)
+        key=self._obligation_components_key(obligation_id,month_year)
+        cursor.execute("SELECT * FROM obligation_payments WHERE obligation_id=? AND month_year=?",(obligation_id,month_year))
+        existing=cursor.fetchone()
+        cursor.execute("SELECT value FROM system_meta WHERE key=?",(key,)); component_row=cursor.fetchone()
+        if component_row:
+            components=json.loads(component_row["value"])
+        else:
+            components={"manual_cents":0,"transactions":{}}
+            if existing:
+                if existing["transaction_id"]:
+                    components["transactions"][existing["transaction_id"]]=existing["paid_amount_cents"]
+                else:
+                    components["manual_cents"]=max(0,existing["paid_amount_cents"])
+        if transaction_id:
+            currencies = {r['currency'] for r in cursor.execute("SELECT DISTINCT a.currency FROM postings p JOIN accounts a ON a.id=p.account_id WHERE p.transaction_id=? AND a.account_type IN ('ASSET','LIABILITY')", (transaction_id,))}
+            if currencies != {obligation['currency']}:
+                raise ValueError('Валюта связанной операции не совпадает с валютой обязательства.')
+            cursor.execute("SELECT COALESCE(SUM(p.amount_cents),0) AS amount FROM postings p JOIN transactions t ON t.id=p.transaction_id JOIN accounts a ON a.id=p.account_id WHERE t.id=? AND t.is_voided=0 AND p.posting_type='DEBIT' AND a.account_type IN ('EXPENSE','LIABILITY')",(transaction_id,))
+            available=cursor.fetchone()["amount"]
+            if available<=0 or amount>available:
+                raise ValueError("Связанная операция не подтверждает указанную сумму оплаты.")
+            previous=components["transactions"].get(transaction_id)
+            if previous is not None and previous != amount:
+                raise ValueError("Операция уже связана с другой суммой оплаты.")
+            components["transactions"][transaction_id]=amount
+        else:
+            # A manual mark is a deliberate monthly status/snapshot, not a new money transfer.
+            components={"manual_cents":amount,"transactions":{}}
+        total=self._obligation_paid_total(cursor,components)
+        pay_id=existing["id"] if existing else generate_uuid(); paid_at=current_iso_time()
+        cursor.execute("INSERT INTO obligation_payments(id,obligation_id,month_year,transaction_id,paid_amount_cents,paid_at) VALUES(?,?,?,?,?,?) ON CONFLICT(obligation_id,month_year) DO UPDATE SET transaction_id=excluded.transaction_id,paid_amount_cents=excluded.paid_amount_cents,paid_at=excluded.paid_at",(pay_id,obligation_id,month_year,transaction_id,total,paid_at))
+        cursor.execute("INSERT INTO system_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(key,json.dumps(components,ensure_ascii=False)))
+        payload={"id":pay_id,"obligation_id":obligation_id,"month_year":month_year,"transaction_id":transaction_id,"paid_amount_cents":total,"paid_at":paid_at,"components":components}
+        self._get_sync_engine().record_change_event("OBLIGATION_PAYMENT",pay_id,"INSERT",payload,cursor=cursor)
+        return True
+
+    @atomic_operation
+    def set_initial_balance(self, account_id: str, balance_cents: int, date: Optional[str] = None) -> str:
+        require_cents(balance_cents, allow_zero=True)
+        conn=self._get_conn(); cursor=conn.cursor()
+        cursor.execute("SELECT * FROM accounts WHERE id=?",(account_id,)); acc=cursor.fetchone()
+        if acc is None or acc["account_type"] not in ("ASSET","LIABILITY"):
+            raise ValueError("Начальный остаток поддерживается только для финансового счёта.")
+        from datetime import date as calendar_date
+        tx_date=date or current_iso_time()[:10]; calendar_date.fromisoformat(tx_date)
+        cursor.execute("SELECT id FROM accounts WHERE code='3010'"); eq=cursor.fetchone()
+        if eq is None: raise ValueError("Счёт капитала не найден.")
+        key=f"init_bal_{account_id}"
+        cursor.execute("SELECT id FROM transactions WHERE (idempotency_key=? OR idempotency_key LIKE ?) AND is_voided=0",(key,key+":%"))
+        previous=cursor.fetchall()
+        for old_opening in previous:
+            self.void_transaction(old_opening["id"],"Замена начального остатка")
+        cursor.execute("UPDATE accounts SET initial_balance_cents=? WHERE id=?",(balance_cents,account_id))
+        cursor.execute("SELECT * FROM accounts WHERE id=?",(account_id,))
+        self._get_sync_engine().record_change_event("ACCOUNT",account_id,"UPDATE",dict(cursor.fetchone()),cursor=cursor)
+        if balance_cents:
+            ident=generate_uuid()
+            debit,credit=(eq["id"],account_id) if acc["account_type"]=="LIABILITY" else (account_id,eq["id"])
+            transaction=Transaction(id=ident,tx_date=tx_date,tx_type="ADJUSTMENT",description=f"Начальный остаток счета '{acc['name']}'",postings=[
+                Posting(generate_uuid(),ident,debit,balance_cents,"DEBIT",ownership_scope=acc["ownership_scope"]),
+                Posting(generate_uuid(),ident,credit,balance_cents,"CREDIT",ownership_scope=acc["ownership_scope"])])
+            cursor.execute("SELECT 1 FROM transactions WHERE idempotency_key=?",(key,))
+            opening_key=key+":"+ident if cursor.fetchone() else key
+            self.record_transaction(transaction,idempotency_key=opening_key)
+        return account_id
+
+    @atomic_operation
     def batch_onboarding_setup(
 
         self,
@@ -2610,13 +2442,13 @@ class LedgerEngine:
 
             acc_id = b.get("account_id")
 
-            cents = int(b.get("balance_cents", 0))
+            cents = require_cents(b.get("balance_cents", 0), allow_zero=True)
 
             self.set_initial_balance(acc_id, cents)
 
             if "credit_limit_cents" in b and b["credit_limit_cents"] is not None:
 
-                self.update_account(acc_id, name=None, credit_limit_cents=int(b["credit_limit_cents"]))
+                self.update_account(acc_id, name=None, credit_limit_cents=require_cents(b["credit_limit_cents"], allow_zero=True))
 
             applied_balances.append({"account_id": acc_id, "balance_cents": cents})
 
@@ -2630,9 +2462,9 @@ class LedgerEngine:
 
                     name=o.get("name", "Обязательство"),
 
-                    amount_cents=int(o.get("amount_cents", 0)),
+                    amount_cents=require_cents(o.get("amount_cents", 0)),
 
-                    due_day=int(o.get("due_day", 1)),
+                    due_day=o.get("due_day", 1),
 
                     category_id=o.get("category_id"),
 
@@ -2658,10 +2490,12 @@ class LedgerEngine:
 
         }
 
+    @atomic_operation
     def unmark_obligation_paid(self, obligation_id: str, month_year: Optional[str] = None) -> bool:
 
         """Remove paid status of an obligation for the specified month."""
 
+        month_year = self._obligation_month(month_year)
         if not month_year:
 
             from datetime import datetime
@@ -2675,16 +2509,18 @@ class LedgerEngine:
         try:
 
             cursor.execute("DELETE FROM obligation_payments WHERE obligation_id = ? AND month_year = ?;", (obligation_id, month_year))
+            deleted = cursor.rowcount
+            # Keep the reset tombstone so delayed allocations cannot resurrect a mark.
 
-            if cursor.rowcount > 0:
+            if deleted > 0:
 
                 self._get_sync_engine().record_change_event("OBLIGATION_PAYMENT", obligation_id, "DELETE", {"obligation_id": obligation_id, "month_year": month_year}, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
-            return cursor.rowcount > 0
+            return deleted > 0
 
         finally:
 
@@ -2700,9 +2536,10 @@ class LedgerEngine:
 
         obls = self.get_obligations(month_year)
 
+        obls = [o for o in obls if o.get("currency", "RUB") == "RUB"]
         total_cents = sum(o["amount_cents"] for o in obls)
 
-        paid_cents = sum(o["paid_amount_cents"] for o in obls if o["is_paid_this_month"])
+        paid_cents = sum(min(o["amount_cents"],o["paid_amount_cents"]) for o in obls)
 
         unpaid_cents = sum(o["remaining_cents"] for o in obls)
 
@@ -2714,802 +2551,133 @@ class LedgerEngine:
 
     # ---------------------------------------------------------
 
-    def get_spending_analytics(
-
-        self,
-
-        period: str = "current_month",
-
-        start_date: Optional[str] = None,
-
-        end_date: Optional[str] = None
-
-    ) -> Dict[str, Any]:
-
-        """
-
-        Compute comprehensive spending analytics:
-
-        - Total income, total expenses, net savings, savings rate %.
-
-        - Breakdown by category (amount, percentage, icon, name, tx_count).
-
-        - Breakdown by family member / ownership scope (amount, percentage, label).
-
-        - Top 5 largest expenses in period.
-
-        - Daily average expense and cash runway estimation.
-
-        """
-
-        from datetime import datetime, date, timedelta
-
-        import calendar
-
-        today = datetime.now().date()
-
-        
-
-        import re
-
-        if start_date and end_date:
-
-            s_date = start_date
-
-            e_date = end_date
-
-            label = f"{s_date} — {e_date}"
-
-        elif re.match(r"^\d{4}-\d{2}$", period):
-
-            year, month = map(int, period.split("-"))
-
-            s_date = f"{year:04d}-{month:02d}-01"
-
-            _, last_day = calendar.monthrange(year, month)
-
-            e_date = f"{year:04d}-{month:02d}-{last_day:02d}"
-
-            month_names_ru = ["", "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
-
-            label = f"{month_names_ru[month]} {year}"
-
-        elif period == "prev_month":
-
-            first_curr = today.replace(day=1)
-
-            last_prev = first_curr - timedelta(days=1)
-
-            first_prev = last_prev.replace(day=1)
-
-            s_date = first_prev.isoformat()
-
-            e_date = last_prev.isoformat()
-
-            label = f"Предыдущий месяц ({first_prev.strftime('%m.%Y')})"
-
-        elif period == "30d":
-
-            s_date = (today - timedelta(days=30)).isoformat()
-
-            e_date = today.isoformat()
-
-            label = "Последние 30 дней"
-
-        elif period == "90d":
-
-            s_date = (today - timedelta(days=90)).isoformat()
-
-            e_date = today.isoformat()
-
-            label = "Последние 90 дней"
-
-        elif period == "all":
-
-            s_date = "1970-01-01"
-
-            e_date = "2099-12-31"
-
-            label = "За всё время"
-
-        else:  # "current_month"
-
-            s_date = today.replace(day=1).isoformat()
-
-            _, last_day = calendar.monthrange(today.year, today.month)
-
-            e_date = today.replace(day=last_day).isoformat()
-
-            label = f"Текущий месяц ({today.strftime('%m.%Y')})"
-
-        try:
-
-            d_start = datetime.strptime(s_date, "%Y-%m-%d").date()
-
-            d_end = datetime.strptime(e_date, "%Y-%m-%d").date()
-
-            days_count = max(1, (min(today, d_end) - d_start).days + 1)
-
-        except Exception:
-
-            days_count = 30
-
-        conn = self._get_conn()
-
-        cursor = conn.cursor()
-
-        # 1. Expenses: all debit postings to EXPENSE accounts in non-voided transactions
-
-        cursor.execute("""
-
-        SELECT 
-
-            p.id AS posting_id,
-
-            p.transaction_id,
-
-            p.amount_cents,
-
-            p.ownership_scope,
-
-            p.category_id,
-
-            t.tx_date,
-
-            t.description,
-
-            t.created_by_member_id,
-
-            c.name AS category_name,
-
-            c.icon AS category_icon,
-
-            a.name AS account_name
-
-        FROM postings p
-
-        JOIN transactions t ON p.transaction_id = t.id
-
-        JOIN accounts a ON p.account_id = a.id
-
-        LEFT JOIN categories c ON p.category_id = c.id
-
-        WHERE t.is_voided = 0
-
-          AND a.account_type = 'EXPENSE'
-
-          AND p.posting_type = 'DEBIT'
-
-          AND t.tx_date BETWEEN ? AND ?
-
-        ORDER BY p.amount_cents DESC;
-
-        """, (s_date, e_date))
-
-        expense_rows = cursor.fetchall()
-
-        # 2. Incomes: all credit postings to INCOME accounts in non-voided transactions
-
-        cursor.execute("""
-
-        SELECT 
-
-            p.id AS posting_id,
-
-            p.transaction_id,
-
-            p.amount_cents,
-
-            p.ownership_scope,
-
-            p.category_id,
-
-            t.tx_date,
-
-            t.description,
-
-            t.created_by_member_id,
-
-            c.name AS category_name,
-
-            c.icon AS category_icon,
-
-            a.name AS account_name
-
-        FROM postings p
-
-        JOIN transactions t ON p.transaction_id = t.id
-
-        JOIN accounts a ON p.account_id = a.id
-
-        LEFT JOIN categories c ON p.category_id = c.id
-
-        WHERE t.is_voided = 0
-
-          AND a.account_type = 'INCOME'
-
-          AND p.posting_type = 'CREDIT'
-
-          AND t.tx_date BETWEEN ? AND ?;
-
-        """, (s_date, e_date))
-
-        income_rows = cursor.fetchall()
-
-        self._close_if_local(conn)
-
-        total_expense_cents = sum(r["amount_cents"] for r in expense_rows)
-
-        total_income_cents = sum(r["amount_cents"] for r in income_rows)
-
-        net_savings_cents = total_income_cents - total_expense_cents
-
-        if total_income_cents > 0:
-
-            savings_rate_pct = round(((total_income_cents - total_expense_cents) / total_income_cents) * 100, 1)
-
-        else:
-
-            savings_rate_pct = 0.0
-
-        daily_avg_expense_cents = round(total_expense_cents / days_count) if days_count > 0 else 0
-
-        # Category breakdown
-
-        cat_map = {}
-
-        for r in expense_rows:
-
-            cid = r["category_id"] or "uncategorized"
-
-            cname = r["category_name"] or "Без категории"
-
-            cicon = r["category_icon"] or "tag"
-
-            if cid not in cat_map:
-
-                cat_map[cid] = {
-
-                    "id": cid,
-
-                    "name": cname,
-
-                    "icon": cicon,
-
-                    "amount_cents": 0,
-
-                    "tx_count": 0
-
-                }
-
-            cat_map[cid]["amount_cents"] += r["amount_cents"]
-
-            cat_map[cid]["tx_count"] += 1
-
-        categories_breakdown = list(cat_map.values())
-
-        categories_breakdown.sort(key=lambda x: x["amount_cents"], reverse=True)
-
-        for c in categories_breakdown:
-
-            c["amount_rub"] = cents_to_rubles(c["amount_cents"])
-
-            c["percent"] = round((c["amount_cents"] / total_expense_cents) * 100, 1) if total_expense_cents > 0 else 0.0
-
-        # Family member attribution breakdown
-
-        scope_map = {
-
-            "COMMON": {"scope": "COMMON", "label": "Общие семейные", "icon": "👨‍👩‍👧‍👦", "amount_cents": 0, "tx_count": 0},
-
-            "PERSONAL_HUSBAND": {"scope": "PERSONAL_HUSBAND", "label": "Муж", "icon": "👨", "amount_cents": 0, "tx_count": 0},
-
-            "PERSONAL_WIFE": {"scope": "PERSONAL_WIFE", "label": "Жена", "icon": "👩", "amount_cents": 0, "tx_count": 0},
-
-            "OTHER": {"scope": "OTHER", "label": "Прочие", "icon": "👤", "amount_cents": 0, "tx_count": 0}
-
-        }
-
-        for r in expense_rows:
-
-            sc = r["ownership_scope"] or "COMMON"
-
-            target_key = sc if sc in scope_map else "OTHER"
-
-            scope_map[target_key]["amount_cents"] += r["amount_cents"]
-
-            scope_map[target_key]["tx_count"] += 1
-
-        members_breakdown = [v for v in scope_map.values() if v["amount_cents"] > 0 or v["scope"] in ("COMMON", "PERSONAL_HUSBAND", "PERSONAL_WIFE")]
-
-        for m in members_breakdown:
-
-            m["amount_rub"] = cents_to_rubles(m["amount_cents"])
-
-            m["percent"] = round((m["amount_cents"] / total_expense_cents) * 100, 1) if total_expense_cents > 0 else 0.0
-
-        # Top 5 largest expenses
-
-        top_expenses = []
-
-        for r in expense_rows[:5]:
-
-            top_expenses.append({
-
-                "transaction_id": r["transaction_id"],
-
-                "date": r["tx_date"],
-
-                "description": r["description"],
-
-                "amount_cents": r["amount_cents"],
-
-                "amount_rub": cents_to_rubles(r["amount_cents"]),
-
-                "category_name": r["category_name"] or "Без категории",
-
-                "category_icon": r["category_icon"] or "tag"
-
-            })
-
-        # Calculate Cash Runway (days until liquid funds run out at current daily burn)
-
-        overview = self.get_financial_overview()
-
-        liquid_cents = overview["common_liquid_assets_cents"]
-
-        if daily_avg_expense_cents > 0:
-
-            cash_runway_days = round(liquid_cents / daily_avg_expense_cents)
-
-        else:
-
-            cash_runway_days = None
-
-        return {
-
-            "period": period,
-
-            "period_label": label,
-
-            "start_date": s_date,
-
-            "end_date": e_date,
-
-            "days_count": days_count,
-
-            "total_income_cents": total_income_cents,
-
-            "total_income_rub": cents_to_rubles(total_income_cents),
-
-            "total_expense_cents": total_expense_cents,
-
-            "total_expense_rub": cents_to_rubles(total_expense_cents),
-
-            "net_savings_cents": net_savings_cents,
-
-            "net_savings_rub": cents_to_rubles(net_savings_cents),
-
-            "savings_rate_percent": savings_rate_pct,
-
-            "daily_avg_expense_cents": daily_avg_expense_cents,
-
-            "daily_avg_expense_rub": cents_to_rubles(daily_avg_expense_cents),
-
-            "cash_runway_days": cash_runway_days,
-
-            "categories": categories_breakdown,
-
-            "members": members_breakdown,
-
-            "top_expenses": top_expenses
-
-        }
-
-    # ---------------------------------------------------------
-
-    # Stage 7: 30/60/90-Day Cash Flow Forecasting Engine
-
-    # ---------------------------------------------------------
-
-    def get_cash_flow_forecast(
-
-        self,
-
-        days: int = 30,
-
-        include_burn_rate: bool = True,
-
-        custom_daily_burn_cents: Optional[int] = None,
-
-        safety_buffer_cents: int = 0
-
-    ) -> Dict[str, Any]:
-
-        """
-
-        Simulate 30, 60, or 90-day daily cash flow trajectory:
-
-        - Day 0 starts with Net Liquid Position (Liquid Cards & Cash MINUS Credit Card Debt).
-
-        - Long-term reserves (SAVINGS/DEPOSIT) are isolated as a Safety Baseline.
-
-        - Every calendar day evaluates scheduled obligations (due_day).
-
-        - Obligations already paid in current month are NOT double-deducted this month.
-
-        - Daily discretionary burn rate is computed from variable spending (excluding fixed obligations & outliers).
-
-        - Hard Cash Gap (Balance < 0) and Soft Gap (Balance < Safety Buffer) pinpoint exact date and triggering event.
-
-        """
-
-        from datetime import datetime, date, timedelta
-
-        import calendar
-
-        days = min(max(days, 7), 90)
-
-        today = datetime.now().date()
-
-        overview = self.get_financial_overview()
-
-        starting_liquid_cents = overview["common_liquid_assets_cents"]
-
-        credit_debt_cents = overview["credit_cards"]["total_debt_cents"]
-
-        emergency_reserves_cents = overview["emergency_reserves_cents"]
-
-        
-
-        # Net Liquid Position on Day 0
-
-        effective_start_cents = starting_liquid_cents - credit_debt_cents
-
-        # 1. Calculate Daily Discretionary Burn Rate from historical non-obligation expenses
-
-        lookback_start = (today - timedelta(days=30)).isoformat()
-
-        lookback_end = today.isoformat()
-
-        
-
-        conn = self._get_conn()
-
-        cursor = conn.cursor()
-
-        
-
-        # Find all obligations category IDs or names to exclude from variable burn rate
-
-        cursor.execute("SELECT category_id, amount_cents FROM obligations WHERE is_active = 1;")
-
-        obl_meta = cursor.fetchall()
-
-        obl_cat_ids = {r["category_id"] for r in obl_meta if r["category_id"]}
-
-        
-
-        # Query historical discretionary expenses in the last 30 days
-
-        cursor.execute("""
-
-        SELECT p.amount_cents, p.category_id, t.tx_date
-
-        FROM postings p
-
-        JOIN transactions t ON p.transaction_id = t.id
-
-        JOIN accounts a ON p.account_id = a.id
-
-        WHERE t.is_voided = 0
-
-          AND a.account_type = 'EXPENSE'
-
-          AND p.posting_type = 'DEBIT'
-
-          AND t.tx_date BETWEEN ? AND ?
-
-        """, (lookback_start, lookback_end))
-
-        hist_rows = cursor.fetchall()
-
-        
-
-        # Count active transaction days in history to handle cold start
-
-        cursor.execute("""
-
-        SELECT COUNT(DISTINCT t.tx_date) AS active_days
-
-        FROM transactions t
-
-        WHERE t.is_voided = 0 AND t.tx_date BETWEEN ? AND ?
-
-        """, (lookback_start, lookback_end))
-
-        active_days_row = cursor.fetchone()
-
-        active_days_count = active_days_row["active_days"] if active_days_row else 0
-
-        
-
-        self._close_if_local(conn)
-
-        # Filter out fixed obligations categories and extreme outliers (> 100 000 RUB per item)
-
-        discretionary_sum_cents = 0
-
-        for hr in hist_rows:
-
-            if hr["category_id"] not in obl_cat_ids and hr["amount_cents"] < 10000000:
-
-                discretionary_sum_cents += hr["amount_cents"]
-
-        # If cold start (< 3 active days), do not artificially burn without real history
-
-        if custom_daily_burn_cents is not None:
-
-            daily_burn_cents = max(0, custom_daily_burn_cents)
-
-            burn_rate_source = "custom"
-
-        elif active_days_count < 3 or not include_burn_rate:
-
-            daily_burn_cents = 0
-
-            burn_rate_source = "cold_start_or_disabled" if active_days_count < 3 else "disabled"
-
-        else:
-
-            # Average daily burn over 30 days
-
-            daily_burn_cents = round(discretionary_sum_cents / 30)
-
-            burn_rate_source = "historical_30d"
-
-        # 2. Retrieve all active obligations and payment status
-
-        all_obligations = self.get_obligations()
-
-        # 3. Daily Simulation
-
-        current_balance_cents = effective_start_cents
-
-        timeline_points = []
-
-        
-
-        has_deficit = False
-
-        first_deficit_date = None
-
-        first_deficit_cents = 0
-
-        first_deficit_trigger = None
-
-        
-
-        min_projected_balance_cents = current_balance_cents
-
-        # Map paid obligations for current month
-
-        curr_month_str = today.strftime("%Y-%m")
-
-        curr_month_paid_ids = {o["id"] for o in all_obligations if o.get("is_paid_this_month")}
-
-        # Milestone events for charting
-
-        milestones = []
-
-        for step in range(1, days + 1):
-
-            sim_date = today + timedelta(days=step)
-
-            sim_month_str = sim_date.strftime("%Y-%m")
-
-            sim_day = sim_date.day
-
-            
-
-            day_events = []
-
-            day_obligations_cents = 0
-
-            
-
-            # Check obligations due on sim_day
-
-            for obl in all_obligations:
-
-                _, days_in_sim_month = calendar.monthrange(sim_date.year, sim_date.month)
-
-                effective_due_day = min(obl["due_day"], days_in_sim_month)
-
-                
-
-                if sim_day == effective_due_day:
-
-                    # In current calendar month: if already paid, skip
-
-                    if sim_month_str == curr_month_str and obl["id"] in curr_month_paid_ids:
-
-                        continue
-
-                    
-
-                    obl_amt = obl["amount_cents"]
-
-                    day_obligations_cents += obl_amt
-
-                    day_events.append({
-
-                        "type": "OBLIGATION",
-
-                        "name": obl["name"],
-
-                        "amount_cents": obl_amt,
-
-                        "amount_rub": cents_to_rubles(obl_amt)
-
-                    })
-
-                    milestones.append({
-
-                        "date": sim_date.isoformat(),
-
-                        "day": step,
-
-                        "label": f"{obl['name']} ({cents_to_rubles(obl_amt)} ₽)",
-
-                        "amount_cents": obl_amt
-
-                    })
-
-            # Daily burn
-
-            burn_today_cents = daily_burn_cents if include_burn_rate else 0
-
-            if burn_today_cents > 0:
-
-                day_events.append({
-
-                    "type": "BURN_RATE",
-
-                    "name": "Повседневные траты",
-
-                    "amount_cents": burn_today_cents,
-
-                    "amount_rub": cents_to_rubles(burn_today_cents)
-
-                })
-
-            net_change_cents = - (day_obligations_cents + burn_today_cents)
-
-            current_balance_cents += net_change_cents
-
-            if current_balance_cents < min_projected_balance_cents:
-
-                min_projected_balance_cents = current_balance_cents
-
-            is_point_deficit = (current_balance_cents < 0)
-
-            if is_point_deficit and not has_deficit:
-
-                has_deficit = True
-
-                first_deficit_date = sim_date.isoformat()
-
-                first_deficit_cents = abs(current_balance_cents)
-
-                if day_events:
-
-                    first_deficit_trigger = day_events[0]["name"]
-
-                else:
-
-                    first_deficit_trigger = "Накопленный дефицит"
-
-            timeline_points.append({
-
-                "day_index": step,
-
-                "date": sim_date.isoformat(),
-
-                "day_formatted": sim_date.strftime("%d.%m"),
-
-                "day_of_week": sim_date.strftime("%a"),
-
-                "balance_cents": current_balance_cents,
-
-                "balance_rub": cents_to_rubles(current_balance_cents),
-
-                "is_deficit": is_point_deficit,
-
-                "net_change_cents": net_change_cents,
-
-                "net_change_rub": cents_to_rubles(net_change_cents),
-
-                "events": day_events
-
-            })
-
-        # Calculate autonomy runway
-
-        total_daily_rate_cents = daily_burn_cents
-
-        if all_obligations:
-
-            monthly_obls = sum(o["amount_cents"] for o in all_obligations)
-
-            total_daily_rate_cents += round(monthly_obls / 30)
-
-        if total_daily_rate_cents > 0:
-
-            runway_days = max(0, round(effective_start_cents / total_daily_rate_cents))
-
-        else:
-
-            runway_days = None
-
-        return {
-
-            "forecast_days": days,
-
-            "start_date": today.isoformat(),
-
-            "end_date": (today + timedelta(days=days)).isoformat(),
-
-            "starting_liquid_cents": starting_liquid_cents,
-
-            "starting_liquid_rub": cents_to_rubles(starting_liquid_cents),
-
-            "credit_debt_cents": credit_debt_cents,
-
-            "credit_debt_rub": cents_to_rubles(credit_debt_cents),
-
-            "effective_start_cents": effective_start_cents,
-
-            "effective_start_rub": cents_to_rubles(effective_start_cents),
-
-            "emergency_reserves_cents": emergency_reserves_cents,
-
-            "emergency_reserves_rub": cents_to_rubles(emergency_reserves_cents),
-
-            "daily_burn_cents": daily_burn_cents,
-
-            "daily_burn_rub": cents_to_rubles(daily_burn_cents),
-
-            "burn_rate_source": burn_rate_source,
-
-            "has_deficit": has_deficit,
-
-            "first_deficit_date": first_deficit_date,
-
-            "first_deficit_cents": first_deficit_cents,
-
-            "first_deficit_rub": cents_to_rubles(first_deficit_cents),
-
-            "first_deficit_trigger": first_deficit_trigger,
-
-            "min_projected_balance_cents": min_projected_balance_cents,
-
-            "min_projected_balance_rub": cents_to_rubles(min_projected_balance_cents),
-
-            "cash_runway_days": runway_days,
-
-            "milestones": milestones,
-
-            "timeline": timeline_points
-
-        }
-
-    # ---------------------------------------------------------
-
-    # 8. Financial Goals (Stage 9 Savings Targets)
-
-    # ---------------------------------------------------------
-
+    def get_spending_analytics(self, period="current_month", start_date=None, end_date=None):
+        from family_finances_os.reporting import analytics
+        return analytics(self, period, start_date, end_date)
+
+    def get_cash_flow_forecast(self, days=30, include_burn_rate=True, custom_daily_burn_cents=None, safety_buffer_cents=0):
+        from family_finances_os.reporting import forecast
+        return forecast(self, days, include_burn_rate, custom_daily_burn_cents, safety_buffer_cents)
+
+    def _reservation_account(self, cursor, account_id):
+        """Tracking objects currently use RUB; linked money must be active assets."""
+        if not account_id:
+            return None
+        cursor.execute("SELECT * FROM accounts WHERE id = ? AND is_active = 1", (account_id,))
+        row = cursor.fetchone()
+        if row is None or row["account_type"] != "ASSET":
+            raise ValueError("Связанный счёт должен быть действующим счётом активов.")
+        if row["currency"] != "RUB":
+            raise ValueError("Цели и конверты в рублях нельзя связывать со счётом в другой валюте.")
+        return row
+
+    @staticmethod
+    def _reservation_cents(value, allow_zero=False):
+        from family_finances_os.models import require_cents
+        return require_cents(value, allow_zero=allow_zero)
+
+    @staticmethod
+    def _reservation_date(value):
+        from datetime import date
+        if value:
+            date.fromisoformat(value)
+        return value or None
+
+    def _reservation_reference(self, cursor, table, ident):
+        if ident:
+            if table not in ("categories", "members"):
+                raise ValueError("Недопустимый справочник.")
+            cursor.execute(f"SELECT id FROM {table} WHERE id = ?", (ident,))
+            if cursor.fetchone() is None:
+                raise ValueError("Связанная запись не найдена.")
+
+    def _reservation_snapshot(self, cursor, table, ident, entity, change_type="UPDATE"):
+        if table not in ("goals", "envelopes", "envelope_operations", "goal_contributions"):
+            raise ValueError("Недопустимый объект накоплений.")
+        cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (ident,))
+        row = cursor.fetchone()
+        self._get_sync_engine().record_change_event(entity, ident, change_type, dict(row), cursor=cursor)
+
+    def _reservation_request(self, cursor, operation, key, payload):
+        if not key:
+            return None, None, None
+        token = hashlib.sha256(str(key).encode("utf-8")).hexdigest()
+        meta_key = "reservation-command-v1:" + token
+        digest = hashlib.sha256(json.dumps([operation, payload],sort_keys=True,
+                    ensure_ascii=False,separators=(",",":")).encode("utf-8")).hexdigest()
+        cursor.execute("SELECT value FROM system_meta WHERE key = ?",(meta_key,))
+        row = cursor.fetchone()
+        if row:
+            saved = json.loads(row["value"])
+            if saved["hash"] != digest:
+                raise ValueError("Ключ идемпотентности уже использован с другими параметрами.")
+            return meta_key, digest, saved["result"]
+        # The operation ID also travels in CDC. A retry received by another
+        # device must not depend on a cache that only exists on the first peer.
+        cursor.execute("SELECT * FROM envelope_operations WHERE id = ?",
+                       ("envelope-operation-v1:" + token,))
+        prior = cursor.fetchone()
+        if prior:
+            types = {"envelope-deposit":"DEPOSIT","envelope-withdraw":"WITHDRAW",
+                     "envelope-transfer":"TRANSFER"}
+            if operation not in types or prior["operation_type"] != types[operation]:
+                raise ValueError("Ключ идемпотентности уже использован другой операцией.")
+            relation = {"envelope-deposit":"source_account_id",
+                        "envelope-withdraw":"destination_account_id",
+                        "envelope-transfer":"target_envelope_id"}[operation]
+            expected = ([prior["envelope_id"],prior["amount_cents"],prior[relation],
+                         prior["note"],prior["member_id"]]
+                        if operation != "envelope-transfer" else
+                        [prior["envelope_id"],prior[relation],prior["amount_cents"],
+                         prior["note"],prior["member_id"]])
+            if payload != expected:
+                raise ValueError("Ключ идемпотентности уже использован с другими параметрами.")
+            cursor.execute("SELECT current_amount_cents FROM envelopes WHERE id = ?",
+                           (prior["envelope_id"],))
+            balance = cursor.fetchone()["current_amount_cents"]
+            if operation == "envelope-transfer":
+                cursor.execute("SELECT current_amount_cents FROM envelopes WHERE id = ?",
+                               (prior["target_envelope_id"],))
+                destination_balance = cursor.fetchone()["current_amount_cents"]
+                result = {"status":"success","from_envelope_id":prior["envelope_id"],
+                          "to_envelope_id":prior["target_envelope_id"],
+                          "amount_rub":cents_to_rubles(prior["amount_cents"]),
+                          "from_new_balance_rub":cents_to_rubles(balance),
+                          "to_new_balance_rub":cents_to_rubles(destination_balance)}
+            else:
+                cursor.execute("SELECT id FROM transactions WHERE idempotency_key = ?",
+                               ("envelope-bank-v1:" + token,))
+                bank_tx = cursor.fetchone()
+                result = {"status":"success","envelope_id":prior["envelope_id"],
+                          "amount_rub":cents_to_rubles(prior["amount_cents"]),
+                          "new_balance_rub":cents_to_rubles(balance),
+                          "transaction_id":bank_tx["id"] if bank_tx else None}
+            return meta_key, digest, result
+        return meta_key, digest, None
+
+    def _reservation_result(self, cursor, request, result):
+        key, digest, _ = request
+        if key:
+            cursor.execute("INSERT INTO system_meta (key,value) VALUES (?,?)",
+                (key,json.dumps({"hash":digest,"result":result},ensure_ascii=False)))
+        return result
+
+    def _envelope_operation(self, cursor, envelope_id, operation_type, amount_cents,
+                            source_account_id=None, destination_account_id=None,
+                            target_envelope_id=None, note=None, member_id=None,
+                            operation_id=None, emit=True):
+        op_id = operation_id or generate_uuid()
+        cursor.execute("""INSERT INTO envelope_operations
+            (id,envelope_id,operation_type,amount_cents,source_account_id,
+             destination_account_id,target_envelope_id,note,member_id,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (op_id,envelope_id,operation_type,amount_cents,source_account_id,
+             destination_account_id,target_envelope_id,note,member_id,current_iso_time()))
+        if emit:
+            self._reservation_snapshot(cursor,"envelope_operations",op_id,"ENVELOPE_OPERATION","INSERT")
+        return op_id
+
+    @atomic_operation
     def create_goal(
 
         self,
@@ -3536,6 +2704,10 @@ class LedgerEngine:
 
             raise ValueError("Название цели не может быть пустым.")
 
+        self._reservation_cents(target_amount_cents)
+        self._reservation_cents(initial_saved_cents, allow_zero=True)
+        target_date = self._reservation_date(target_date)
+
         if target_amount_cents <= 0:
 
             raise ValueError("Целевая сумма должна быть строго больше нуля.")
@@ -3551,22 +2723,11 @@ class LedgerEngine:
         cursor = conn.cursor()
 
 
-        # Sanitize foreign keys to prevent FOREIGN KEY constraint failed
+        # Validate references before writing; never silently relink financial state.
         account_id = str(account_id).strip() if account_id else None
-        if account_id:
-            cursor.execute("SELECT id FROM accounts WHERE id = ?;", (account_id,))
-            if not cursor.fetchone():
-                account_id = None
-        else:
-            account_id = None
-
+        self._reservation_account(cursor, account_id)
         category_id = str(category_id).strip() if category_id else None
-        if category_id:
-            cursor.execute("SELECT id FROM categories WHERE id = ?;", (category_id,))
-            if not cursor.fetchone():
-                category_id = None
-        else:
-            category_id = None
+        self._reservation_reference(cursor, "categories", category_id)
         try:
 
             cursor.execute("""
@@ -3633,7 +2794,7 @@ class LedgerEngine:
 
             self._get_sync_engine().record_change_event("GOAL", goal_id, "INSERT", payload, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -3667,6 +2828,7 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def update_goal(
 
         self,
@@ -3701,11 +2863,16 @@ class LedgerEngine:
 
             if name is not None:
 
+                if not name.strip():
+                    raise ValueError("Название цели не может быть пустым.")
+
                 updates.append("name = ?")
 
                 params.append(name.strip())
 
             if target_amount_cents is not None:
+
+                self._reservation_cents(target_amount_cents)
 
                 if target_amount_cents <= 0:
 
@@ -3719,15 +2886,19 @@ class LedgerEngine:
 
                 updates.append("target_date = ?")
 
-                params.append(target_date)
+                params.append(self._reservation_date(target_date))
 
             if account_id is not None:
+
+                self._reservation_account(cursor, account_id or None)
 
                 updates.append("account_id = ?")
 
                 params.append(account_id or None)
 
             if category_id is not None:
+
+                self._reservation_reference(cursor, "categories", category_id or None)
 
                 updates.append("category_id = ?")
 
@@ -3765,9 +2936,9 @@ class LedgerEngine:
 
                     cursor.execute("UPDATE goals SET is_completed = ? WHERE id = ?;", (is_comp, goal_id))
 
-                    self._get_sync_engine().record_change_event("GOAL", goal_id, "UPDATE", dict(row), cursor=cursor)
+                    self._reservation_snapshot(cursor, "goals", goal_id, "GOAL")
 
-                conn.commit()
+                self._commit(conn)
 
                 self._save_if_encrypted()
 
@@ -3779,6 +2950,7 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def archive_goal(self, goal_id: str) -> bool:
 
         conn = self._get_conn()
@@ -3791,9 +2963,9 @@ class LedgerEngine:
 
             if cursor.rowcount > 0:
 
-                self._get_sync_engine().record_change_event("GOAL", goal_id, "UPDATE", {"id": goal_id, "is_active": 0}, cursor=cursor)
+                self._reservation_snapshot(cursor, "goals", goal_id, "GOAL")
 
-                conn.commit()
+                self._commit(conn)
 
                 self._save_if_encrypted()
 
@@ -3873,9 +3045,12 @@ class LedgerEngine:
 
                         if days_left > 0:
 
-                            months_left = max(1, round(days_left / 30.4))
+                            # Estimated 30-day instalments, including a payment now.
+                            # Ceil the cents so the suggested instalments cannot
+                            # undershoot the remaining amount by a fractional cent.
+                            months_left = max(1, (days_left + 29) // 30)
 
-                            monthly_cents = round(rem_cents / months_left)
+                            monthly_cents = (rem_cents + months_left - 1) // months_left
 
                             rec_monthly_rub = cents_to_rubles(monthly_cents)
 
@@ -3907,6 +3082,12 @@ class LedgerEngine:
 
                     "recommended_monthly_rub": rec_monthly_rub,
 
+                    "recommendation_is_estimate": True,
+
+                    "tracking_mode": "INFORMATIONAL",
+
+                    "currency": "RUB",
+
                     "account_id": r["account_id"],
 
                     "account_name": r["account_name"],
@@ -3933,147 +3114,97 @@ class LedgerEngine:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def contribute_to_goal(
-
-        self,
-
-        goal_id: str,
-
-        amount_cents: int,
-
-        source_account_id: Optional[str] = None,
-
-        note: Optional[str] = None,
-
-        member_id: Optional[str] = None,
-
-        idempotency_key: Optional[str] = None
-
+        self, goal_id: str, amount_cents: int,
+        source_account_id: Optional[str] = None, note: Optional[str] = None,
+        member_id: Optional[str] = None, idempotency_key: Optional[str] = None
     ) -> Dict[str, Any]:
-
-        if amount_cents <= 0:
-
-            raise ValueError("Сумма пополнения цели должна быть строго больше нуля.")
-
+        """Track a contribution and its optional bank transfer as one atomic command."""
+        self._reservation_cents(amount_cents)
         conn = self._get_conn()
-
         cursor = conn.cursor()
-
         try:
-
-            cursor.execute("SELECT * FROM goals WHERE id = ? AND is_active = 1;", (goal_id,))
-
-            goal_row = cursor.fetchone()
-
-            if not goal_row:
-
-                raise ValueError("Цель не найдена или неактивна.")
-
-            tx_id = None
-
-            if source_account_id:
-
-                dest_acc_id = goal_row["account_id"]
-
-                if not dest_acc_id:
-
-                    cursor.execute("SELECT id FROM accounts WHERE code = '1030' AND is_active = 1;")
-
-                    sav_row = cursor.fetchone()
-
-                    if sav_row:
-
-                        dest_acc_id = sav_row["id"]
-
-                if dest_acc_id and dest_acc_id != source_account_id:
-
-                    tx_id = self.record_transfer(
-
-                        from_account_id=source_account_id,
-
-                        to_account_id=dest_acc_id,
-
-                        amount_cents=amount_cents,
-
-                        description=f"Пополнение цели: {goal_row['name']}",
-
-                        created_by_member_id=member_id,
-
-                        idempotency_key=idempotency_key
-
-                    )
-
-            new_current = goal_row["current_amount_cents"] + amount_cents
-
-            is_comp = 1 if new_current >= goal_row["target_amount_cents"] else 0
-
-            cursor.execute("""
-
-            UPDATE goals SET current_amount_cents = ?, is_completed = ? WHERE id = ?;
-
-            """, (new_current, is_comp, goal_id))
-
+            request = {"goal_id":goal_id,"amount_cents":amount_cents,
+                       "source_account_id":source_account_id or None,
+                       "note":note or None,"member_id":member_id or None}
+            request_json = json.dumps(request,sort_keys=True,ensure_ascii=False,separators=(",",":"))
+            request_hash = hashlib.sha256(request_json.encode("utf-8")).hexdigest()
+            meta_key = None
             contrib_id = generate_uuid()
-
-            cursor.execute("""
-
-            INSERT INTO goal_contributions (id, goal_id, amount_cents, transaction_id, source_account_id, note, created_at)
-
-            VALUES (?, ?, ?, ?, ?, ?, ?);
-
-            """, (contrib_id, goal_id, amount_cents, tx_id, source_account_id, note, current_iso_time()))
-
-            self._get_sync_engine().record_change_event("GOAL", goal_id, "UPDATE", {
-
-                "id": goal_id,
-
-                "current_amount_cents": new_current,
-
-                "is_completed": is_comp
-
-            }, cursor=cursor)
-
-            self._get_sync_engine().record_change_event("GOAL_CONTRIBUTION", contrib_id, "INSERT", {
-
-                "id": contrib_id,
-
-                "goal_id": goal_id,
-
-                "amount_cents": amount_cents,
-
-                "transaction_id": tx_id,
-
-                "source_account_id": source_account_id,
-
-                "note": note,
-
-                "created_at": current_iso_time()
-
-            }, cursor=cursor)
-
-            conn.commit()
-
+            if idempotency_key:
+                token = hashlib.sha256(str(idempotency_key).encode("utf-8")).hexdigest()
+                meta_key = "goal-request-v1:" + token
+                contrib_id = "goal-contribution-v1:" + token
+                cursor.execute("SELECT value FROM system_meta WHERE key = ?",(meta_key,))
+                cached = cursor.fetchone()
+                if cached:
+                    saved = json.loads(cached["value"])
+                    if saved["request_hash"] != request_hash:
+                        raise ValueError("Ключ идемпотентности уже использован с другими параметрами взноса.")
+                    return saved["result"]
+                cursor.execute("SELECT * FROM goal_contributions WHERE id = ?",(contrib_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    if (existing["goal_id"] != goal_id or existing["amount_cents"] != amount_cents
+                            or existing["source_account_id"] != (source_account_id or None)
+                            or (existing["note"] or None) != (note or None)):
+                        raise ValueError("Ключ идемпотентности уже использован с другими параметрами взноса.")
+                    cursor.execute("SELECT * FROM goals WHERE id = ?",(goal_id,))
+                    current = cursor.fetchone()
+                    return {"status":"success","goal_id":goal_id,
+                            "new_current_cents":current["current_amount_cents"],
+                            "new_current_rub":cents_to_rubles(current["current_amount_cents"]),
+                            "is_completed":bool(current["is_completed"]),
+                            "transaction_id":existing["transaction_id"]}
+            cursor.execute("SELECT * FROM goals WHERE id = ? AND is_active = 1",(goal_id,))
+            goal = cursor.fetchone()
+            if goal is None:
+                raise ValueError("Цель не найдена или неактивна.")
+            self._reservation_reference(cursor,"members",member_id)
+            self._reservation_account(cursor,goal["account_id"])
+            tx_id = None
+            if source_account_id:
+                self._reservation_account(cursor,source_account_id)
+                destination = goal["account_id"]
+                if not destination:
+                    cursor.execute("SELECT id FROM accounts WHERE code = '1030' AND is_active = 1")
+                    reserve = cursor.fetchone()
+                    destination = reserve["id"] if reserve else None
+                if not destination:
+                    raise ValueError("Выберите счёт назначения для денежного взноса.")
+                self._reservation_account(cursor,destination)
+                if destination != source_account_id:
+                    if self.get_account_balance_cents(source_account_id) < amount_cents:
+                        raise ValueError("Недостаточно средств на исходном счёте.")
+                    tx_id = self.record_transfer(
+                        from_account_id=source_account_id,to_account_id=destination,
+                        amount_cents=amount_cents,description=f"Пополнение цели: {goal['name']}",
+                        created_by_member_id=member_id,
+                        idempotency_key=("goal-transfer-v1:"+token) if meta_key else None)
+            new_current = goal["current_amount_cents"] + amount_cents
+            self._reservation_cents(new_current, allow_zero=True)
+            complete = new_current >= goal["target_amount_cents"]
+            cursor.execute("UPDATE goals SET current_amount_cents = ?, is_completed = ? WHERE id = ?",
+                           (new_current,int(complete),goal_id))
+            cursor.execute("""INSERT INTO goal_contributions
+                (id,goal_id,amount_cents,transaction_id,source_account_id,note,created_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (contrib_id,goal_id,amount_cents,tx_id,source_account_id or None,note or None,current_iso_time()))
+            self._reservation_snapshot(cursor,"goals",goal_id,"GOAL")
+            self._reservation_snapshot(cursor,"goal_contributions",contrib_id,"GOAL_CONTRIBUTION","INSERT")
+            result = {"status":"success","goal_id":goal_id,"new_current_cents":new_current,
+                      "new_current_rub":cents_to_rubles(new_current),
+                      "is_completed":bool(complete),"transaction_id":tx_id}
+            if meta_key:
+                cursor.execute("INSERT INTO system_meta (key,value) VALUES (?,?)",
+                    (meta_key,json.dumps({"request_hash":request_hash,"result":result},ensure_ascii=False)))
+            self._commit(conn)
             self._save_if_encrypted()
-
-            return {
-
-                "status": "success",
-
-                "goal_id": goal_id,
-
-                "new_current_cents": new_current,
-
-                "new_current_rub": cents_to_rubles(new_current),
-
-                "is_completed": bool(is_comp),
-
-                "transaction_id": tx_id
-
-            }
-
+            return result
         finally:
-
             self._close_if_local(conn)
+
 
     # ---------------------------------------------------------
 
@@ -4093,195 +3224,11 @@ class LedgerEngine:
         custom_payment_cents: Optional[int] = None,
         custom_payment_percent: Optional[float] = None
     ) -> Dict[str, Any]:
-        """
-        Calculate payoff timelines (days and months), total overpayment, and accelerated scenarios
-        based on credit card contract rules (Sberbank TP-1001 / Russian banking rules).
-        Provides:
-        1. Grace period payoff (0% overpayment, days left)
-        2. Minimum mandatory payment (3% / min 150 rub) timeline & total bank interest
-        3. Accelerated horizons (3, 6, 12 months) with required payments in RUB and % of debt + savings
-        4. Custom payment simulation (both in RUB and % of debt)
-        """
-        from datetime import date, timedelta
-        today = date.fromisoformat(as_of_date) if as_of_date else date.today()
-        debt_cents = max(0, int(debt_cents))
-        interest_rate_percent = max(0.0, float(interest_rate_percent))
-        min_payment_percent = max(0.1, float(min_payment_percent))
-        monthly_rate = (interest_rate_percent / 100.0) / 12.0
-
-        days_left = None
-        if grace_due_date and str(grace_due_date).strip():
-            try:
-                due_clean = str(grace_due_date).strip()[:10]
-                due_dt = date.fromisoformat(due_clean)
-                days_left = (due_dt - today).days
-            except Exception:
-                days_left = grace_period_days
-        else:
-            days_left = grace_period_days
-
-        grace_active = (days_left is not None and days_left >= 0) if debt_cents > 0 else False
-
-        if debt_cents == 0:
-            return {
-                "debt_cents": 0,
-                "debt_rub": "0.00",
-                "interest_rate_percent": interest_rate_percent,
-                "min_payment_percent": min_payment_percent,
-                "grace_scenario": {
-                    "days_left": 0,
-                    "due_date": grace_due_date,
-                    "is_active": False,
-                    "required_full_payment_rub": "0.00",
-                    "total_interest_cents": 0,
-                    "total_interest_rub": "0.00",
-                    "savings_rub": "0.00",
-                    "note": "Задолженность отсутствует."
-                },
-                "minimum_scenario": {
-                    "first_payment_cents": 0,
-                    "first_payment_rub": "0.00",
-                    "payment_percent": min_payment_percent,
-                    "months_to_payoff": 0,
-                    "days_to_payoff": 0,
-                    "payoff_date": today.isoformat(),
-                    "total_paid_rub": "0.00",
-                    "total_interest_cents": 0,
-                    "total_interest_rub": "0.00"
-                },
-                "accelerated_scenarios": [],
-                "custom_scenario": None
-            }
-
-        # 1. Minimum payment simulation
-        first_min_cents = max(15000, round(debt_cents * (min_payment_percent / 100.0)))
-        first_min_cents = min(debt_cents, first_min_cents)
-
-        d_sim = debt_cents
-        min_months = 0
-        min_total_interest = 0
-        max_months = 360
-
-        while d_sim > 0 and min_months < max_months:
-            min_months += 1
-            interest = round(d_sim * monthly_rate)
-            min_total_interest += interest
-            calc_pay = max(15000, round(d_sim * (min_payment_percent / 100.0)))
-            if calc_pay < interest + 100:
-                calc_pay = interest + 100
-            principal = min(d_sim, calc_pay - interest)
-            d_sim -= principal
-
-        min_days = min_months * 30
-        min_payoff_date = (today + timedelta(days=min_days)).isoformat()
-
-        # Grace scenario
-        grace_scenario = {
-            "days_left": max(0, days_left) if days_left is not None else 0,
-            "due_date": grace_due_date,
-            "is_active": grace_active,
-            "required_full_payment_rub": cents_to_rubles(debt_cents),
-            "total_interest_cents": 0,
-            "total_interest_rub": "0.00",
-            "savings_rub": cents_to_rubles(min_total_interest),
-            "note": "Погашение до окончания льготного периода — 0.00 ₽ переплаты банку (100% экономия)"
-        }
-
-        # 2. Accelerated target horizons (3, 6, 12 months)
-        accelerated = []
-        for n in (3, 6, 12):
-            if interest_rate_percent > 0:
-                i = monthly_rate
-                factor = (1.0 + i) ** n
-                p_val = debt_cents * (i * factor) / (factor - 1.0)
-                p_cents = round(p_val)
-            else:
-                p_cents = round(debt_cents / n)
-            tot_paid = p_cents * n
-            tot_int = max(0, tot_paid - debt_cents)
-            savings = max(0, min_total_interest - tot_int)
-            days_n = n * 30
-            target_dt = (today + timedelta(days=days_n)).isoformat()
-            pct_n = round((p_cents / debt_cents) * 100.0, 1)
-
-            labels = {3: "Спринт за 3 месяца", 6: "Оптимально за 6 месяцев", 12: "Комфортно за 1 год"}
-            accelerated.append({
-                "months": n,
-                "days": days_n,
-                "target_date": target_dt,
-                "monthly_payment_cents": p_cents,
-                "monthly_payment_rub": cents_to_rubles(p_cents),
-                "monthly_payment_percent": pct_n,
-                "total_interest_cents": tot_int,
-                "total_interest_rub": cents_to_rubles(tot_int),
-                "interest_savings_cents": savings,
-                "interest_savings_rub": cents_to_rubles(savings),
-                "days_saved": max(0, min_days - days_n),
-                "label": labels.get(n, f"За {n} месяцев")
-            })
-
-        # 3. Custom scenario (if requested)
-        custom_sc = None
-        if custom_payment_cents or custom_payment_percent:
-            if custom_payment_cents is None and custom_payment_percent is not None:
-                c_cents = round(debt_cents * (float(custom_payment_percent) / 100.0))
-                c_pct = float(custom_payment_percent)
-            else:
-                c_cents = max(100, int(custom_payment_cents))
-                c_pct = round((c_cents / debt_cents) * 100.0, 1)
-
-            d_cust = debt_cents
-            c_months = 0
-            c_tot_int = 0
-            while d_cust > 0 and c_months < max_months:
-                c_months += 1
-                intr = round(d_cust * monthly_rate)
-                c_tot_int += intr
-                p_eff = min(d_cust + intr, c_cents)
-                if p_eff <= intr and d_cust > 0:
-                    c_months = 999
-                    break
-                princ = min(d_cust, p_eff - intr)
-                d_cust -= princ
-
-            c_days = c_months * 30
-            c_dt = (today + timedelta(days=c_days)).isoformat()
-            c_savings = max(0, min_total_interest - c_tot_int)
-
-            custom_sc = {
-                "monthly_payment_cents": c_cents,
-                "monthly_payment_rub": cents_to_rubles(c_cents),
-                "payment_percent": c_pct,
-                "months_to_payoff": c_months,
-                "days_to_payoff": c_days,
-                "payoff_date": c_dt,
-                "total_interest_cents": c_tot_int,
-                "total_interest_rub": cents_to_rubles(c_tot_int),
-                "interest_savings_cents": c_savings,
-                "interest_savings_rub": cents_to_rubles(c_savings),
-                "days_saved": max(0, min_days - c_days)
-            }
-
-        return {
-            "debt_cents": debt_cents,
-            "debt_rub": cents_to_rubles(debt_cents),
-            "interest_rate_percent": interest_rate_percent,
-            "min_payment_percent": min_payment_percent,
-            "grace_scenario": grace_scenario,
-            "minimum_scenario": {
-                "first_payment_cents": first_min_cents,
-                "first_payment_rub": cents_to_rubles(first_min_cents),
-                "payment_percent": min_payment_percent,
-                "months_to_payoff": min_months,
-                "days_to_payoff": min_days,
-                "payoff_date": min_payoff_date,
-                "total_paid_rub": cents_to_rubles(debt_cents + min_total_interest),
-                "total_interest_cents": min_total_interest,
-                "total_interest_rub": cents_to_rubles(min_total_interest)
-            },
-            "accelerated_scenarios": accelerated,
-            "custom_scenario": custom_sc
-        }
+        """Return deterministic, explicitly labelled credit estimate scenarios."""
+        from family_finances_os.debt_math import payoff_scenarios
+        return payoff_scenarios(debt_cents, interest_rate_percent, min_payment_percent,
+                                grace_period_days, grace_due_date, as_of_date,
+                                custom_payment_cents, custom_payment_percent)
 
     @staticmethod
     def calculate_credit_card_banking_metrics(
@@ -4294,149 +3241,13 @@ class LedgerEngine:
         late_penalty_rate_percent: float = 36.0,
         as_of_date: str = None
     ) -> dict:
-        """
-        Calculate banking indicators for credit cards according to Russian banking rules
-        and specific PAO Sberbank contract parameters (120 days grace, 24.8% APR, 36.0% overdue penalty):
-        - Minimum monthly mandatory payment (standard 3% Sberbank / 5% general Russian banks, min 150 rubles)
-        - Days remaining until grace period expiration / payment due date
-        - Status (PAID_OFF, GRACE_ACTIVE, PAYMENT_DUE_SOON, OVERDUE)
-        - Overdue interest & penalty accumulation (APR, 36.0% overdue penalty according to Sberbank contract)
-        - 30-day overdue simulation
-        """
-        from datetime import date
-        today = date.fromisoformat(as_of_date) if as_of_date else date.today()
-        debt_cents = max(0, int(debt_cents))
-        credit_limit_cents = max(0, int(credit_limit_cents))
-        interest_rate_percent = float(interest_rate_percent)
-        grace_period_days = int(grace_period_days)
-        min_payment_percent = float(min_payment_percent)
-        late_penalty_rate_percent = float(late_penalty_rate_percent)
+        """Estimate indicators; no calculated interest is posted to the ledger."""
+        from family_finances_os.debt_math import banking_metrics
+        return banking_metrics(debt_cents, credit_limit_cents, interest_rate_percent,
+                               grace_period_days, grace_due_date, min_payment_percent,
+                               late_penalty_rate_percent, as_of_date)
 
-        if debt_cents == 0:
-            min_payment_cents = 0
-        else:
-            calc_min = round(debt_cents * (min_payment_percent / 100.0))
-            min_payment_cents = min(debt_cents, max(15000, calc_min))
-
-        days_remaining = None
-        due_date_str = None
-        if grace_due_date and str(grace_due_date).strip():
-            try:
-                clean_due = str(grace_due_date).strip()[:10]
-                due_parsed = date.fromisoformat(clean_due)
-                days_remaining = (due_parsed - today).days
-                due_date_str = clean_due
-            except Exception:
-                days_remaining = None
-
-        min_payment_str = cents_to_rubles(min_payment_cents)
-        debt_str = cents_to_rubles(debt_cents)
-
-        if debt_cents == 0:
-            status = "PAID_OFF"
-            status_label = "Задолженность отсутствует"
-            status_color = "gray"
-            is_urgent = False
-            is_overdue = False
-            overdue_days = 0
-            warning_message = "Задолженность по карте отсутствует (0.00 ₽). Проценты и штрафы не начисляются."
-        elif days_remaining is not None and days_remaining < 0:
-            status = "OVERDUE"
-            overdue_days = abs(days_remaining)
-            status_label = f"Просрочка {overdue_days} дн.!"
-            status_color = "red"
-            is_urgent = True
-            is_overdue = True
-            warning_message = (
-                f"ВНИМАНИЕ: Платеж просрочен на {overdue_days} дн.! "
-                f"Банк начисляет неустойку {late_penalty_rate_percent:.1f}% годовых и ставку {interest_rate_percent:.1f}% годовых. "
-                f"Срочно внесите минимальный платеж {min_payment_str} ₽!"
-            )
-        elif days_remaining is not None and days_remaining <= 5:
-            status = "PAYMENT_DUE_SOON"
-            overdue_days = 0
-            status_label = f"Срочно: осталось {days_remaining} дн."
-            status_color = "yellow"
-            is_urgent = True
-            is_overdue = False
-            warning_message = (
-                f"Срочно: через {days_remaining} дн. наступает дата платежа (до {due_date_str})! "
-                f"Внесите обязательный платеж {min_payment_str} ₽ или закройте долг целиком {debt_str} ₽."
-            )
-        else:
-            status = "GRACE_ACTIVE"
-            overdue_days = 0
-            status_label = f"В грейсе ({days_remaining} дн.)" if days_remaining is not None else "Льготный период активен"
-            status_color = "green"
-            is_urgent = False
-            is_overdue = False
-            rem_text = f"еще {days_remaining} дн." if days_remaining is not None else "активен"
-            warning_message = f"Беспроцентный период {rem_text}. Обязательный платеж: {min_payment_str} ₽."
-
-        r_daily = (interest_rate_percent / 100.0) / 365.0
-        p_daily = (late_penalty_rate_percent / 100.0) / 365.0
-
-        if is_overdue and debt_cents > 0:
-            accrued_overdue_interest_cents = round(debt_cents * r_daily * overdue_days)
-            accrued_overdue_penalty_cents = round(debt_cents * p_daily * overdue_days)
-        else:
-            accrued_overdue_interest_cents = 0
-            accrued_overdue_penalty_cents = 0
-
-        current_debt_with_accruals_cents = debt_cents + accrued_overdue_interest_cents + accrued_overdue_penalty_cents
-
-        sim_30d_interest_cents = round(debt_cents * r_daily * 30)
-        sim_30d_penalty_cents = round(debt_cents * p_daily * 30)
-        sim_30d_extra_cents = sim_30d_interest_cents + sim_30d_penalty_cents
-        sim_30d_total_cents = debt_cents + sim_30d_extra_cents
-
-        return {
-            "debt_cents": debt_cents,
-            "debt_rub": float(debt_str),
-            "debt_formatted": debt_str,
-            "credit_limit_cents": credit_limit_cents,
-            "credit_limit_rub": float(cents_to_rubles(credit_limit_cents)),
-            "credit_limit_formatted": cents_to_rubles(credit_limit_cents),
-            "interest_rate_percent": interest_rate_percent,
-            "grace_period_days": grace_period_days,
-            "grace_due_date": due_date_str,
-            "min_payment_percent": min_payment_percent,
-            "late_penalty_rate_percent": late_penalty_rate_percent,
-            "min_payment_cents": min_payment_cents,
-            "min_payment_rub": float(min_payment_str),
-            "min_payment_formatted": min_payment_str,
-            "days_remaining": days_remaining,
-            "overdue_days": overdue_days,
-            "status": status,
-            "status_label": status_label,
-            "status_color": status_color,
-            "is_urgent": is_urgent,
-            "is_overdue": is_overdue,
-            "warning_message": warning_message,
-            "accrued_overdue_interest_cents": accrued_overdue_interest_cents,
-            "accrued_overdue_interest_rub": float(cents_to_rubles(accrued_overdue_interest_cents)),
-            "accrued_overdue_penalty_cents": accrued_overdue_penalty_cents,
-            "accrued_overdue_penalty_rub": float(cents_to_rubles(accrued_overdue_penalty_cents)),
-            "current_debt_with_accruals_cents": current_debt_with_accruals_cents,
-            "current_debt_with_accruals_rub": float(cents_to_rubles(current_debt_with_accruals_cents)),
-            "simulation_30d_interest_cents": sim_30d_interest_cents,
-            "simulation_30d_interest_rub": float(cents_to_rubles(sim_30d_interest_cents)),
-            "simulation_30d_penalty_cents": sim_30d_penalty_cents,
-            "simulation_30d_penalty_rub": float(cents_to_rubles(sim_30d_penalty_cents)),
-            "simulation_30d_extra_cents": sim_30d_extra_cents,
-            "simulation_30d_extra_rub": float(cents_to_rubles(sim_30d_extra_cents)),
-            "simulation_30d_total_cents": sim_30d_total_cents,
-            "simulation_30d_total_rub": float(cents_to_rubles(sim_30d_total_cents)),
-            "payoff_scenarios": LedgerEngine.calculate_credit_payoff_scenarios(
-                debt_cents=debt_cents,
-                interest_rate_percent=interest_rate_percent,
-                min_payment_percent=min_payment_percent,
-                grace_period_days=grace_period_days,
-                grace_due_date=grace_due_date,
-                as_of_date=as_of_date
-            )
-        }
-
+    @atomic_operation
     def create_debt(
         self,
         name: str,
@@ -4467,12 +3278,21 @@ class LedgerEngine:
         if subtype not in valid_subtypes:
             raise ValueError(f"Недопустимый тип задолженности: {subtype}")
 
-        if credit_limit_cents < 0:
-            raise ValueError("Кредитный лимит не может быть меньше нуля.")
-        if initial_debt_cents < 0:
-            raise ValueError("Сумма долга не может быть меньше нуля.")
-        if monthly_payment_cents < 0:
-            raise ValueError("Ежемесячный платеж не может быть меньше нуля.")
+        from family_finances_os.debt_math import integer_amount, validate_terms
+        credit_limit_cents = integer_amount(credit_limit_cents, "Кредитный лимит")
+        initial_debt_cents = integer_amount(initial_debt_cents, "Начальный долг")
+        monthly_payment_cents = integer_amount(monthly_payment_cents, "Ежемесячный платёж")
+        terms = validate_terms(interest_rate_percent, grace_period_days, grace_due_date,
+                               min_payment_percent, late_penalty_rate_percent)
+        if due_day is not None and (isinstance(due_day, bool) or not isinstance(due_day, int) or not 1 <= due_day <= 31):
+            raise ValueError("День платежа должен быть от 1 до 31.")
+        if monthly_payment_cents and due_day is None:
+            raise ValueError("Укажите день ежемесячного платежа.")
+        if receive_money and not destination_account_id:
+            raise ValueError("Укажите счёт зачисления заёмных средств.")
+        if tx_date:
+            from datetime import date
+            date.fromisoformat(tx_date)
 
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -4505,17 +3325,13 @@ class LedgerEngine:
                 destination_account_id = str(destination_account_id).strip()
                 cursor.execute("SELECT id FROM accounts WHERE id = ?;", (destination_account_id,))
                 if not cursor.fetchone():
-                    destination_account_id = None
+                    raise ValueError("Счёт зачисления не найден.")
             else:
                 destination_account_id = None
             if subtype == "CREDIT_CARD":
                 meta = {
                     "note": description.strip() if description else "",
-                    "interest_rate_percent": float(interest_rate_percent),
-                    "grace_period_days": int(grace_period_days),
-                    "grace_due_date": str(grace_due_date).strip() if grace_due_date else None,
-                    "min_payment_percent": float(min_payment_percent),
-                    "late_penalty_rate_percent": float(late_penalty_rate_percent)
+                    **terms
                 }
                 desc_val = json.dumps(meta, ensure_ascii=False)
             else:
@@ -4550,6 +3366,8 @@ class LedgerEngine:
                     dest_acc = self.get_account_by_id(destination_account_id)
                     if not dest_acc:
                         raise ValueError(f"Счет зачисления {destination_account_id} не найден.")
+                    if dest_acc.account_type != "ASSET" or not dest_acc.is_active or dest_acc.currency != "RUB":
+                        raise ValueError("Заём в рублях можно зачислить только на активный рублёвый счёт активов.")
                     tx_desc = f"Получение кредита / займа '{name.strip()}'"
                     postings = [
                         Posting(
@@ -4620,12 +3438,15 @@ class LedgerEngine:
                     """, (p.id, p.transaction_id, p.account_id, p.amount_cents, p.posting_type, p.ownership_scope, p.purpose_allocation, p.note))
 
                 cursor.execute("SELECT * FROM transactions WHERE id = ?;", (tx_id,))
-                self._get_sync_engine().record_change_event("TRANSACTION", tx_id, "INSERT", dict(cursor.fetchone()), cursor=cursor)
+                transaction_payload = dict(cursor.fetchone())
+                cursor.execute("SELECT p.*, a.code AS account_code FROM postings p JOIN accounts a ON a.id = p.account_id WHERE p.transaction_id = ? ORDER BY p.id;", (tx_id,))
+                transaction_payload["postings"] = [dict(p) for p in cursor.fetchall()]
+                self._get_sync_engine().record_change_event("TRANSACTION", tx_id, "INSERT", transaction_payload, cursor=cursor)
 
             obligation_id = None
             if monthly_payment_cents > 0 and due_day:
                 obligation_id = generate_uuid()
-                day_val = max(1, min(31, int(due_day)))
+                day_val = due_day
                 ob_cat_id = DEBT_CATEGORY_MAP.get(subtype, "cat_debts")
                 cursor.execute("SELECT id FROM categories WHERE id = ?;", (ob_cat_id,))
                 if not cursor.fetchone():
@@ -4656,7 +3477,7 @@ class LedgerEngine:
                 cursor.execute("SELECT * FROM obligations WHERE id = ?;", (obligation_id,))
                 self._get_sync_engine().record_change_event("OBLIGATION", obligation_id, "INSERT", dict(cursor.fetchone()), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
             self._save_if_encrypted()
 
             return {
@@ -4673,6 +3494,7 @@ class LedgerEngine:
         finally:
             self._close_if_local(conn)
 
+    @atomic_operation
     def update_credit_card_settings(
         self,
         account_id: str,
@@ -4686,6 +3508,11 @@ class LedgerEngine:
         """
         Update banking terms and grace period due date for a credit card account.
         """
+        from family_finances_os.debt_math import integer_amount, validate_terms
+        terms = validate_terms(interest_rate_percent, grace_period_days, grace_due_date,
+                               min_payment_percent, late_penalty_rate_percent)
+        if credit_limit_cents is not None:
+            credit_limit_cents = integer_amount(credit_limit_cents, "Кредитный лимит")
         conn = self._get_conn()
         cursor = conn.cursor()
         try:
@@ -4693,6 +3520,8 @@ class LedgerEngine:
             row = cursor.fetchone()
             if not row:
                 raise ValueError(f"Счет задолженности {account_id} не найден.")
+            if row["account_type"] != "LIABILITY" or row["subtype"] != "CREDIT_CARD" or not row["is_active"]:
+                raise ValueError("Настройки применимы только к активной кредитной карте.")
 
             current_desc = row["description"] or ""
             note = ""
@@ -4707,11 +3536,7 @@ class LedgerEngine:
 
             meta = {
                 "note": note,
-                "interest_rate_percent": float(interest_rate_percent),
-                "grace_period_days": int(grace_period_days),
-                "grace_due_date": str(grace_due_date).strip() if grace_due_date else None,
-                "min_payment_percent": float(min_payment_percent),
-                "late_penalty_rate_percent": float(late_penalty_rate_percent)
+                **terms
             }
             new_desc = json.dumps(meta, ensure_ascii=False)
 
@@ -4720,7 +3545,7 @@ class LedgerEngine:
                 UPDATE accounts
                 SET description = ?, credit_limit_cents = ?
                 WHERE id = ?;
-                """, (new_desc, max(0, int(credit_limit_cents)), account_id))
+                """, (new_desc, credit_limit_cents, account_id))
             else:
                 cursor.execute("""
                 UPDATE accounts
@@ -4732,7 +3557,7 @@ class LedgerEngine:
             updated_row = dict(cursor.fetchone())
             self._get_sync_engine().record_change_event("ACCOUNT", account_id, "UPDATE", updated_row, cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
             self._save_if_encrypted()
 
             return {
@@ -4754,27 +3579,20 @@ class LedgerEngine:
         try:
             cursor.execute("""
             SELECT 
-                a.id, a.code, a.name, a.subtype, a.credit_limit_cents, a.ownership_scope,
+                a.id, a.code, a.name, a.subtype, a.currency, a.credit_limit_cents, a.ownership_scope,
                 a.description,
                 COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) -
                 COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) as balance_cents
             FROM accounts a
             LEFT JOIN postings p ON a.id = p.account_id
-            LEFT JOIN transactions t ON p.transaction_id = t.id AND t.is_voided = 0
+                AND EXISTS (SELECT 1 FROM transactions t WHERE t.id = p.transaction_id AND t.is_voided = 0)
             WHERE a.account_type = 'LIABILITY' AND a.is_active = 1
             GROUP BY a.id
             ORDER BY a.code;
             """)
             rows = cursor.fetchall()
 
-            cursor.execute("""
-            SELECT o.id, o.name, o.amount_cents, o.due_day, o.payment_account_id,
-                   op.paid_amount_cents, op.paid_at
-            FROM obligations o
-            LEFT JOIN obligation_payments op ON o.id = op.obligation_id AND op.month_year = ?
-            WHERE o.is_active = 1;
-            """, (current_iso_time()[:7],))
-            ob_rows = cursor.fetchall()
+            ob_rows = self.get_obligations(current_iso_time()[:7])
             ob_by_acc = {}
             for ob in ob_rows:
                 acc_id = ob["payment_account_id"]
@@ -4785,7 +3603,9 @@ class LedgerEngine:
                         "amount_cents": ob["amount_cents"],
                         "amount_rub": cents_to_rubles(ob["amount_cents"]),
                         "due_day": ob["due_day"],
-                        "is_paid": ob["paid_amount_cents"] is not None
+                        "is_paid": ob["is_paid_this_month"],
+                        "paid_amount_cents": ob["paid_amount_cents"],
+                        "remaining_cents": ob["remaining_cents"]
                     }
 
             debts = []
@@ -4794,15 +3614,22 @@ class LedgerEngine:
             loans_debt_cents = 0
             urgent_cards_count = 0
             total_min_payments_cents = 0
+            totals_by_currency = {}
 
             for r in rows:
                 bal = max(0, r["balance_cents"])
                 limit = r["credit_limit_cents"] or 0
                 subtype = r["subtype"]
+                currency = r["currency"]
+                bucket = totals_by_currency.setdefault(currency, {"currency": currency, "total_debt_cents": 0,
+                    "credit_cards_debt_cents": 0, "loans_debt_cents": 0, "total_min_payments_cents": 0})
+                bucket["total_debt_cents"] += bal
 
                 banking = None
                 if subtype == "CREDIT_CARD":
-                    credit_cards_debt_cents += bal
+                    bucket["credit_cards_debt_cents"] += bal
+                    if currency == "RUB":
+                        credit_cards_debt_cents += bal
                     avail_cents = max(0, limit - bal)
 
                     apr = 24.8
@@ -4827,32 +3654,52 @@ class LedgerEngine:
                     else:
                         note = raw_desc
 
-                    banking = self.calculate_credit_card_banking_metrics(
-                        debt_cents=bal,
-                        credit_limit_cents=limit,
-                        interest_rate_percent=apr,
-                        grace_period_days=grace_days,
-                        grace_due_date=grace_due,
-                        min_payment_percent=min_pct,
-                        late_penalty_rate_percent=late_penalty
-                    )
+                    try:
+                        banking = self.calculate_credit_card_banking_metrics(
+                            debt_cents=bal, credit_limit_cents=limit, interest_rate_percent=apr,
+                            grace_period_days=grace_days, grace_due_date=grace_due,
+                            min_payment_percent=min_pct, late_penalty_rate_percent=late_penalty)
+                    except ValueError as exc:
+                        # Legacy malformed terms must not hide the principal or
+                        # silently produce guaranteed-looking rate estimates.
+                        banking = {"status": "INVALID_TERMS", "status_label": "Проверьте условия карты",
+                                   "status_color": "gray", "is_urgent": False, "is_overdue": False,
+                                   "min_payment_cents": 0, "min_payment_rub": None,
+                                   "min_payment_formatted": None, "warning_message": str(exc),
+                                   "payoff_scenarios": None, "is_estimate": True}
+                    if currency != "RUB":
+                        banking = {"status": "UNSUPPORTED_CURRENCY", "status_label": "Укажите валютные условия",
+                                   "status_color": "gray", "is_urgent": False, "is_overdue": False,
+                                   "min_payment_cents": 0, "min_payment_rub": None,
+                                   "min_payment_formatted": None, "payoff_scenarios": None,
+                                   "is_estimate": True,
+                                   "warning_message": "Расчётная модель с минимумом 150 ₽ не применяется к другой валюте. Основной долг показан в валюте счёта."}
+                    banking["currency"] = currency
                     banking["note"] = note
                     if banking["is_urgent"] and bal > 0:
                         urgent_cards_count += 1
-                    total_min_payments_cents += banking["min_payment_cents"]
+                    bucket["total_min_payments_cents"] += banking["min_payment_cents"]
+                    if currency == "RUB":
+                        total_min_payments_cents += banking["min_payment_cents"]
                 else:
-                    loans_debt_cents += bal
+                    bucket["loans_debt_cents"] += bal
+                    if currency == "RUB":
+                        loans_debt_cents += bal
                     avail_cents = 0
 
-                total_debt_cents += bal
+                if currency == "RUB":
+                    total_debt_cents += bal
 
                 debts.append({
                     "id": r["id"],
                     "code": r["code"],
                     "name": r["name"],
                     "subtype": subtype,
+                    "currency": currency,
                     "debt_cents": bal,
                     "debt_rub": cents_to_rubles(bal),
+                    "credit_balance_cents": max(0, -r["balance_cents"]),
+                    "credit_balance_rub": cents_to_rubles(max(0, -r["balance_cents"])),
                     "credit_limit_cents": limit,
                     "credit_limit_rub": cents_to_rubles(limit),
                     "available_cents": avail_cents,
@@ -4864,6 +3711,8 @@ class LedgerEngine:
 
             return {
                 "debts": debts,
+                "totals_currency": "RUB",
+                "totals_by_currency": totals_by_currency,
                 "total_debt_cents": total_debt_cents,
                 "total_debt_rub": cents_to_rubles(total_debt_cents),
                 "credit_cards_debt_cents": credit_cards_debt_cents,
@@ -4878,179 +3727,75 @@ class LedgerEngine:
         finally:
             self._close_if_local(conn)
 
+    @atomic_operation
     def record_debt_repayment(
-
-        self,
-
-        source_account_id: str,
-
-        liability_account_id: str,
-
-        amount_cents: int,
-
-        description: Optional[str] = None,
-
-        obligation_id: Optional[str] = None,
-
-        member_id: Optional[str] = None,
-
-        idempotency_key: Optional[str] = None,
+        self, source_account_id: str, liability_account_id: str, amount_cents: int,
+        description: Optional[str] = None, obligation_id: Optional[str] = None,
+        member_id: Optional[str] = None, idempotency_key: Optional[str] = None,
         category_id: Optional[str] = None
-
     ) -> str:
-
-        """
-
-        Record strict double-entry debt repayment:
-
-        DEBIT: Liability account (reduces debt)
-
-        CREDIT: Source asset account (reduces cash/card)
-
-        Type: CREDIT_PAYMENT if subtype is CREDIT_CARD, else LOAN_REPAYMENT
-
-        """
-
-        if amount_cents <= 0:
-
-            raise ValueError("Сумма погашения задолженности должна быть строго больше нуля.")
-
-        source_acc = self.get_account_by_id(source_account_id)
-
-        if not source_acc or source_acc.account_type != "ASSET":
-
-            raise ValueError(f"Счет списания {source_account_id} не найден или не является счетом активов.")
-
-        liability_acc = self.get_account_by_id(liability_account_id)
-
-        if not liability_acc or liability_acc.account_type != "LIABILITY":
-
-            raise ValueError(f"Счет задолженности {liability_account_id} не найден или не является счетом обязательств.")
-
-        tx_type = "CREDIT_PAYMENT" if liability_acc.subtype == "CREDIT_CARD" else "LOAN_REPAYMENT"
-
-        desc = description.strip() if description and description.strip() else f"Погашение: {liability_acc.name}"
-
-        tx_id = generate_uuid()
-
-        tx_date = current_iso_time()[:10]
-
-        # Sanitize member_id and ensure obligation/repayment category exists
+        """Atomically repay principal and link its unique payment to a month."""
+        from family_finances_os.models import require_cents
+        require_cents(amount_cents)
+        source = self.get_account_by_id(source_account_id)
+        liability = self.get_account_by_id(liability_account_id)
+        if not source or source.account_type != "ASSET" or not source.is_active:
+            raise ValueError("Счёт списания должен быть активным счётом активов.")
+        if not liability or liability.account_type != "LIABILITY" or not liability.is_active:
+            raise ValueError("Счёт задолженности должен быть активным обязательством.")
+        if source.currency != liability.currency:
+            raise ValueError("Погашение между разными валютами без модели обмена запрещено.")
         conn = self._get_conn()
         cursor = conn.cursor()
         try:
             if member_id:
-                member_id = str(member_id).strip()
                 cursor.execute("SELECT id FROM members WHERE id = ?;", (member_id,))
                 if not cursor.fetchone():
-                    member_id = None
-            else:
-                member_id = None
-
-            cat = category_id or DEBT_CATEGORY_MAP.get(liability_acc.subtype, "cat_debts")
-            if cat:
-                cat = str(cat).strip()
-                cursor.execute("SELECT id FROM categories WHERE id = ?;", (cat,))
+                    raise ValueError("Участник не найден.")
+            if obligation_id:
+                cursor.execute("SELECT payment_account_id FROM obligations WHERE id = ? AND is_active = 1;", (obligation_id,))
+                obligation = cursor.fetchone()
+                if not obligation:
+                    raise ValueError("Обязательный платёж не найден.")
+                if obligation["payment_account_id"] not in (None, liability.id):
+                    raise ValueError("Обязательный платёж относится к другой задолженности.")
+            cat = category_id or DEBT_CATEGORY_MAP.get(liability.subtype, "cat_debts")
+            if category_id:
+                cursor.execute("SELECT id FROM categories WHERE id = ? AND category_type = 'EXPENSE' AND is_active = 1;", (cat,))
                 if not cursor.fetchone():
-                    cursor.execute("SELECT id FROM categories WHERE id = 'cat_debts';")
-                    if not cursor.fetchone():
-                        cursor.execute("""
-                        INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
-                        VALUES ('cat_debts', 'Кредиты, долги и займы', 'EXPENSE', NULL, '💳', 80, 1);
-                        """)
-                    cursor.execute("""
-                    INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
-                    VALUES (?, 'Погашение задолженности', 'EXPENSE', 'cat_debts', '💳', 81, 1);
-                    """, (cat,))
-                    conn.commit()
+                    raise ValueError("Категория погашения не найдена.")
+            else:
+                cursor.execute("INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active) VALUES ('cat_debts', 'Кредиты, долги и займы', 'EXPENSE', NULL, '💳', 80, 1);")
+                cursor.execute("INSERT OR IGNORE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active) VALUES (?, 'Погашение задолженности', 'EXPENSE', 'cat_debts', '💳', 81, 1);", (cat,))
+            existing = None
+            if idempotency_key:
+                cursor.execute("SELECT id, tx_date FROM transactions WHERE idempotency_key = ?;", (idempotency_key,))
+                existing = cursor.fetchone()
+            txid = generate_uuid()
+            tx = Transaction(id=txid,
+                tx_date=existing["tx_date"] if existing else current_iso_time()[:10],
+                tx_type="CREDIT_PAYMENT" if liability.subtype == "CREDIT_CARD" else "LOAN_REPAYMENT",
+                description=description.strip() if description and description.strip() else f"Погашение: {liability.name}",
+                created_by_member_id=member_id,
+                postings=[Posting(id=generate_uuid(),transaction_id=txid,account_id=liability.id,
+                                  amount_cents=amount_cents,posting_type="DEBIT",ownership_scope=liability.ownership_scope,
+                                  purpose_allocation="SAFE_TO_SPEND",category_id=cat),
+                          Posting(id=generate_uuid(),transaction_id=txid,account_id=source.id,
+                                  amount_cents=amount_cents,posting_type="CREDIT",ownership_scope=source.ownership_scope,
+                                  purpose_allocation="SAFE_TO_SPEND",category_id=cat)])
+            if not existing:
+                debt = self.get_account_balance_cents(liability.id)
+                if amount_cents > max(0, debt):
+                    raise ValueError("Платёж превышает текущий долг. Переплата не поддерживается.")
+                if amount_cents > self.get_account_balance_cents(source.id):
+                    raise ValueError("На счёте списания недостаточно средств.")
+            saved_id = self.record_transaction(tx, idempotency_key=idempotency_key)
+            if obligation_id:
+                self.mark_obligation_paid(obligation_id=obligation_id, month_year=tx.tx_date[:7],
+                                          transaction_id=saved_id, paid_amount_cents=amount_cents)
+            return saved_id
         finally:
             self._close_if_local(conn)
-
-        postings = [
-
-            # DEBIT Liability (reduces liability balance)
-
-            Posting(
-
-                id=generate_uuid(),
-
-                transaction_id=tx_id,
-
-                account_id=liability_acc.id,
-
-                amount_cents=amount_cents,
-
-                posting_type="DEBIT",
-
-                ownership_scope=liability_acc.ownership_scope,
-
-                purpose_allocation="SAFE_TO_SPEND",
-
-                category_id=cat,
-
-                note=f"Погашение долга по '{liability_acc.name}'"
-
-            ),
-
-            # CREDIT Asset (cash/card reduction)
-
-            Posting(
-
-                id=generate_uuid(),
-
-                transaction_id=tx_id,
-
-                account_id=source_acc.id,
-
-                amount_cents=amount_cents,
-
-                posting_type="CREDIT",
-
-                ownership_scope=source_acc.ownership_scope,
-
-                purpose_allocation="SAFE_TO_SPEND",
-
-                category_id=cat,
-
-                note=f"Оплата задолженности: '{liability_acc.name}'"
-
-            )
-
-        ]
-
-        tx = Transaction(
-
-            id=tx_id,
-
-            tx_date=tx_date,
-
-            tx_type=tx_type,
-
-            description=desc,
-
-            created_by_member_id=member_id,
-
-            postings=postings
-
-        )
-
-        saved_id = self.record_transaction(tx, idempotency_key=idempotency_key)
-
-        # If linked obligation specified, mark it paid
-
-        if obligation_id:
-
-            self.mark_obligation_paid(
-
-                obligation_id=obligation_id,
-
-                transaction_id=saved_id,
-
-                paid_amount_cents=amount_cents
-
-            )
-
-        return saved_id
 
     # ---------------------------------------------------------
 
@@ -5390,6 +4135,7 @@ class LedgerEngine:
 
     # ---------------------------------------------------------
 
+    @atomic_operation
     def create_envelope(
 
         self,
@@ -5414,6 +4160,9 @@ class LedgerEngine:
 
         """Create a new savings envelope / piggy bank."""
 
+        self._reservation_cents(target_amount_cents, allow_zero=True)
+        self._reservation_cents(initial_amount_cents, allow_zero=True)
+
         if not name or not name.strip():
 
             raise ValueError("Название конверта-копилки не может быть пустым.")
@@ -5433,6 +4182,9 @@ class LedgerEngine:
         cursor = conn.cursor()
 
         try:
+
+            self._reservation_account(cursor, linked_account_id)
+            self._reservation_reference(cursor, "categories", category_id)
 
             cursor.execute("""
 
@@ -5468,21 +4220,16 @@ class LedgerEngine:
 
             }
 
+            from .reservation_events import ensure_baseline
+            ensure_baseline(cursor, "ENVELOPE", env_id, base_cents=0)
             self._get_sync_engine().record_change_event("ENVELOPE", env_id, "INSERT", payload, cursor=cursor)
 
             if initial_amount_cents > 0:
 
-                op_id = generate_uuid()
+                self._envelope_operation(cursor, env_id, "DEPOSIT", initial_amount_cents,
+                                         note="Начальный остаток копилки")
 
-                cursor.execute("""
-
-                INSERT INTO envelope_operations (id, envelope_id, operation_type, amount_cents, note)
-
-                VALUES (?, ?, 'DEPOSIT', ?, 'Начальный остаток копилки');
-
-                """, (op_id, env_id, initial_amount_cents))
-
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
@@ -5545,6 +4292,8 @@ class LedgerEngine:
                 "color": r["color"],
                 "linked_account_id": r["linked_account_id"],
                 "linked_account_name": r["linked_account_name"],
+                "currency": "RUB",
+                "tracking_mode": "INFORMATIONAL",
                 "category_id": r["category_id"],
                 "category_name": r["category_name"],
                 "note": r["note"]
@@ -5552,6 +4301,7 @@ class LedgerEngine:
         finally:
             self._close_if_local(conn)
 
+    @atomic_operation
     def update_envelope(
         self,
         envelope_id: str,
@@ -5576,11 +4326,14 @@ class LedgerEngine:
             updates = []
             params = []
             if name is not None:
+                if not name.strip():
+                    raise ValueError("Название конверта не может быть пустым.")
                 updates.append("name = ?")
                 params.append(name.strip())
             if target_amount_cents is not None:
+                self._reservation_cents(target_amount_cents, allow_zero=True)
                 updates.append("target_amount_cents = ?")
-                params.append(max(0, int(target_amount_cents)))
+                params.append(target_amount_cents)
             if icon is not None:
                 updates.append("icon = ?")
                 params.append(icon)
@@ -5588,9 +4341,11 @@ class LedgerEngine:
                 updates.append("color = ?")
                 params.append(color)
             if linked_account_id is not None:
+                self._reservation_account(cursor, linked_account_id or None)
                 updates.append("linked_account_id = ?")
                 params.append(linked_account_id or None)
             if category_id is not None:
+                self._reservation_reference(cursor, "categories", category_id or None)
                 updates.append("category_id = ?")
                 params.append(category_id or None)
             if note is not None:
@@ -5598,18 +4353,16 @@ class LedgerEngine:
                 params.append(note.strip() if note else None)
 
             if current_amount_cents is not None:
-                new_bal = max(0, int(current_amount_cents))
+                self._reservation_cents(current_amount_cents, allow_zero=True)
+                new_bal = current_amount_cents
                 old_bal = env_row["current_amount_cents"]
                 if new_bal != old_bal:
                     updates.append("current_amount_cents = ?")
                     params.append(new_bal)
                     diff = new_bal - old_bal
                     op_type = "DEPOSIT" if diff > 0 else "WITHDRAW"
-                    op_id = generate_uuid()
-                    cursor.execute("""
-                        INSERT INTO envelope_operations (id, envelope_id, operation_type, amount_cents, note)
-                        VALUES (?, ?, ?, ?, 'Корректировка баланса конверта');
-                    """, (op_id, envelope_id, op_type, abs(diff)))
+                    self._envelope_operation(cursor, envelope_id, op_type, abs(diff),
+                                             note="Корректировка баланса конверта")
 
             if updates:
                 params.append(envelope_id)
@@ -5619,12 +4372,13 @@ class LedgerEngine:
                 if row:
                     self._get_sync_engine().record_change_event("ENVELOPE", envelope_id, "UPDATE", dict(row), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
             self._save_if_encrypted()
             return True
         finally:
             self._close_if_local(conn)
 
+    @atomic_operation
     def archive_envelope(self, envelope_id: str) -> bool:
 
         """Archive an envelope (soft-delete)."""
@@ -5637,15 +4391,17 @@ class LedgerEngine:
 
             cursor.execute("UPDATE envelopes SET is_active = 0 WHERE id = ?;", (envelope_id,))
 
-            if cursor.rowcount > 0:
+            changed = cursor.rowcount > 0
 
-                self._get_sync_engine().record_change_event("ENVELOPE", envelope_id, "UPDATE", {"id": envelope_id, "is_active": 0}, cursor=cursor)
+            if changed:
 
-            conn.commit()
+                self._reservation_snapshot(cursor, "envelopes", envelope_id, "ENVELOPE")
+
+            self._commit(conn)
 
             self._save_if_encrypted()
 
-            return cursor.rowcount > 0
+            return changed
 
         finally:
 
@@ -5728,6 +4484,8 @@ class LedgerEngine:
                     "linked_account_id": r["linked_account_id"],
 
                     "linked_account_name": r["linked_account_name"],
+                "currency": "RUB",
+                "tracking_mode": "INFORMATIONAL",
 
                     "category_id": r["category_id"],
 
@@ -5762,6 +4520,9 @@ class LedgerEngine:
             "envelopes": envelopes,
 
             "count": len(envelopes),
+            "currency": "RUB",
+            "tracking_mode": "INFORMATIONAL",
+            "included_in_safe_to_spend": False,
 
             "total_saved_cents": total_cents,
 
@@ -5773,6 +4534,7 @@ class LedgerEngine:
 
         }
 
+    @atomic_operation
     def deposit_to_envelope(
 
         self,
@@ -5785,11 +4547,15 @@ class LedgerEngine:
 
         note: Optional[str] = None,
 
-        member_id: Optional[str] = None
+        member_id: Optional[str] = None,
+
+        idempotency_key: Optional[str] = None
 
     ) -> Dict[str, Any]:
 
         """Put money into a savings envelope (положить в копилку)."""
+
+        self._reservation_cents(amount_cents)
 
         if amount_cents <= 0:
 
@@ -5801,6 +4567,11 @@ class LedgerEngine:
 
         try:
 
+            request = self._reservation_request(cursor,"envelope-deposit",idempotency_key,
+                [envelope_id,amount_cents,source_account_id,note,member_id])
+            if request[2] is not None:
+                return request[2]
+
             cursor.execute("SELECT * FROM envelopes WHERE id = ? AND is_active = 1;", (envelope_id,))
 
             env = cursor.fetchone()
@@ -5809,19 +4580,22 @@ class LedgerEngine:
 
                 raise ValueError("Конверт-копилка не найден.")
 
+            self._reservation_account(cursor, source_account_id)
+            self._reservation_account(cursor, env["linked_account_id"])
+            self._reservation_reference(cursor, "members", member_id)
+            if (source_account_id and env["linked_account_id"]
+                    and source_account_id != env["linked_account_id"]
+                    and self.get_account_balance_cents(source_account_id) < amount_cents):
+                raise ValueError("Недостаточно средств на исходном счёте.")
+
             new_balance = env["current_amount_cents"] + amount_cents
+            self._reservation_cents(new_balance, allow_zero=True)
 
             cursor.execute("UPDATE envelopes SET current_amount_cents = ? WHERE id = ?;", (new_balance, envelope_id))
 
-            op_id = generate_uuid()
-
-            cursor.execute("""
-
-            INSERT INTO envelope_operations (id, envelope_id, operation_type, amount_cents, source_account_id, note, member_id)
-
-            VALUES (?, ?, 'DEPOSIT', ?, ?, ?, ?);
-
-            """, (op_id, envelope_id, amount_cents, source_account_id, note, member_id))
+            op_id = self._envelope_operation(cursor, envelope_id, "DEPOSIT", amount_cents,
+                                     source_account_id=source_account_id, note=note, member_id=member_id,
+                                     operation_id=("envelope-operation-v1:" + request[0].rsplit(":",1)[1]) if request[0] else None, emit=False)
 
             # Record CDC
 
@@ -5847,15 +4621,21 @@ class LedgerEngine:
 
                     description=f"Пополнение конверта-копилки '{env['name']}'",
 
-                    created_by_member_id=member_id
+                    created_by_member_id=member_id,
+
+                    idempotency_key=("envelope-bank-v1:" + request[0].rsplit(":",1)[1]) if request[0] else None
 
                 )
 
-            conn.commit()
+            from .reservation_events import register_operation
+            register_operation(cursor, op_id, tx_id)
+            self._reservation_snapshot(cursor, "envelope_operations", op_id, "ENVELOPE_OPERATION", "INSERT")
+
+            self._commit(conn)
 
             self._save_if_encrypted()
 
-            return {
+            return self._reservation_result(cursor, request, {
 
                 "status": "success",
 
@@ -5867,12 +4647,13 @@ class LedgerEngine:
 
                 "transaction_id": tx_id
 
-            }
+            })
 
         finally:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def withdraw_from_envelope(
 
         self,
@@ -5885,11 +4666,15 @@ class LedgerEngine:
 
         note: Optional[str] = None,
 
-        member_id: Optional[str] = None
+        member_id: Optional[str] = None,
+
+        idempotency_key: Optional[str] = None
 
     ) -> Dict[str, Any]:
 
         """Take money out of a savings envelope (взять из копилки / потратить)."""
+
+        self._reservation_cents(amount_cents)
 
         if amount_cents <= 0:
 
@@ -5901,6 +4686,11 @@ class LedgerEngine:
 
         try:
 
+            request = self._reservation_request(cursor,"envelope-withdraw",idempotency_key,
+                [envelope_id,amount_cents,destination_account_id,note,member_id])
+            if request[2] is not None:
+                return request[2]
+
             cursor.execute("SELECT * FROM envelopes WHERE id = ? AND is_active = 1;", (envelope_id,))
 
             env = cursor.fetchone()
@@ -5908,6 +4698,14 @@ class LedgerEngine:
             if not env:
 
                 raise ValueError("Конверт-копилка не найден.")
+
+            self._reservation_account(cursor, destination_account_id)
+            self._reservation_account(cursor, env["linked_account_id"])
+            self._reservation_reference(cursor, "members", member_id)
+            if (destination_account_id and env["linked_account_id"]
+                    and destination_account_id != env["linked_account_id"]
+                    and self.get_account_balance_cents(env["linked_account_id"]) < amount_cents):
+                raise ValueError("Недостаточно средств на связанном счёте конверта.")
 
             if env["current_amount_cents"] < amount_cents:
 
@@ -5917,15 +4715,9 @@ class LedgerEngine:
 
             cursor.execute("UPDATE envelopes SET current_amount_cents = ? WHERE id = ?;", (new_balance, envelope_id))
 
-            op_id = generate_uuid()
-
-            cursor.execute("""
-
-            INSERT INTO envelope_operations (id, envelope_id, operation_type, amount_cents, destination_account_id, note, member_id)
-
-            VALUES (?, ?, 'WITHDRAW', ?, ?, ?, ?);
-
-            """, (op_id, envelope_id, amount_cents, destination_account_id, note, member_id))
+            op_id = self._envelope_operation(cursor, envelope_id, "WITHDRAW", amount_cents,
+                                     destination_account_id=destination_account_id, note=note, member_id=member_id,
+                                     operation_id=("envelope-operation-v1:" + request[0].rsplit(":",1)[1]) if request[0] else None, emit=False)
 
             # Record CDC
 
@@ -5951,15 +4743,21 @@ class LedgerEngine:
 
                     description=f"Изъятие из конверта-копилки '{env['name']}'",
 
-                    created_by_member_id=member_id
+                    created_by_member_id=member_id,
+
+                    idempotency_key=("envelope-bank-v1:" + request[0].rsplit(":",1)[1]) if request[0] else None
 
                 )
 
-            conn.commit()
+            from .reservation_events import register_operation
+            register_operation(cursor, op_id, tx_id)
+            self._reservation_snapshot(cursor, "envelope_operations", op_id, "ENVELOPE_OPERATION", "INSERT")
+
+            self._commit(conn)
 
             self._save_if_encrypted()
 
-            return {
+            return self._reservation_result(cursor, request, {
 
                 "status": "success",
 
@@ -5971,12 +4769,13 @@ class LedgerEngine:
 
                 "transaction_id": tx_id
 
-            }
+            })
 
         finally:
 
             self._close_if_local(conn)
 
+    @atomic_operation
     def transfer_between_envelopes(
 
         self,
@@ -5989,11 +4788,15 @@ class LedgerEngine:
 
         note: Optional[str] = None,
 
-        member_id: Optional[str] = None
+        member_id: Optional[str] = None,
+
+        idempotency_key: Optional[str] = None
 
     ) -> Dict[str, Any]:
 
         """Transfer money from one envelope to another (переложить между конвертами)."""
+
+        self._reservation_cents(amount_cents)
 
         if amount_cents <= 0:
 
@@ -6009,6 +4812,11 @@ class LedgerEngine:
 
         try:
 
+            request = self._reservation_request(cursor,"envelope-transfer",idempotency_key,
+                [from_envelope_id,to_envelope_id,amount_cents,note,member_id])
+            if request[2] is not None:
+                return request[2]
+
             cursor.execute("SELECT * FROM envelopes WHERE id = ? AND is_active = 1;", (from_envelope_id,))
 
             env_from = cursor.fetchone()
@@ -6021,6 +4829,12 @@ class LedgerEngine:
 
                 raise ValueError("Один из указанных конвертов не найден.")
 
+            self._reservation_reference(cursor, "members", member_id)
+            self._reservation_account(cursor, env_from["linked_account_id"])
+            self._reservation_account(cursor, env_to["linked_account_id"])
+            if env_from["linked_account_id"] != env_to["linked_account_id"]:
+                raise ValueError("Для перекладывания выберите конверты на одном связанном счёте либо оба без привязки. Денежный перевод выполняется отдельно.")
+
             if env_from["current_amount_cents"] < amount_cents:
 
                 raise ValueError(f"Недостаточно средств в конверте '{env_from['name']}'. Доступно: {cents_to_rubles(env_from['current_amount_cents'])} ₽.")
@@ -6028,20 +4842,15 @@ class LedgerEngine:
             new_from_balance = env_from["current_amount_cents"] - amount_cents
 
             new_to_balance = env_to["current_amount_cents"] + amount_cents
+            self._reservation_cents(new_to_balance, allow_zero=True)
 
             cursor.execute("UPDATE envelopes SET current_amount_cents = ? WHERE id = ?;", (new_from_balance, from_envelope_id))
 
             cursor.execute("UPDATE envelopes SET current_amount_cents = ? WHERE id = ?;", (new_to_balance, to_envelope_id))
 
-            op_id = generate_uuid()
-
-            cursor.execute("""
-
-            INSERT INTO envelope_operations (id, envelope_id, operation_type, amount_cents, target_envelope_id, note, member_id)
-
-            VALUES (?, ?, 'TRANSFER', ?, ?, ?, ?);
-
-            """, (op_id, from_envelope_id, amount_cents, to_envelope_id, note, member_id))
+            self._envelope_operation(cursor, from_envelope_id, "TRANSFER", amount_cents,
+                                     target_envelope_id=to_envelope_id, note=note, member_id=member_id,
+                                     operation_id=("envelope-operation-v1:" + request[0].rsplit(":",1)[1]) if request[0] else None)
 
             # Record CDCs
 
@@ -6053,11 +4862,11 @@ class LedgerEngine:
 
             self._get_sync_engine().record_change_event("ENVELOPE", to_envelope_id, "UPDATE", dict(cursor.fetchone()), cursor=cursor)
 
-            conn.commit()
+            self._commit(conn)
 
             self._save_if_encrypted()
 
-            return {
+            return self._reservation_result(cursor, request, {
 
                 "status": "success",
 
@@ -6071,7 +4880,7 @@ class LedgerEngine:
 
                 "to_new_balance_rub": cents_to_rubles(new_to_balance)
 
-            }
+            })
 
         finally:
 

@@ -8,6 +8,8 @@ import hashlib
 import io
 import json
 import re
+from collections import defaultdict
+from datetime import date
 from typing import List, Dict, Any, Optional, Tuple
 
 from family_finances_os.models import (
@@ -18,6 +20,7 @@ from family_finances_os.models import (
     generate_uuid,
     current_iso_time
 )
+from family_finances_os.models import require_cents
 from family_finances_os.ledger import LedgerEngine
 
 
@@ -54,8 +57,7 @@ def clean_amount_str(val: str) -> Tuple[int, str]:
 
     val = val.replace(",", ".")
     try:
-        float_val = float(val)
-        cents = int(round(abs(float_val) * 100))
+        cents = abs(rubles_to_cents(val))
         direction = "EXPENSE" if is_negative else "INCOME"
         return cents, direction
     except Exception:
@@ -102,9 +104,12 @@ class StatementImporter:
         date_idx = -1
         desc_idx = -1
         amount_idx = -1
+        bank_id_idx = -1
 
         for i, col in enumerate(header):
-            if any(k in col for k in ["дата", "date", "время", "операция"]):
+            if any(k in col for k in ["transaction id", "transaction_id", "id операции", "идентификатор", "номер операции", "reference"]):
+                bank_id_idx = i
+            elif any(k in col for k in ["дата", "date", "время", "операция"]):
                 if date_idx == -1: date_idx = i
             elif any(k in col for k in ["описание", "назначение", "детали", "description", "контрагент", "получатель", "статья"]):
                 if desc_idx == -1: desc_idx = i
@@ -118,6 +123,7 @@ class StatementImporter:
 
         categories = self.ledger.get_flat_categories()
         parsed_items = []
+        occurrences = defaultdict(int)
 
         for row_idx, row in enumerate(rows[1:], start=2):
             if not row or len(row) <= max(date_idx, amount_idx):
@@ -133,6 +139,12 @@ class StatementImporter:
                 norm_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
             elif re.match(r"^\d{4}-\d{2}-\d{2}", raw_date):
                 norm_date = raw_date[:10]
+            else:
+                raise ValueError(f"Строка {row_idx}: дата операции не распознана.")
+            try:
+                date.fromisoformat(norm_date)
+            except ValueError:
+                raise ValueError(f"Строка {row_idx}: некорректная дата операции.") from None
 
             cents, direction = clean_amount_str(raw_amount)
             if cents <= 0:
@@ -143,6 +155,21 @@ class StatementImporter:
             # Generate idempotency signature
             raw_sig = f"{norm_date}:{cents}:{direction}:{raw_desc.strip().lower()}"
             idem_key = "imp_" + hashlib.sha256(raw_sig.encode("utf-8")).hexdigest()[:16]
+            legacy_keys = [idem_key]
+            # Recognize identifiers created by the previous float-rounding parser.
+            # This is compatibility lookup only; new money never uses float arithmetic.
+            normalized_legacy = raw_amount.strip().replace("₽", "").replace("RUB", "").replace("руб", "").replace(" ", "").replace("\xa0", "").strip("()+-").replace(",", ".")
+            try:
+                old_cents = int(round(abs(float(normalized_legacy)) * 100))
+                old_sig = f"{norm_date}:{old_cents}:{direction}:{raw_desc.strip().lower()}"
+                old_key = "imp_" + hashlib.sha256(old_sig.encode("utf-8")).hexdigest()[:16]
+                if old_key not in legacy_keys:
+                    legacy_keys.append(old_key)
+            except (ValueError, OverflowError):
+                pass
+            occurrences[raw_sig] += 1
+            bank_transaction_id = row[bank_id_idx].strip() if 0 <= bank_id_idx < len(row) else None
+            identity = "bank:" + bank_transaction_id if bank_transaction_id else raw_sig + ":occurrence:" + str(occurrences[raw_sig])
 
             parsed_items.append({
                 "line_num": row_idx,
@@ -153,7 +180,12 @@ class StatementImporter:
                 "direction": direction,
                 "category_id": guessed_cat["id"] if guessed_cat else None,
                 "category_name": guessed_cat["name"] if guessed_cat else "Без категории",
-                "idempotency_key": idem_key
+                "idempotency_key": "imp_v2_" + hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+                "legacy_idempotency_key": idem_key,
+                "legacy_idempotency_keys": legacy_keys,
+                "occurrence": occurrences[raw_sig],
+                "bank_transaction_id": bank_transaction_id,
+                "identity_warning": None if bank_transaction_id else "Без ID банка одинаковые операции различаются по порядку в выписке; неполные перекрывающиеся выписки требуют сверки."
             })
 
         return parsed_items
@@ -177,6 +209,7 @@ class StatementImporter:
 
         imported_count = 0
         skipped_count = 0
+        errors = []
 
         for item in items:
             cents = item["amount_cents"]
@@ -184,6 +217,10 @@ class StatementImporter:
             desc = item.get("description", "Импортированная операция")
             tx_date = item.get("date", current_iso_time()[:10])
             idem_key = item.get("idempotency_key")
+            if not idem_key:
+                errors.append({"line_num": item.get("line_num"), "message": "У операции нет идентификатора импорта."})
+                continue
+            idem_key = "import:" + account.id + ":" + idem_key
             cat_id = item.get("category_id")
 
             tx_id = generate_uuid()
@@ -237,18 +274,40 @@ class StatementImporter:
             )
 
             try:
+                require_cents(cents)
+                if direction not in ("INCOME", "EXPENSE"):
+                    raise ValueError("Некорректное направление импортируемой операции.")
+                legacy_key = item.get("legacy_idempotency_key")
+                if legacy_key and item.get("occurrence", 1) == 1:
+                    conn=self.ledger._get_conn()
+                    try:
+                        legacy=None
+                        for candidate in item.get("legacy_idempotency_keys",[legacy_key]):
+                            legacy=conn.execute("SELECT t.id,p.amount_cents FROM transactions t JOIN postings p ON p.transaction_id=t.id WHERE t.idempotency_key=? AND p.account_id=? LIMIT 1",(candidate,account.id)).fetchone()
+                            if legacy:
+                                break
+                    finally:
+                        self.ledger._close_if_local(conn)
+                    if legacy:
+                        if legacy["amount_cents"] != cents:
+                            raise ValueError("Операция уже импортирована старым правилом округления. Нужна сверка суммы; повторная запись не создана.")
+                        skipped_count += 1
+                        continue
                 res_id = self.ledger.record_transaction(tx, idempotency_key=idem_key)
                 if res_id == tx_id:
                     imported_count += 1
                 else:
                     skipped_count += 1
-            except Exception:
-                skipped_count += 1
+            except Exception as exc:
+                errors.append({"line_num":item.get("line_num"),"message":str(exc)})
 
         overview = self.ledger.get_financial_overview()
         return {
-            "status": "success",
+            "status": "partial" if errors else "success",
             "imported_count": imported_count,
             "skipped_count": skipped_count,
+            "error_count": len(errors),
+            "errors": errors,
+            "identity_warning": "Для выписок без ID банка неполные перекрывающиеся наборы одинаковых операций требуют ручной сверки." if any(not i.get("bank_transaction_id") for i in items) else None,
             "overview": overview
         }

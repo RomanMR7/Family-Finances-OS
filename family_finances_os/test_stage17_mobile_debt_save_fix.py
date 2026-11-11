@@ -118,9 +118,9 @@ class TestStage17MobileDebtSave(unittest.TestCase):
         self.assertEqual(rubles_to_cents(None), 0)
         self.assertEqual(rubles_to_cents(""), 0)
         self.assertEqual(rubles_to_cents("   "), 0)
-        self.assertEqual(rubles_to_cents("invalid_text"), 0)
-        self.assertEqual(rubles_to_cents("NaN"), 0)
-        self.assertEqual(rubles_to_cents("Infinity"), 0)
+        for invalid in ("invalid_text", "NaN", "Infinity"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                rubles_to_cents(invalid)
 
     def test_safe_float_backend(self):
         """Verify safe_float parses various inputs and defaults safely."""

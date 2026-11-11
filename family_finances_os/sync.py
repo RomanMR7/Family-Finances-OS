@@ -24,6 +24,7 @@ logger = logging.getLogger("ffos_sync")
 # Default UDP port for local peer discovery
 DISCOVERY_BROADCAST_PORT = 41234
 BEACON_MAGIC = "FFOS_BEACON_V1"
+_EVENT_LOCK = threading.RLock()
 
 
 def current_epoch_ms() -> int:
@@ -159,10 +160,17 @@ class P2PSyncEngine:
             self.device_name = name_row["value"] if name_row else socket.gethostname()
 
             self.hlc = HybridLogicalClock(self.device_id)
+            last = cursor.execute('SELECT MAX(hlc_timestamp) AS h FROM change_log').fetchone()['h']
+            if last:
+                self.hlc.update(last)
         finally:
             self._close_if_local(conn)
 
-    def record_change_event(
+    def record_change_event(self, *args, **kwargs):
+        with _EVENT_LOCK:
+            return self._record_change_event_locked(*args, **kwargs)
+
+    def _record_change_event_locked(
         self,
         entity_name: str,
         entity_id: str,
@@ -175,9 +183,7 @@ class P2PSyncEngine:
         """
         Record a mutation event into the append-only change_log.
         """
-        hlc_ts = hlc_timestamp or self.hlc.now()
         dev_id = source_device_id or self.device_id
-        payload_json = json.dumps(payload, ensure_ascii=False)
 
         should_close = False
         if cursor is None:
@@ -188,6 +194,26 @@ class P2PSyncEngine:
             conn = None
 
         try:
+            if not hlc_timestamp:
+                latest = cursor.execute('SELECT MAX(hlc_timestamp) AS h FROM change_log').fetchone()['h']
+                if latest:
+                    self.hlc.update(latest)
+            hlc_ts = hlc_timestamp or self.hlc.now()
+            if entity_name in ('GOAL', 'ENVELOPE', 'ENVELOPE_OPERATION'):
+                from .reservation_events import annotate_snapshot
+                payload = annotate_snapshot(cursor, entity_name, entity_id, payload)
+            if entity_name == 'OBLIGATION_PAYMENT':
+                from .obligation_merge import merge_components
+                payload = dict(payload)
+                key = f"obligation_payment_components:{payload['obligation_id']}:{payload['month_year']}"
+                prior = cursor.execute('SELECT value FROM system_meta WHERE key=?', (key,)).fetchone()
+                incoming = payload.get('components', {})
+                reset = change_type == 'DELETE' or not incoming.get('transactions')
+                components = merge_components(json.loads(prior['value']) if prior else {}, incoming, hlc_ts, reset=reset)
+                payload['components'] = components
+                cursor.execute('INSERT INTO system_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+                               (key, json.dumps(components, ensure_ascii=False)))
+            payload_json = json.dumps(payload, ensure_ascii=False)
             cursor.execute("""
             INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
             VALUES (?, ?, ?, ?, ?, ?);
@@ -240,6 +266,8 @@ class P2PSyncEngine:
                 "sender_device_id": self.device_id,
                 "sender_device_name": self.device_name,
                 "current_hlc": self.hlc.now(),
+                "next_cursor": changes[-1]["hlc_timestamp"] if changes else since_hlc,
+                "has_more": bool(changes and cursor.execute("SELECT 1 FROM change_log WHERE hlc_timestamp > ? LIMIT 1", (changes[-1]["hlc_timestamp"],)).fetchone()),
                 "changes_count": len(changes),
                 "changes": changes
             }
@@ -247,386 +275,8 @@ class P2PSyncEngine:
             self._close_if_local(conn)
 
     def apply_remote_changes(self, sync_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Apply a batch of foreign changes inside an atomic SQLite transaction.
-        Uses commutative double-entry merging and Last-Write-Wins (LWW) for entities.
-        """
-        remote_device_id = sync_data.get("sender_device_id")
-        remote_hlc = sync_data.get("current_hlc", "")
-        changes = sync_data.get("changes", [])
-
-        if remote_hlc:
-            self.hlc.update(remote_hlc)
-
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        applied_count = 0
-        skipped_count = 0
-
-        try:
-            for item in changes:
-                entity_name = item["entity_name"]
-                entity_id = item["entity_id"]
-                change_type = item["change_type"]
-                payload = item["payload"]
-                item_dev_id = item["device_id"]
-                item_hlc = item["hlc_timestamp"]
-
-                # 1. TRANSACTION MERGING
-                if entity_name == "TRANSACTION":
-                    if change_type == "INSERT":
-                        # Check if transaction already exists by id or idempotency_key
-                        idem_key = payload.get("idempotency_key")
-                        cursor.execute("SELECT id FROM transactions WHERE id = ?;", (entity_id,))
-                        if cursor.fetchone():
-                            skipped_count += 1
-                            continue
-                        if idem_key:
-                            cursor.execute("SELECT id FROM transactions WHERE idempotency_key = ?;", (idem_key,))
-                            if cursor.fetchone():
-                                skipped_count += 1
-                                continue
-
-                        # Check created_by_member_id foreign key
-                        member_id = payload.get("created_by_member_id")
-                        if member_id:
-                            cursor.execute("SELECT id FROM members WHERE id = ?;", (member_id,))
-                            if not cursor.fetchone():
-                                member_id = None
-
-                        # Insert Transaction Header
-                        cursor.execute("""
-                        INSERT OR IGNORE INTO transactions
-                        (id, tx_date, tx_type, description, created_by_member_id, idempotency_key, payload_hash, is_voided, voided_reason, reversal_of_id, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """, (
-                            entity_id,
-                            payload.get("tx_date", current_iso_time()[:10]),
-                            payload.get("tx_type", "EXPENSE"),
-                            payload.get("description", "Операция"),
-                            member_id,
-                            idem_key,
-                            payload.get("payload_hash"),
-                            payload.get("is_voided", 0),
-                            payload.get("voided_reason"),
-                            payload.get("reversal_of_id"),
-                            payload.get("created_at", current_iso_time())
-                        ))
-
-                        # Insert Postings with resilient foreign key resolution
-                        for p in payload.get("postings", []):
-                            acc_id = p["account_id"]
-                            cursor.execute("SELECT id FROM accounts WHERE id = ?;", (acc_id,))
-                            if not cursor.fetchone():
-                                if p.get("account_code"):
-                                    cursor.execute("SELECT id FROM accounts WHERE code = ?;", (p["account_code"],))
-                                    acc_row = cursor.fetchone()
-                                    if acc_row:
-                                        acc_id = acc_row["id"]
-
-                            cat_id = p.get("category_id")
-                            if cat_id:
-                                cursor.execute("SELECT id FROM categories WHERE id = ?;", (cat_id,))
-                                if not cursor.fetchone():
-                                    cat_id = None
-
-                            cursor.execute("""
-                            INSERT OR IGNORE INTO postings
-                            (id, transaction_id, account_id, amount_cents, posting_type, ownership_scope, purpose_allocation, note, category_id, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                            """, (
-                                p["id"],
-                                entity_id,
-                                acc_id,
-                                p["amount_cents"],
-                                p["posting_type"],
-                                p.get("ownership_scope", "COMMON"),
-                                p.get("purpose_allocation", "SAFE_TO_SPEND"),
-                                p.get("note"),
-                                cat_id,
-                                p.get("created_at", current_iso_time())
-                            ))
-
-                        # Record into local change_log to allow gossip to other peers
-                        cursor.execute("""
-                        INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                        VALUES (?, ?, ?, ?, ?, ?);
-                        """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                        applied_count += 1
-
-                    elif change_type == "VOID":
-                        cursor.execute("""
-                        UPDATE transactions SET is_voided = 1, voided_reason = ? WHERE id = ?;
-                        """, (payload.get("voided_reason", "Аннулировано через P2P"), entity_id))
-                        cursor.execute("""
-                        INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                        VALUES (?, ?, ?, ?, ?, ?);
-                        """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                        applied_count += 1
-
-                # 2. ACCOUNT MERGING (LWW)
-                elif entity_name == "ACCOUNT":
-                    cursor.execute("SELECT id FROM accounts WHERE id = ?;", (entity_id,))
-                    existing = cursor.fetchone()
-                    if not existing:
-                        cursor.execute("""
-                        INSERT INTO accounts (id, code, name, account_type, subtype, currency, ownership_scope, owner_member_id, description, credit_limit_cents, initial_balance_cents, is_active)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """, (
-                            entity_id,
-                            payload.get("code"),
-                            payload.get("name"),
-                            payload.get("account_type"),
-                            payload.get("subtype"),
-                            payload.get("currency", "RUB"),
-                            payload.get("ownership_scope", "COMMON"),
-                            payload.get("owner_member_id"),
-                            payload.get("description"),
-                            payload.get("credit_limit_cents", 0),
-                            payload.get("initial_balance_cents", 0),
-                            payload.get("is_active", 1)
-                        ))
-                    else:
-                        cursor.execute("""
-                        UPDATE accounts SET
-                            name = COALESCE(?, name),
-                            description = COALESCE(?, description),
-                            credit_limit_cents = COALESCE(?, credit_limit_cents),
-                            ownership_scope = COALESCE(?, ownership_scope),
-                            is_active = COALESCE(?, is_active)
-                        WHERE id = ?;
-                        """, (
-                            payload.get("name"),
-                            payload.get("description"),
-                            payload.get("credit_limit_cents"),
-                            payload.get("ownership_scope"),
-                            payload.get("is_active"),
-                            entity_id
-                        ))
-
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 3. CATEGORY MERGING (LWW)
-                elif entity_name == "CATEGORY":
-                    parent_id = payload.get("parent_id")
-                    if parent_id:
-                        cursor.execute("SELECT id FROM categories WHERE id = ?;", (parent_id,))
-                        if not cursor.fetchone():
-                            parent_id = None
-
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO categories (id, name, category_type, parent_id, icon, sort_order, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
-                    """, (
-                        entity_id,
-                        payload.get("name"),
-                        payload.get("category_type"),
-                        parent_id,
-                        payload.get("icon", "tag"),
-                        payload.get("sort_order", 0),
-                        payload.get("is_active", 1)
-                    ))
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 4. OBLIGATION MERGING (LWW)
-                elif entity_name == "OBLIGATION":
-                    cat_id = payload.get("category_id")
-                    if cat_id:
-                        cursor.execute("SELECT id FROM categories WHERE id = ?;", (cat_id,))
-                        if not cursor.fetchone():
-                            cat_id = None
-
-                    pay_acc_id = payload.get("payment_account_id")
-                    if pay_acc_id:
-                        cursor.execute("SELECT id FROM accounts WHERE id = ?;", (pay_acc_id,))
-                        if not cursor.fetchone():
-                            pay_acc_id = None
-
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO obligations (id, name, amount_cents, due_day, category_id, payment_account_id, note, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-                    """, (
-                        entity_id,
-                        payload.get("name"),
-                        payload.get("amount_cents"),
-                        payload.get("due_day"),
-                        cat_id,
-                        pay_acc_id,
-                        payload.get("note"),
-                        payload.get("is_active", 1)
-                    ))
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 5. OBLIGATION PAYMENT MERGING
-                elif entity_name == "OBLIGATION_PAYMENT":
-                    if change_type == "INSERT":
-                        cursor.execute("""
-                        INSERT OR REPLACE INTO obligation_payments (id, obligation_id, month_year, transaction_id, paid_amount_cents, paid_at)
-                        VALUES (?, ?, ?, ?, ?, ?);
-                        """, (
-                            entity_id,
-                            payload.get("obligation_id"),
-                            payload.get("month_year"),
-                            payload.get("transaction_id"),
-                            payload.get("paid_amount_cents"),
-                            payload.get("paid_at", current_iso_time())
-                        ))
-                    elif change_type == "DELETE":
-                        cursor.execute("""
-                        DELETE FROM obligation_payments WHERE obligation_id = ? AND month_year = ?;
-                        """, (payload.get("obligation_id"), payload.get("month_year")))
-
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 6. GOAL MERGING (LWW)
-                elif entity_name == "GOAL":
-                    acc_id = payload.get("account_id")
-                    if acc_id:
-                        cursor.execute("SELECT id FROM accounts WHERE id = ?;", (acc_id,))
-                        if not cursor.fetchone():
-                            acc_id = None
-                    cat_id = payload.get("category_id")
-                    if cat_id:
-                        cursor.execute("SELECT id FROM categories WHERE id = ?;", (cat_id,))
-                        if not cursor.fetchone():
-                            cat_id = None
-
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO goals (id, name, target_amount_cents, current_amount_cents, target_date, account_id, category_id, icon, note, is_completed, is_active, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """, (
-                        entity_id,
-                        payload.get("name"),
-                        payload.get("target_amount_cents"),
-                        payload.get("current_amount_cents", 0),
-                        payload.get("target_date"),
-                        acc_id,
-                        cat_id,
-                        payload.get("icon", "🎯"),
-                        payload.get("note"),
-                        payload.get("is_completed", 0),
-                        payload.get("is_active", 1),
-                        payload.get("created_at", current_iso_time())
-                    ))
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 7. GOAL CONTRIBUTION MERGING
-                elif entity_name == "GOAL_CONTRIBUTION":
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO goal_contributions (id, goal_id, amount_cents, transaction_id, source_account_id, note, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
-                    """, (
-                        entity_id,
-                        payload.get("goal_id"),
-                        payload.get("amount_cents"),
-                        payload.get("transaction_id"),
-                        payload.get("source_account_id"),
-                        payload.get("note"),
-                        payload.get("created_at", current_iso_time())
-                    ))
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 8. ENVELOPE MERGING (LWW)
-                elif entity_name == "ENVELOPE":
-                    acc_id = payload.get("linked_account_id")
-                    if acc_id:
-                        cursor.execute("SELECT id FROM accounts WHERE id = ?;", (acc_id,))
-                        if not cursor.fetchone():
-                            acc_id = None
-                    cat_id = payload.get("category_id")
-                    if cat_id:
-                        cursor.execute("SELECT id FROM categories WHERE id = ?;", (cat_id,))
-                        if not cursor.fetchone():
-                            cat_id = None
-
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO envelopes (id, name, target_amount_cents, current_amount_cents, icon, color, linked_account_id, category_id, note, is_active, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """, (
-                        entity_id,
-                        payload.get("name"),
-                        payload.get("target_amount_cents", 0),
-                        payload.get("current_amount_cents", 0),
-                        payload.get("icon", "✉️"),
-                        payload.get("color", "#3b82f6"),
-                        acc_id,
-                        cat_id,
-                        payload.get("note"),
-                        payload.get("is_active", 1),
-                        payload.get("created_at", current_iso_time())
-                    ))
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-                # 9. ENVELOPE OPERATION MERGING
-                elif entity_name == "ENVELOPE_OPERATION":
-                    cursor.execute("""
-                    INSERT OR REPLACE INTO envelope_operations (id, envelope_id, operation_type, amount_cents, source_account_id, destination_account_id, target_envelope_id, note, member_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """, (
-                        entity_id,
-                        payload.get("envelope_id"),
-                        payload.get("operation_type"),
-                        payload.get("amount_cents"),
-                        payload.get("source_account_id"),
-                        payload.get("destination_account_id"),
-                        payload.get("target_envelope_id"),
-                        payload.get("note"),
-                        payload.get("member_id"),
-                        payload.get("created_at", current_iso_time())
-                    ))
-                    cursor.execute("""
-                    INSERT INTO change_log (entity_name, entity_id, change_type, payload_json, device_id, hlc_timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """, (entity_name, entity_id, change_type, json.dumps(payload, ensure_ascii=False), item_dev_id, item_hlc))
-                    applied_count += 1
-
-            # Update last synced HLC for this remote device
-            if remote_device_id and remote_hlc:
-                cursor.execute("""
-                INSERT OR REPLACE INTO system_meta (key, value) VALUES (?, ?);
-                """, (f"sync_last_hlc_{remote_device_id}", remote_hlc))
-
-            conn.commit()
-            self._save_if_encrypted()
-            return {
-                "status": "success",
-                "applied_count": applied_count,
-                "skipped_count": skipped_count,
-                "current_hlc": self.hlc.now()
-            }
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            self._close_if_local(conn)
+        from family_finances_os.sync_merge import apply_batch
+        return apply_batch(self, sync_data)
 
 
 class PeerDiscoveryBeacon:
@@ -721,7 +371,7 @@ class PeerDiscoveryBeacon:
                         with self._lock:
                             self.active_peers[peer_id] = {
                                 "device_id": peer_id,
-                                "device_name": beacon.get("device_name", "Семейное устройство"),
+                                "device_name": beacon.get("device_name", "РЎРµРјРµР№РЅРѕРµ СѓСЃС‚СЂРѕР№СЃС‚РІРѕ"),
                                 "ip": addr[0],
                                 "http_port": beacon.get("http_port", 8000),
                                 "last_seen_epoch": time.time(),

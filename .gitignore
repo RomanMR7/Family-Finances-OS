@@ -40,3 +40,8 @@ node_modules/
 
 .vercel
 .env*
+
+# Local QA contains database snapshots and authenticated test state.
+artifacts/
+family_finances_os/data/*
+!family_finances_os/data/.gitkeep

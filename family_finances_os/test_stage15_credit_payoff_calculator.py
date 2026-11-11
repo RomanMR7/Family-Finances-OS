@@ -128,9 +128,13 @@ class TestStage15CreditPayoffCalculator(unittest.TestCase):
 
         # Minimum payment scenario
         min_sc = res["minimum_scenario"]
-        self.assertGreater(min_sc["months_to_payoff"], 60)
-        self.assertGreater(min_sc["days_to_payoff"], 1800)
-        self.assertGreater(min_sc["total_interest_cents"], 5000000)  # > 50,000 RUB interest!
+        # The 3% balance-based plan does not fully close within the declared
+        # 360-month horizon; a finite payoff must not be fabricated.
+        self.assertEqual(min_sc["status"], "HORIZON_LIMIT")
+        self.assertFalse(min_sc["paid_off"])
+        self.assertIsNone(min_sc["months_to_payoff"])
+        self.assertIsNone(min_sc["payoff_date"])
+        self.assertGreater(min_sc["remaining_cents"], 0)
         self.assertEqual(min_sc["first_payment_rub"], "3000.00")
 
         # Accelerated scenarios (3, 6, 12 months)
@@ -139,16 +143,20 @@ class TestStage15CreditPayoffCalculator(unittest.TestCase):
 
         sc_3m = next(s for s in acc if s["months"] == 3)
         self.assertGreater(sc_3m["monthly_payment_cents"], 3000000) # ~34,720 RUB
-        self.assertGreater(sc_3m["interest_savings_cents"], 0)
-        self.assertGreater(sc_3m["days_saved"], 1000)
+        self.assertTrue(sc_3m["paid_off"])
+        self.assertIsNone(sc_3m["interest_savings_cents"])
+        self.assertIsNone(sc_3m["days_saved"])
+        self.assertEqual(sc_3m["remaining_cents"], 0)
 
         sc_6m = next(s for s in acc if s["months"] == 6)
         self.assertGreater(sc_6m["monthly_payment_cents"], 1500000) # ~17,890 RUB
-        self.assertGreater(sc_6m["interest_savings_cents"], 0)
+        self.assertTrue(sc_6m["paid_off"])
+        self.assertEqual(sc_6m["remaining_cents"], 0)
 
         sc_12m = next(s for s in acc if s["months"] == 12)
         self.assertGreater(sc_12m["monthly_payment_cents"], 800000) # ~9,490 RUB
-        self.assertGreater(sc_12m["interest_savings_cents"], 0)
+        self.assertTrue(sc_12m["paid_off"])
+        self.assertEqual(sc_12m["remaining_cents"], 0)
 
     def test_02_custom_payment_in_rub_and_percent(self):
         """Test custom payment simulation both in rubles and percent."""
@@ -163,7 +171,9 @@ class TestStage15CreditPayoffCalculator(unittest.TestCase):
         custom = res_rub["custom_scenario"]
         self.assertIsNotNone(custom)
         self.assertLess(custom["months_to_payoff"], 7)
-        self.assertGreater(custom["interest_savings_cents"], 0)
+        self.assertTrue(custom["paid_off"])
+        self.assertEqual(custom["remaining_cents"], 0)
+        self.assertIsNone(custom["interest_savings_cents"])
 
         # Custom 10% payment
         res_pct = self.ledger.calculate_credit_payoff_scenarios(

@@ -1082,7 +1082,7 @@ self.addEventListener('fetch', (event) => {
 
             obligations = ledger.get_obligations(month_year=month)
 
-            total_cents, paid_cents, unpaid_cents = ledger.calculate_unpaid_obligations_cents(month_year=month)
+            unpaid_cents, total_cents, paid_cents = ledger.calculate_unpaid_obligations_cents(month_year=month)
 
             self._send_json({
 
@@ -1272,65 +1272,37 @@ self.addEventListener('fetch', (event) => {
                 return
             try:
                 ledger = LedgerEngine(conn_or_path=self.storage.get_connection() if self.storage.is_unlocked() else None)
-                parsed = urllib.parse.urlparse(self.path)
-                qs = urllib.parse.parse_qs(parsed.query)
-                liability_acc_id = qs.get("liability_account_id", [None])[0]
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                liability_id = qs.get("liability_account_id", [None])[0]
                 custom_rub = qs.get("custom_payment_rub", [None])[0]
                 custom_pct = qs.get("custom_payment_percent", [None])[0]
-
-                debt_cents = 0
-                apr = 24.8
-                grace_days = 120
-                grace_due = None
-                min_pct = 3.0
-
-                if liability_acc_id:
-                    conn = ledger._get_conn()
-                    cur = conn.cursor()
-                    cur.execute("""
-                        SELECT a.id, a.subtype, a.credit_limit_cents, a.description,
-                            COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) -
-                            COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) as balance_cents
-                        FROM accounts a
-                        LEFT JOIN postings p ON a.id = p.account_id
-                        LEFT JOIN transactions t ON p.transaction_id = t.id AND t.is_voided = 0
-                        WHERE a.id = ?
-                        GROUP BY a.id;
-                    """, (liability_acc_id,))
-                    row = cur.fetchone()
-                    if row:
-                        debt_cents = max(0, row["balance_cents"])
-                        raw_desc = row["description"] or ""
-                        if raw_desc.strip().startswith("{"):
-                            try:
-                                parsed_meta = json.loads(raw_desc)
-                                apr = float(parsed_meta.get("interest_rate_percent", 24.8))
-                                grace_days = int(parsed_meta.get("grace_period_days", 120))
-                                grace_due = parsed_meta.get("grace_due_date")
-                                min_pct = float(parsed_meta.get("min_payment_percent", 3.0))
-                            except Exception:
-                                pass
+                apr = qs.get("interest_rate_percent", ["24.8"])[0]
+                min_pct = qs.get("min_payment_percent", ["3"])[0]
+                grace_days, grace_due = 120, None
+                if liability_id:
+                    account = ledger.get_account_by_id(liability_id)
+                    if not account or account.account_type != "LIABILITY" or not account.is_active:
+                        raise ValueError("Активная задолженность не найдена.")
+                    if account.currency != "RUB":
+                        raise ValueError("Калькулятор с рублёвым минимумом не применяется к другой валюте.")
+                    debt_cents = max(0, ledger.get_account_balance_cents(liability_id))
+                    if account.description and account.description.strip().startswith("{"):
+                        metadata = json.loads(account.description)
+                        apr = metadata.get("interest_rate_percent", 24.8)
+                        min_pct = metadata.get("min_payment_percent", 3)
+                        grace_days = metadata.get("grace_period_days", 120)
+                        grace_due = metadata.get("grace_due_date")
                 else:
-                    debt_rub = qs.get("debt_rub", [0])[0]
-                    debt_cents = rubles_to_cents(debt_rub)
-                    apr = float(qs.get("interest_rate_percent", [24.8])[0])
-                    min_pct = float(qs.get("min_payment_percent", [3.0])[0])
-
-                c_cents = rubles_to_cents(custom_rub) if custom_rub else None
-                c_pct = float(custom_pct) if custom_pct else None
-
-                res = ledger.calculate_credit_payoff_scenarios(
-                    debt_cents=debt_cents,
-                    interest_rate_percent=apr,
-                    min_payment_percent=min_pct,
-                    grace_period_days=grace_days,
+                    debt_cents = rubles_to_cents(qs.get("debt_rub", ["0"])[0])
+                result = ledger.calculate_credit_payoff_scenarios(
+                    debt_cents=debt_cents, interest_rate_percent=apr,
+                    min_payment_percent=min_pct, grace_period_days=grace_days,
                     grace_due_date=grace_due,
-                    custom_payment_cents=c_cents,
-                    custom_payment_percent=c_pct
-                )
-                self._send_json(res)
-            except Exception as e:
-                self._send_json({"status": "error", "message": str(e)}, status=400)
+                    custom_payment_cents=rubles_to_cents(custom_rub) if custom_rub is not None else None,
+                    custom_payment_percent=custom_pct)
+                self._send_json(result)
+            except Exception as exc:
+                self._send_json({"status": "error", "message": str(exc)}, status=400)
             return
 
         elif path == "/api/debts":
@@ -2422,79 +2394,42 @@ self.addEventListener('fetch', (event) => {
 
             try:
 
-                # 1. Pull changes from remote peer
+                def remote_call(route, payload):
+                    encoded = json.dumps(payload).encode("utf-8")
+                    nonce = uuid.uuid4().hex
+                    stamp = sync_engine.hlc.now()
+                    signature = sign_sync_payload(encoded, sync_engine.sync_passphrase, nonce, stamp)
+                    req = urllib.request.Request(
+                        f"http://{peer_ip}:{peer_port}{route}", data=encoded,
+                        headers={"Content-Type":"application/json", "X-FFOS-Signature":signature,
+                                 "X-FFOS-Nonce":nonce, "X-FFOS-HLC":stamp})
+                    with urllib.request.urlopen(req, timeout=10.0) as response:
+                        return json.loads(response.read().decode("utf-8"))
 
-                pull_body = json.dumps({"since_hlc": body.get("since_hlc")}).encode("utf-8")
+                pull_cursor = body.get("since_hlc")
+                apply_res = {"status":"success", "applied_count":0, "skipped_count":0}
+                while True:
+                    remote_changes = remote_call("/api/sync/pull", {"since_hlc":pull_cursor})
+                    page_result = sync_engine.apply_remote_changes(remote_changes)
+                    for counter in ("applied_count", "skipped_count"):
+                        apply_res[counter] += page_result.get(counter, 0)
+                    if not remote_changes.get("has_more"):
+                        break
+                    next_cursor = remote_changes.get("next_cursor")
+                    if not next_cursor or next_cursor == pull_cursor:
+                        raise ValueError("Peer did not advance its delivery cursor")
+                    pull_cursor = next_cursor
 
-                nonce = str(uuid.uuid4())[:16]
-
-                hlc_val = sync_engine.hlc.now()
-
-                sig = sign_sync_payload(pull_body, sync_engine.sync_passphrase, nonce, hlc_val)
-
-                req_pull = urllib.request.Request(
-
-                    f"http://{peer_ip}:{peer_port}/api/sync/pull",
-
-                    data=pull_body,
-
-                    headers={
-
-                        "Content-Type": "application/json",
-
-                        "X-FFOS-Signature": sig,
-
-                        "X-FFOS-Nonce": nonce,
-
-                        "X-FFOS-HLC": hlc_val
-
-                    }
-
-                )
-
-                with urllib.request.urlopen(req_pull, timeout=5.0) as resp:
-
-                    remote_changes = json.loads(resp.read().decode("utf-8"))
-
-                # Apply remote changes locally
-
-                apply_res = sync_engine.apply_remote_changes(remote_changes)
-
-                # 2. Push our changes to remote peer
-
-                our_changes = sync_engine.export_changes(since_hlc=None)
-
-                push_body = json.dumps(our_changes).encode("utf-8")
-
-                nonce2 = str(uuid.uuid4())[:16]
-
-                hlc_val2 = sync_engine.hlc.now()
-
-                sig2 = sign_sync_payload(push_body, sync_engine.sync_passphrase, nonce2, hlc_val2)
-
-                req_push = urllib.request.Request(
-
-                    f"http://{peer_ip}:{peer_port}/api/sync/push",
-
-                    data=push_body,
-
-                    headers={
-
-                        "Content-Type": "application/json",
-
-                        "X-FFOS-Signature": sig2,
-
-                        "X-FFOS-Nonce": nonce2,
-
-                        "X-FFOS-HLC": hlc_val2
-
-                    }
-
-                )
-
-                with urllib.request.urlopen(req_push, timeout=5.0) as resp2:
-
-                    push_res = json.loads(resp2.read().decode("utf-8"))
+                push_cursor = None
+                push_res = {"status":"success", "applied_count":0, "skipped_count":0}
+                while True:
+                    our_changes = sync_engine.export_changes(since_hlc=push_cursor)
+                    page_result = remote_call("/api/sync/push", our_changes)
+                    for counter in ("applied_count", "skipped_count"):
+                        push_res[counter] += page_result.get(counter, 0)
+                    if not our_changes.get("has_more"):
+                        break
+                    push_cursor = our_changes["next_cursor"]
 
                 self._send_json({
 
@@ -2530,6 +2465,14 @@ self.addEventListener('fetch', (event) => {
 
                 obligations = body.get("obligations", [])
 
+                for item in balances:
+                    if "balance_rub" in item:
+                        item["balance_cents"] = rubles_to_cents(item.pop("balance_rub"))
+                    if "credit_limit_rub" in item:
+                        item["credit_limit_cents"] = rubles_to_cents(item.pop("credit_limit_rub"))
+                for item in obligations:
+                    if "amount_rub" in item:
+                        item["amount_cents"] = rubles_to_cents(item.pop("amount_rub"))
                 res = ledger.batch_onboarding_setup(balances=balances, obligations=obligations, owner_member_id=user.get("member_id"))
 
                 self._send_json(res)
@@ -2906,21 +2849,22 @@ self.addEventListener('fetch', (event) => {
             user = self._require_auth()
             if not user:
                 return
-            account_id = body.get("account_id")
-            if not account_id:
-                self._send_json({"status": "error", "message": "Не указан ID задолженности"}, 400)
-                return
-            ledger = self._get_ledger()
-            success = ledger.archive_account(account_id)
-            conn = ledger._get_conn()
-            cursor = conn.cursor()
             try:
-                cursor.execute("UPDATE obligations SET is_active = 0 WHERE payment_account_id = ?", (account_id,))
-                conn.commit()
-                ledger._save_if_encrypted()
-            finally:
-                ledger._close_if_local(conn)
-            self._send_json({"status": "success", "archived": success})
+                account_id = body.get("account_id")
+                if not account_id:
+                    raise ValueError("Не указан ID задолженности.")
+                ledger = self._get_ledger()
+                account = ledger.get_account_by_id(account_id)
+                if not account or account.account_type != "LIABILITY":
+                    raise ValueError("Задолженность не найдена.")
+                with ledger.atomic():
+                    success = ledger.archive_account(account_id)
+                    for obligation in ledger.get_obligations():
+                        if obligation["payment_account_id"] == account_id:
+                            ledger.archive_obligation(obligation["id"])
+                self._send_json({"status": "success", "archived": success})
+            except Exception as exc:
+                self._send_json({"status": "error", "message": str(exc)}, 400)
             return
 
         elif path == "/api/debts/pay":
@@ -2951,25 +2895,22 @@ self.addEventListener('fetch', (event) => {
 
                 amount_percent = body.get("amount_percent")
 
+                from family_finances_os.debt_math import percentage, rounded
+                from decimal import Decimal
                 if (amount_rub is None or str(amount_rub).strip() == "") and amount_percent is not None:
-                    pct = float(amount_percent)
+                    pct = percentage(amount_percent, "Процент погашения", 100)
                     if pct <= 0:
                         raise ValueError("Процент погашения должен быть больше нуля.")
-                    conn = ledger._get_conn()
-                    cur = conn.cursor()
-                    cur.execute("""
-                        SELECT 
-                            COALESCE(SUM(CASE WHEN p.posting_type = 'CREDIT' THEN p.amount_cents ELSE 0 END), 0) -
-                            COALESCE(SUM(CASE WHEN p.posting_type = 'DEBIT' THEN p.amount_cents ELSE 0 END), 0) as balance_cents
-                        FROM accounts a
-                        LEFT JOIN postings p ON a.id = p.account_id
-                        LEFT JOIN transactions t ON p.transaction_id = t.id AND t.is_voided = 0
-                        WHERE a.id = ?
-                        GROUP BY a.id;
-                    """, (liability_acc_id,))
-                    row = cur.fetchone()
-                    cur_debt = row["balance_cents"] if row else 0
-                    amount_cents = round(cur_debt * (pct / 100.0))
+                    current_debt = ledger.get_account_balance_cents(liability_acc_id)
+                    amount_cents = rounded(Decimal(max(0, current_debt)) * pct / 100)
+                    if idempotency_key:
+                        conn = ledger._get_conn()
+                        try:
+                            old = conn.execute("SELECT p.amount_cents FROM transactions t JOIN postings p ON p.transaction_id=t.id WHERE t.idempotency_key=? AND p.account_id=? AND p.posting_type='DEBIT';", (idempotency_key, liability_acc_id)).fetchone()
+                            if old:
+                                amount_cents = old["amount_cents"]
+                        finally:
+                            ledger._close_if_local(conn)
                     if not desc or desc.strip() == "Погашение задолженности":
                         desc = f"Погашение ({pct:.1f}% / {cents_to_rubles(amount_cents)} ₽)"
                     else:
@@ -2977,7 +2918,7 @@ self.addEventListener('fetch', (event) => {
                 else:
                     amount_cents = rubles_to_cents(amount_rub)
                     if amount_percent is not None:
-                        pct = float(amount_percent)
+                        pct = percentage(amount_percent, "Процент погашения", 100)
                         if desc and "%" not in desc:
                             desc = f"{desc} ({pct:.1f}%)"
 
@@ -3369,7 +3310,8 @@ self.addEventListener('fetch', (event) => {
 
                     note=note,
 
-                    member_id=user.get("member_id")
+                    member_id=user.get("member_id"),
+                    idempotency_key=body.get("idempotency_key")
 
                 )
 
@@ -3413,7 +3355,8 @@ self.addEventListener('fetch', (event) => {
 
                     note=note,
 
-                    member_id=user.get("member_id")
+                    member_id=user.get("member_id"),
+                    idempotency_key=body.get("idempotency_key")
 
                 )
 
@@ -3457,7 +3400,8 @@ self.addEventListener('fetch', (event) => {
 
                     note=note,
 
-                    member_id=user.get("member_id")
+                    member_id=user.get("member_id"),
+                    idempotency_key=body.get("idempotency_key")
 
                 )
 
@@ -3505,9 +3449,6 @@ self.addEventListener('fetch', (event) => {
 
   <title>Family Finances OS</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <style>
     /* ==========================================================================
@@ -3853,13 +3794,58 @@ self.addEventListener('fetch', (event) => {
       font-feature-settings: "tnum" 1;
     }
 
-    /* Apple HIG iOS Segmented Control Navigation Tabs */
+    /* Apple HIG iOS Segmented Control Navigation Tabs with Drag & Chevrons */
+    .nav-tabs-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin-bottom: 24px;
+    }
+    .nav-tab-scroll-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: rgba(118, 118, 128, 0.24);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+      -webkit-user-select: none;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+    .nav-tab-scroll-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+      transform: scale(1.06);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+    .nav-tab-scroll-btn:active {
+      transform: scale(0.94);
+    }
+    .nav-tab-scroll-btn.disabled,
+    .nav-tab-scroll-btn:disabled {
+      opacity: 0.18;
+      cursor: default;
+      pointer-events: none;
+      transform: none !important;
+    }
     .nav-tabs {
+      flex: 1;
+      min-width: 0;
       display: flex;
       align-items: center;
       flex-wrap: nowrap;
       gap: 3px;
-      margin-bottom: 24px;
+      margin-bottom: 0;
       background: rgba(118, 118, 128, 0.24);
       border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 12px;
@@ -3870,6 +3856,18 @@ self.addEventListener('fetch', (event) => {
       touch-action: pan-x;
       scrollbar-width: none;
       -ms-overflow-style: none;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      scroll-behavior: smooth;
+    }
+    .nav-tabs.is-dragging {
+      cursor: grabbing !important;
+      scroll-behavior: auto !important;
+    }
+    .nav-tabs.is-dragging .tab-btn {
+      cursor: grabbing !important;
+      pointer-events: none !important;
     }
     .nav-tabs::-webkit-scrollbar {
       display: none !important;
@@ -4749,6 +4747,32 @@ self.addEventListener('fetch', (event) => {
 
     .appetite-hero-stripes {
       background-image: none !important;
+    }
+
+    /* Accounts table 7-row viewport with sticky header */
+    .accounts-table-scroll-wrapper {
+      max-height: 392px;
+      overflow-y: auto;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 8px;
+    }
+    .accounts-table-scroll-wrapper thead {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--card-bg);
+    }
+    .accounts-table-scroll-wrapper thead th {
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    .accounts-table-scroll-wrapper::-webkit-scrollbar { width: 5px; }
+    .accounts-table-scroll-wrapper::-webkit-scrollbar-track { background: transparent; }
+    .accounts-table-scroll-wrapper::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 3px; }
+    .accounts-table-scroll-wrapper::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.4); }
+    [data-theme="light"] .accounts-table-scroll-wrapper thead {
+      background: #ffffff;
     }
 
     .hero-label {
@@ -6116,7 +6140,7 @@ self.addEventListener('fetch', (event) => {
       background: #ffffff !important;
       background-image: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
       border: 1px solid #e2e8f0 !important;
-      border-top: 3px solid #2563eb !important;
+      border-top: none !important;
       box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.08) !important;
       color: #0f172a !important;
     }
@@ -7357,6 +7381,429 @@ self.addEventListener('fetch', (event) => {
     }
     .revolut-chip:active {
       transform: scale(0.96) !important;
+    }
+
+    /* FamilyOS workspace: common surfaces, readable hierarchy, local system fonts. */
+    :root, :root[data-theme="dark"], [data-theme="dark"] {
+      --bg: #151b1c !important;
+      --bg-gradient: none !important;
+      --bg-secondary: #1c2425 !important;
+      --card-bg: #1e2728 !important;
+      --card-hover: #283334 !important;
+      --input-bg: #192122 !important;
+      --modal-bg: #1e2728 !important;
+      --box-bg: #253132 !important;
+      --border: #354344 !important;
+      --border-subtle: #354344 !important;
+      --border-hover: #4e6766 !important;
+      --text: #edf3f0 !important;
+      --text-muted: #a9bab5 !important;
+      --text-soft: #c5d2cd !important;
+      --primary: #73c5b1 !important;
+      --primary-hover: #8bd4c2 !important;
+      --primary-accent: #73c5b1 !important;
+      --primary-gradient: linear-gradient(#73c5b1,#73c5b1) !important;
+      --border-focus: #73c5b1 !important;
+      --success: #7bd1a5 !important;
+      --danger: #ffa19b !important;
+      --warning: #e8c080 !important;
+      --workspace-accent-ink: #102f29;
+      --workspace-tint: #263d38;
+      --workspace-shadow: 0 2px 8px rgba(0,0,0,.10);
+    }
+    :root[data-theme="light"], [data-theme="light"] {
+      --bg: #f4f3ee !important;
+      --bg-secondary: #fafaf7 !important;
+      --card-bg: #fffefa !important;
+      --card-hover: #eeefea !important;
+      --input-bg: #fffefa !important;
+      --modal-bg: #fffefa !important;
+      --box-bg: #eeefea !important;
+      --border: #d7ddd5 !important;
+      --border-subtle: #d7ddd5 !important;
+      --border-hover: #a6b9ae !important;
+      --text: #203731 !important;
+      --text-muted: #607269 !important;
+      --text-soft: #425b50 !important;
+      --primary: #286654 !important;
+      --primary-hover: #1d5142 !important;
+      --primary-accent: #286654 !important;
+      --primary-gradient: linear-gradient(#286654,#286654) !important;
+      --border-focus: #286654 !important;
+      --success: #246c46 !important;
+      --danger: #a23d38 !important;
+      --warning: #8c601e !important;
+      --workspace-accent-ink: #ffffff;
+      --workspace-tint: #e7f0e9;
+      --workspace-shadow: 0 2px 8px rgba(32,55,49,.035);
+    }
+    html { min-height: 100%; scroll-padding-bottom: 100px; }
+    html body {
+      height: auto !important; min-height: 100vh !important;
+      overflow-y: auto !important; background: var(--bg) !important;
+      background-image: none !important; color: var(--text) !important;
+      font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif !important;
+      line-height: 1.5;
+    }
+    :root[data-theme] body { background: var(--bg) !important; background-image: none !important; color: var(--text) !important; }
+    body .container { max-width: 1480px !important; padding: 24px 32px 96px !important; }
+    body .header { padding: 0 0 20px !important; margin-bottom: 16px !important; border-bottom: 1px solid var(--border); }
+    body .brand-title { color: var(--text) !important; font-size: 22px !important; font-weight: 700 !important; }
+    body .brand-tag { color: var(--text-muted) !important; letter-spacing: .025em; }
+    body .brand-icon, body .family-scope-chip {
+      background: var(--workspace-tint) !important; color: var(--primary) !important;
+      border: 1px solid var(--border) !important; box-shadow: none !important;
+    }
+    :root[data-theme] body .header { background: var(--bg) !important; backdrop-filter: none !important; }
+    :root[data-theme] body .brand-title { color: var(--text) !important; }
+    :root[data-theme] body .brand-tag { color: var(--text-muted) !important; }
+    :root[data-theme] body .brand-icon, :root[data-theme] body .family-scope-chip { background: var(--workspace-tint) !important; color: var(--primary) !important; border: 1px solid var(--border) !important; box-shadow: none !important; }
+    :root[data-theme] body .brand-logo-svg { color: var(--primary) !important; stroke: currentColor !important; }
+    body .btn-icon-circle, body .privacy-mask-pill, body .status-indicator-btn {
+      background: var(--card-bg) !important; border: 1px solid var(--border) !important;
+      color: var(--text) !important; box-shadow: none !important; min-height: 40px;
+    }
+    body #mainDashboard { min-width: 0; height: auto !important; overflow: visible !important; }
+    body #mainDashboard > [id^="tab-"] { min-width: 0; padding-top: 4px; }
+    body #mainDashboard .card, body .modal-overlay .card, body [id^="modal"] .card, body .bottom-sheet-card {
+      background: var(--card-bg) !important; color: var(--text) !important;
+      border: 1px solid var(--border) !important; border-radius: 18px !important;
+      box-shadow: var(--workspace-shadow) !important;
+    }
+    body #mainDashboard .card { padding: 22px !important; }
+    body #mainDashboard .card:hover { border-color: var(--border) !important; box-shadow: var(--workspace-shadow) !important; transform: none !important; }
+    body #mainDashboard :is(h1,h2,h3,h4), body .modal-overlay :is(h2,h3,h4) { color: var(--text) !important; letter-spacing: -.018em; }
+    body #mainDashboard > [id^="tab-"] > .card > h3,
+    body #mainDashboard > [id^="tab-"] > .card > div:first-child h3,
+    body #mainDashboard #tab-debts > div:first-child h3 { font-size: 21px !important; line-height: 1.3; }
+    body #mainDashboard p, body #mainDashboard .stat-label { color: var(--text-muted) !important; }
+    body #mainDashboard .stat-label { font-size: 12px !important; font-weight: 600; letter-spacing: .025em; text-transform: none !important; }
+    body #mainDashboard .stat-val { font-size: clamp(19px,2vw,27px) !important; line-height: 1.3; margin-top: 8px; color: var(--text) !important; overflow-wrap: anywhere; }
+    body #mainDashboard .stat-val.success { color: var(--success) !important; }
+    body #mainDashboard .stat-val.danger { color: var(--danger) !important; }
+    body #mainDashboard .stat-val.warning { color: var(--warning) !important; }
+    body #mainDashboard .stat-val.purple, body #mainDashboard .stat-val.primary { color: var(--primary) !important; }
+    body #mainDashboard .grid-3 { gap: 16px !important; }
+    body #mainDashboard .grid-3 > .card { background: var(--bg-secondary) !important; box-shadow: none !important; }
+    body #mainDashboard .btn, body .modal-overlay .btn, body [id^="modal"] .btn {
+      min-height: 40px; border-radius: 10px !important; font-weight: 600 !important;
+      background: var(--primary) !important; color: var(--workspace-accent-ink) !important;
+      border: 1px solid transparent !important; box-shadow: none !important;
+      transition: background .15s ease, border-color .15s ease !important;
+    }
+    body #mainDashboard .btn-secondary, body .modal-overlay .btn-secondary, body [id^="modal"] .btn-secondary {
+      background: var(--card-hover) !important; color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+    }
+    body #mainDashboard .btn-danger { background: var(--danger) !important; color: var(--bg) !important; }
+    body #mainDashboard .btn:hover { filter: brightness(1.06); transform: none !important; }
+    body #mainDashboard .btn-secondary:hover { border-color: var(--border-hover) !important; background: var(--workspace-tint) !important; }
+    body #mainDashboard :is(button,a,input,select,textarea,[tabindex]):focus-visible,
+    body .modal-overlay :is(button,input,select,textarea):focus-visible {
+      outline: 3px solid var(--primary) !important; outline-offset: 3px !important;
+    }
+    body #mainDashboard button:disabled { opacity: .5; cursor: not-allowed !important; }
+    body #mainDashboard input, body #mainDashboard select, body #mainDashboard textarea,
+    body .modal-overlay input, body .modal-overlay select, body .modal-overlay textarea {
+      min-width: 0; max-width: 100%; background: var(--input-bg) !important; color: var(--text) !important;
+      border: 1px solid var(--border) !important; border-radius: 10px !important; box-shadow: none !important;
+    }
+    body #mainDashboard input:not([type="checkbox"]):not([type="radio"]), body #mainDashboard select { min-height: 44px; }
+    body #mainDashboard input::placeholder, body #mainDashboard textarea::placeholder { color: var(--text-muted) !important; opacity: 1; }
+    body #mainDashboard label { color: var(--text-soft) !important; }
+    body #mainDashboard .form-group { min-width: 0; margin-bottom: 18px; }
+    body #mainDashboard .month-navigator-bar {
+      padding: 12px 18px !important; border-radius: 12px !important; background: var(--card-bg) !important;
+      border: 1px solid var(--border) !important; box-shadow: none !important; backdrop-filter: none !important;
+      margin-bottom: 14px !important; flex-wrap: wrap !important;
+    }
+    body #mainDashboard .month-navigator-bar span { color: var(--text) !important; }
+    body #mainDashboard .month-navigator-label { font-weight: 500 !important; font-size: 13px !important; }
+    body #mainDashboard .month-chevron-btn { min-height: 40px; min-width: 40px; background: var(--card-hover) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 9px !important; }
+    body #mainDashboard .nav-tabs-wrapper { gap: 8px; margin-bottom: 22px !important; }
+    body #mainDashboard .nav-tabs {
+      border: 1px solid var(--border) !important; border-radius: 12px !important;
+      background: var(--bg-secondary) !important; padding: 5px !important; gap: 4px !important;
+      margin-bottom: 0 !important; box-shadow: none !important; backdrop-filter: none !important;
+      touch-action: pan-x pan-y; scroll-padding: 8px;
+    }
+    body #mainDashboard .nav-tabs .tab-btn { min-height: 42px; padding: 9px 14px !important; color: var(--text-muted) !important; background: transparent !important; border: 1px solid transparent !important; font-size: 13px !important; border-radius: 8px !important; }
+    body #mainDashboard .nav-tabs .tab-btn:hover { background: var(--card-hover) !important; color: var(--text) !important; }
+    body #mainDashboard .nav-tabs .tab-btn.active { color: var(--primary) !important; background: var(--workspace-tint) !important; box-shadow: none !important; border: 1px solid var(--border) !important; font-weight: 700 !important; }
+    body #mainDashboard .nav-tab-scroll-btn { width: 40px; height: 44px; color: var(--text) !important; background: var(--card-bg) !important; border: 1px solid var(--border) !important; box-shadow: none !important; border-radius: 10px; }
+    body #mainDashboard .desktop-dashboard-grid { display: block !important; }
+    body #mainDashboard .desktop-widget-column { position: static !important; top: auto !important; margin-top: 20px !important; }
+    body #mainDashboard .desktop-main-column, body #mainDashboard .desktop-widget-column { min-width: 0 !important; }
+    body #mainDashboard .appetite-hero-card.revolut-hero-card {
+      background: var(--card-bg) !important; background-image: none !important;
+      border: 1px solid var(--border) !important; border-top: 1px solid var(--border) !important;
+      border-radius: 20px !important; padding: 28px !important; color: var(--text) !important;
+      box-shadow: var(--workspace-shadow) !important; overflow: visible !important;
+    }
+    body #mainDashboard .appetite-hero-card::before, body #mainDashboard .appetite-hero-card::after { display: none !important; }
+    body #mainDashboard .hero-balance-header-row { align-items: start !important; gap: 24px !important; }
+    body #mainDashboard .hero-primary-balance-box { flex: 1; min-width: 0; }
+    body #mainDashboard .hero-label { color: var(--text-muted) !important; font-size: 13px !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: .01em !important; }
+    body #mainDashboard .hero-balance-val { color: var(--text) !important; font-family: "Segoe UI",sans-serif !important; font-size: clamp(32px,3.5vw,49px) !important; font-weight: 650 !important; letter-spacing: -.045em !important; line-height: 1.15 !important; margin: 12px 0 !important; overflow-wrap: anywhere; }
+    body #mainDashboard .hero-balance-val .badge { font-family: "Segoe UI",sans-serif !important; font-size: 11px !important; letter-spacing: 0 !important; line-height: 1.4 !important; vertical-align: middle; white-space: normal !important; }
+    body #mainDashboard #valSafeToSpend .badge { background: var(--danger) !important; color: var(--bg) !important; border-color: transparent !important; }
+    body #mainDashboard .hero-badge-pill { background: transparent !important; color: var(--text-muted) !important; border: none !important; padding: 0 !important; white-space: normal !important; font-size: 12px !important; justify-content: start !important; }
+    body #mainDashboard .hero-secondary-balance-box { flex: 0 1 220px; padding: 16px !important; border-radius: 12px !important; border: 1px solid var(--border) !important; background: var(--bg-secondary) !important; text-align: left !important; align-items: start !important; min-width: 0; box-shadow: none !important; }
+    body #mainDashboard .hero-secondary-label, body #mainDashboard .hero-secondary-pill { color: var(--text-muted) !important; font-size: 11px !important; }
+    body #mainDashboard .hero-secondary-val { color: var(--text) !important; font-size: 24px !important; font-weight: 650 !important; margin: 6px 0; overflow-wrap: anywhere; }
+    body #mainDashboard .hero-actions-grid { grid-template-columns: repeat(4,minmax(0,1fr)) !important; gap: 8px !important; padding-top: 20px !important; margin-top: 24px !important; align-items: stretch !important; }
+    body #mainDashboard .hero-action-btn.revolut-action-btn { padding: 12px 8px !important; min-height: 76px !important; gap: 8px; border: 1px solid var(--border) !important; border-radius: 12px !important; background: var(--bg-secondary) !important; justify-content: center !important; }
+    body #mainDashboard .hero-action-btn.revolut-action-btn:hover { transform: none !important; background: var(--workspace-tint) !important; border-color: var(--border-hover) !important; }
+    body #mainDashboard .hero-action-icon { width: 24px !important; height: 24px !important; margin: 0 !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; color: var(--text) !important; }
+    body #mainDashboard .hero-action-icon svg { width: 21px; height: 21px; }
+    body #mainDashboard .hero-action-btn .revolut-icon-expense { color: var(--danger) !important; }
+    body #mainDashboard .hero-action-btn .revolut-icon-income { color: var(--success) !important; }
+    body #mainDashboard .hero-action-btn .revolut-icon-transfer, body #mainDashboard .hero-action-btn .revolut-icon-goals { color: var(--primary) !important; }
+    body #mainDashboard .hero-action-btn span { color: var(--text) !important; font-size: 12px !important; font-weight: 600 !important; }
+    body #mainDashboard .quick-entry-card { background: var(--bg-secondary) !important; }
+    body #mainDashboard .core-financial-cards { grid-template-columns: minmax(0,1fr) minmax(0,1.15fr) !important; gap: 16px !important; }
+    body #mainDashboard .appetite-debit-card { background: #25483f !important; background-image: none !important; color: #f0f6ef !important; border: 1px solid #436458 !important; border-radius: 16px !important; box-shadow: none !important; padding: 22px !important; min-width: 0; }
+    body #mainDashboard .appetite-card-sheen { display: none; }
+    body #mainDashboard #valLiquid { overflow-wrap: anywhere; }
+    body #mainDashboard .period-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; padding: 0; }
+    body #mainDashboard .pill-btn {
+      min-height: 44px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--card-bg); color: var(--text-soft); font: 600 13px/1.3 "Segoe UI",sans-serif;
+      cursor: pointer; transition: background .15s ease,border-color .15s ease;
+    }
+    body #mainDashboard .pill-btn:hover { border-color: var(--border-hover); background: var(--card-hover); color: var(--text); }
+    body #mainDashboard .pill-btn.active, body #mainDashboard .pill-btn[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--workspace-accent-ink); }
+    body #mainDashboard .pill-btn:disabled { opacity: .45; cursor: not-allowed; }
+    body #mainDashboard .badge { background: var(--workspace-tint) !important; color: var(--text-soft) !important; border: 1px solid var(--border) !important; }
+    body #mainDashboard .progress-bar-bg { background: var(--card-hover) !important; overflow: hidden; border-radius: 10px !important; }
+    body #mainDashboard #goalsListContainer { grid-template-columns: repeat(auto-fit,minmax(min(100%,340px),1fr)) !important; gap: 18px !important; }
+    body #mainDashboard #goalsListContainer > .card { padding: 24px !important; border-radius: 14px !important; }
+    body #mainDashboard #goalsListContainer .progress-bar-bg { height: 10px !important; margin: 12px 0; }
+    body #mainDashboard #envelopesListContainer { grid-template-columns: repeat(auto-fit,minmax(min(100%,290px),1fr)) !important; gap: 16px !important; }
+    body #mainDashboard #envelopesListContainer > .card { background: var(--bg-secondary) !important; border-radius: 12px !important; padding: 20px !important; border-top: 1px solid var(--border) !important; box-shadow: none !important; }
+    body #mainDashboard #debtsListContainer > .card { border-radius: 12px !important; padding: 24px !important; }
+    body #mainDashboard #debtsListContainer > .card > div:first-child { border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 16px !important; }
+    body #mainDashboard #dashEnvelopesContainer { grid-template-columns: minmax(0,1fr) !important; }
+    body #mainDashboard #dashGoalsContainer > div, body #mainDashboard #dashEnvelopesContainer > div { min-width: 0; border-radius: 10px !important; }
+    body #mainDashboard #dashGoalsContainer, body #mainDashboard #dashEnvelopesContainer { gap: 14px !important; }
+    body #mainDashboard #tab-tx > .card { max-width: 900px; margin-inline: auto; }
+    body #mainDashboard #tab-tx #txAmount { color: var(--text) !important; font-size: 28px !important; min-height: 60px; }
+    body #mainDashboard .category-dropdown-trigger, body #mainDashboard .category-dropdown-menu { background: var(--card-bg) !important; border-color: var(--border) !important; color: var(--text) !important; }
+    body #mainDashboard .tx-type-segment-group { gap: 8px; background: var(--bg-secondary) !important; padding: 5px; border-radius: 12px; }
+    body #mainDashboard .tx-type-segment-btn { min-height: 44px; background: transparent !important; color: var(--text-muted) !important; border: 1px solid transparent !important; }
+    body #mainDashboard .tx-type-segment-btn.active-expense { border-color: var(--danger) !important; color: var(--danger) !important; background: var(--card-bg) !important; }
+    body #mainDashboard .tx-type-segment-btn.active-income { border-color: var(--success) !important; color: var(--success) !important; background: var(--card-bg) !important; }
+    body #mainDashboard #divNewObligation { background: var(--bg-secondary) !important; border-style: dashed !important; }
+    body #mainDashboard #obligationsListContainer > div { border-radius: 10px !important; }
+    body #mainDashboard #tab-analytics > .card:last-child { border-color: var(--border-hover) !important; }
+    body #mainDashboard #tab-analytics > div[style*="grid-template-columns"] { grid-template-columns: repeat(auto-fit,minmax(min(100%,310px),1fr)) !important; }
+    body #mainDashboard #tab-analytics > .grid-3 { grid-template-columns: repeat(auto-fit,minmax(min(100%,210px),1fr)) !important; }
+    body #mainDashboard #tab-analytics .card h3 { flex-wrap: wrap; gap: 8px; }
+    body #mainDashboard #tab-analytics div:has(> #btnForecast30) { flex-wrap: wrap; }
+    body #mainDashboard .chart-box { background: var(--bg-secondary) !important; border: 1px solid var(--border) !important; border-radius: 12px !important; }
+    body #mainDashboard #donutChartContainer svg text { fill: var(--text-muted) !important; }
+    body #mainDashboard #donutChartContainer svg text:last-child { fill: var(--text) !important; }
+    body #mainDashboard #donutChartContainer svg circle[stroke="#1e293b"], body #mainDashboard #donutChartContainer svg circle[stroke="#334155"] { stroke: var(--card-hover) !important; }
+    body #mainDashboard #cashFlowChartSvg svg text { fill: var(--text-muted) !important; }
+    body #mainDashboard #cashFlowChartSvg svg text[fill="#f87171"] { fill: var(--danger) !important; }
+    body #mainDashboard table { color: var(--text) !important; }
+    body #mainDashboard table th { color: var(--text-muted) !important; background: var(--bg-secondary) !important; font-size: 11px !important; letter-spacing: .03em !important; border-color: var(--border) !important; }
+    body #mainDashboard table td { color: var(--text) !important; border-color: var(--border) !important; font-size: 13px; }
+    body #mainDashboard table tbody tr:hover td { background: var(--card-hover) !important; }
+    body .mobile-bottom-nav { background: var(--card-bg) !important; border-color: var(--border) !important; box-shadow: none !important; }
+    body .mobile-nav-item { color: var(--text-muted) !important; }
+    body .mobile-nav-item.active { color: var(--primary) !important; }
+    @media(min-width:1180px) {
+      body #mainDashboard .desktop-dashboard-grid { display: grid !important; grid-template-columns: minmax(0,1fr) 330px !important; gap: 22px !important; align-items: start !important; }
+      body #mainDashboard .desktop-main-column { display: flex !important; flex-direction: column !important; }
+      body #mainDashboard .desktop-widget-column { display: flex !important; flex-direction: column !important; margin-top: 0 !important; }
+    }
+    @media(max-width:1179px) {
+      body #mainDashboard .desktop-main-column, body #mainDashboard .desktop-widget-column { display: block !important; }
+      body #mainDashboard .hero-secondary-balance-box { flex-basis: 230px; }
+    }
+    @media(max-width:767px) {
+      body .container { padding: 16px 16px 100px !important; }
+      body .header { flex-wrap: wrap !important; gap: 14px; }
+      body #mainDashboard .appetite-hero-card.revolut-hero-card { padding: 22px !important; }
+      body #mainDashboard .hero-balance-header-row { flex-direction: column !important; gap: 18px !important; }
+      body #mainDashboard .hero-secondary-balance-box { flex-basis: auto; width: 100%; display: block !important; }
+      body #mainDashboard .hero-secondary-val { font-size: 22px !important; }
+      body #mainDashboard .core-financial-cards { grid-template-columns: minmax(0,1fr) !important; }
+      body #mainDashboard .month-navigator-bar { padding: 12px !important; }
+      body #mainDashboard .nav-tabs-wrapper { gap: 5px !important; }
+      body #mainDashboard .nav-tab-scroll-btn { width: 32px; min-width: 32px; }
+      body #mainDashboard .nav-tabs .tab-btn { padding-inline: 10px !important; }
+      body #mainDashboard .grid-3 { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+    }
+    @media(max-width:600px) {
+      body #mainDashboard .card { padding: 18px !important; }
+      body #mainDashboard #tab-overview .hero-actions-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+      body #mainDashboard #tab-overview .hero-action-btn { min-height: 64px !important; flex-direction: row !important; }
+      body #mainDashboard #goalsListContainer, body #mainDashboard #envelopesListContainer { grid-template-columns: minmax(0,1fr) !important; }
+      body #mainDashboard #tab-accounts div[style*="grid-template-columns"],
+      body #mainDashboard #tab-obligations div[style*="grid-template-columns"],
+      body #mainDashboard #tab-debts div[style*="grid-template-columns"],
+      body #mainDashboard #tab-tx div[style*="grid-template-columns"],
+      body #mainDashboard #onboardingBanner div[style*="grid-template-columns"] { grid-template-columns: minmax(0,1fr) !important; }
+      body #mainDashboard .quick-entry-card > div[style*="display: flex"], body #mainDashboard .quick-input-bar { flex-wrap: wrap !important; }
+      body #mainDashboard #dashQuickInput { flex: 1 1 100% !important; width: 100%; }
+      body #mainDashboard .quick-input-bar > input { order: 3; }
+      body #mainDashboard #dashCatMenu { min-width: min(290px,calc(100vw - 70px)) !important; max-width: calc(100vw - 70px); }
+      body #mainDashboard .period-pills { gap: 6px; }
+      body #mainDashboard .period-pills .pill-btn { flex: 1 1 130px; padding-inline: 10px; }
+      body #mainDashboard #tab-analytics .grid-3 { grid-template-columns: minmax(0,1fr) !important; }
+      body #mainDashboard #tab-tx .form-group > div { flex-wrap: wrap; gap: 8px; }
+      body #mainDashboard #tab-tx .form-group > div > div { flex-wrap: wrap; }
+      body #mainDashboard .category-dropdown-trigger { gap: 8px; flex-wrap: wrap; }
+      body #mainDashboard #debtsListContainer > .card, body #mainDashboard #goalsListContainer > .card { padding: 18px !important; }
+      body #mainDashboard #goalsListContainer > .card > div:first-child > div:first-child { flex-wrap: wrap; gap: 10px; }
+      body #mainDashboard #envelopesListContainer > .card > div:first-child { flex-wrap: wrap; gap: 8px; }
+      body #mainDashboard #tab-analytics table { table-layout: fixed; }
+      body #mainDashboard #tab-analytics table th, body #mainDashboard #tab-analytics table td { padding: 9px 6px !important; font-size: 11px !important; white-space: normal; overflow-wrap: anywhere; }
+    }
+    @media(prefers-reduced-motion:reduce) {
+      body #mainDashboard *, body .modal-overlay * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+
+    /* Complete account list: seven fixed-height rows, all accounts retained. */
+    .accounts-list-viewport {
+      --account-row-height: 84px;
+      box-sizing: border-box;
+      max-height: calc(7 * var(--account-row-height) + 2px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-gutter: stable;
+      border-block: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .accounts-list-viewport:focus-visible,
+    .account-list-name:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
+    }
+    .account-list-hint {
+      margin: -4px 0 14px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .accounts-list { min-width: 0; }
+    .account-list-row {
+      box-sizing: border-box;
+      height: var(--account-row-height);
+      min-width: 0;
+      padding: 12px 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .account-list-row:last-child { border-bottom: 0; }
+    .account-list-row:hover { background: var(--box-bg); }
+    .account-list-identity { min-width: 0; }
+    .account-list-name, .account-list-meta {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.35;
+    }
+    .account-list-name { color: var(--text); font-size: 14px; font-weight: 600; }
+    .account-list-meta { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+    .account-list-amount {
+      align-self: flex-end;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.3;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .account-list-empty { padding: 18px 8px; color: var(--text-muted); }
+    .manage-accounts-table td { overflow-wrap: anywhere; }
+    @media (min-width: 1280px) {
+      .account-list-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+      .account-list-identity { flex: 1; }
+      .account-list-amount { align-self: center; flex-shrink: 0; }
+    }
+    @media (max-width: 600px) {
+      .account-list-amount { font-size: 12px; letter-spacing: -0.02em; }
+      .manage-accounts-table, .manage-accounts-table tbody { display: block; width: 100%; }
+      .manage-accounts-table thead { display: none; }
+      .manage-accounts-table tbody tr {
+        display: block;
+        height: auto !important;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .manage-accounts-table tbody td {
+        display: grid;
+        grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+        gap: 10px;
+        height: auto !important;
+        min-height: 32px;
+        padding: 6px 0 !important;
+        border-bottom: 0 !important;
+        text-align: right;
+        font-size: 12px;
+      }
+      .manage-accounts-table td::before {
+        content: attr(data-label);
+        color: var(--text-muted);
+        text-align: left;
+      }
+      .manage-accounts-table td button { min-height: 40px; }
+    }
+
+    /* Confirmed responsive QA fixes: payments, alerts, and wide numeric metrics. */
+    body #mainDashboard .core-financial-cards > div:last-child { min-width: 0; }
+    body #mainDashboard .stat-label { overflow-wrap: anywhere; }
+    :root[data-theme="light"] body #mainDashboard [style*="color: #34d399"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#34d399"],
+    :root[data-theme="light"] body #mainDashboard [style*="color: #10b981"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#10b981"] { color: var(--success) !important; }
+    :root[data-theme="light"] body #mainDashboard [style*="color: #38bdf8"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#38bdf8"],
+    :root[data-theme="light"] body #mainDashboard [style*="color: #60a5fa"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#60a5fa"],
+    :root[data-theme="light"] body #mainDashboard [style*="color: #c084fc"] { color: var(--primary) !important; }
+    :root[data-theme="light"] body #mainDashboard [style*="color: #f87171"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#f87171"],
+    :root[data-theme="light"] body #mainDashboard [style*="color: #ef4444"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#ef4444"] { color: var(--danger) !important; }
+    :root[data-theme="light"] body #mainDashboard [style*="color: #fbbf24"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#fbbf24"],
+    :root[data-theme="light"] body #mainDashboard [style*="color: #f59e0b"],
+    :root[data-theme="light"] body #mainDashboard [style*="color:#f59e0b"] { color: var(--warning) !important; }
+    @media (max-width: 900px) {
+      body #mainDashboard .core-financial-cards > div:last-child { grid-template-columns: minmax(0,1fr) !important; }
+      body #mainDashboard .core-financial-cards .stat-val { white-space: nowrap; font-size: clamp(18px,5vw,27px) !important; overflow-wrap: normal; }
+      body #mainDashboard #forecastDeficitAlert { flex-wrap: wrap; align-items: flex-start !important; }
+      body #mainDashboard #forecastDeficitAlert > div { min-width: 0; flex: 1 1 180px; }
+      body #mainDashboard #forecastDeficitBadge { white-space: nowrap; }
+      body #mainDashboard #dashGoalsCard > div:first-child,
+      body #mainDashboard #dashEnvelopesCard > div:first-child { flex-wrap: wrap; gap: 12px; }
+      body #mainDashboard #dashGoalsCard > div:first-child > div { flex-wrap: wrap; }
+      body #mainDashboard #dashGoalsCard h3 { min-width: 0; }
+      body #mainDashboard #debtsListContainer .badge { white-space: normal !important; max-width: 100%; overflow-wrap: anywhere; }
+      body #mainDashboard #debtsListContainer > .card > div:first-child { flex-wrap: wrap; gap: 10px; }
+      body #mainDashboard #debtsListContainer > .card > div:first-child > div { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+      body #mainDashboard #tab-obligations .obligations-table,
+      body #mainDashboard #tab-obligations .obligations-table tbody { display: block; width: 100%; min-width: 0; }
+      body #mainDashboard #tab-obligations .obligations-table thead { display: none; }
+      body #mainDashboard #tab-obligations .obligations-table tr { display: block; height: auto !important; padding: 16px 0; border-bottom: 1px solid var(--border); }
+      body #mainDashboard #tab-obligations .obligations-table td { display: grid; grid-template-columns: 80px minmax(0,1fr); gap: 12px; height: auto !important; min-height: 32px; padding: 6px 0 !important; border: 0 !important; overflow-wrap: anywhere; }
+      body #mainDashboard #tab-obligations .obligations-table td::before { content: attr(data-label); color: var(--text-muted); font-size: 12px; font-weight: 400; }
+      body #mainDashboard #tab-obligations .obligations-table td > div { flex-wrap: wrap; }
+      body #mainDashboard #tab-obligations .obligations-table td .badge { justify-self: start; }
+    }
+    @media (max-width: 600px) {
+      body #mainDashboard #tab-envelopes .grid-3,
+      body #mainDashboard #tab-debts .grid-3 { grid-template-columns: minmax(0,1fr) !important; }
+      body #mainDashboard #tab-envelopes .grid-3 p { overflow-wrap: anywhere; }
     }
 
   </style>
@@ -8804,33 +9251,24 @@ self.addEventListener('fetch', (event) => {
 </div>
 
 <!-- Desktop Navigation Tabs -->
-<div class="nav-tabs">
-
+<div class="nav-tabs-wrapper">
+  <button class="nav-tab-scroll-btn" id="navScrollLeft" onclick="scrollNavigation(-200)" aria-label="Прокрутить разделы влево">‹</button>
+  <div class="nav-tabs" id="navTabsBar" role="navigation" aria-label="Разделы семейного бюджета" role="navigation" aria-label="Разделы семейного бюджета" role="navigation" aria-label="Разделы семейного бюджета" role="navigation" aria-label="Разделы семейного бюджета" role="navigation" aria-label="Разделы семейного бюджета" role="navigation" aria-label="Разделы семейного бюджета">
         <button class="tab-btn active" onclick="switchTab('tab-overview')">📊 Сводный дашборд</button>
-
         <button class="tab-btn" onclick="switchTab('tab-goals')">🎯 Цели накоплений</button>
-
         <button class="tab-btn" onclick="switchTab('tab-envelopes')">✉️ Конверты-копилки</button>
-
         <button class="tab-btn" onclick="switchTab('tab-debts')">💳 Долги и кредиты</button>
-
         <button class="tab-btn" onclick="switchTab('tab-analytics')">📈 Аналитика и прогноз</button>
-
         <button class="tab-btn" onclick="switchTab('tab-tx')">➕ Новая операция</button>
-
         <button class="tab-btn" onclick="switchTab('tab-obligations')">📅 Обязательные платежи</button>
-
         <button class="tab-btn" onclick="switchTab('tab-accounts')">💳 Счета семьи</button>
-
         <button class="tab-btn" onclick="switchTab('tab-categories')">📂 Категории</button>
-
         <button class="tab-btn" onclick="switchTab('tab-transfer')">🔄 Внутренний перевод</button>
-
         <button class="tab-btn" onclick="switchTab('tab-ledger')">📜 Журнал проводок</button>
-
         <button class="tab-btn" onclick="switchTab('tab-import')">📥 Импорт выписок</button>
-
-      </div>
+  </div>
+  <button class="nav-tab-scroll-btn" id="navScrollRight" onclick="scrollNavigation(200)" aria-label="Прокрутить разделы вправо">›</button>
+</div>
 
       <!-- Tab 1: Overview -->
       <div id="tab-overview">
@@ -8868,7 +9306,7 @@ self.addEventListener('fetch', (event) => {
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </div>
-              <span class="revolut-action-label" style="font-weight: 700;">🔴 + Расход</span>
+              <span class="revolut-action-label" style="font-weight: 700;">Расход</span>
             </button>
 
             <button class="hero-action-btn revolut-action-btn" id="heroBtnIncome" onclick="openNewTxModal('INCOME')">
@@ -8878,7 +9316,7 @@ self.addEventListener('fetch', (event) => {
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
               </div>
-              <span class="revolut-action-label" style="font-weight: 700;">🟢 ＋ Доход</span>
+              <span class="revolut-action-label" style="font-weight: 700;">Доход</span>
             </button>
 
             <button class="hero-action-btn revolut-action-btn" id="heroBtnTransfer" onclick="openTransferModal()">
@@ -8890,7 +9328,7 @@ self.addEventListener('fetch', (event) => {
                   <path d="M21 19H3"></path>
                 </svg>
               </div>
-              <span class="revolut-action-label" style="font-weight: 600;">⇄ Перевод</span>
+              <span class="revolut-action-label" style="font-weight: 600;">Перевод</span>
             </button>
 
             <button class="hero-action-btn revolut-action-btn" id="heroBtnGoals" onclick="switchTab('goals')">
@@ -8901,7 +9339,7 @@ self.addEventListener('fetch', (event) => {
                   <circle cx="12" cy="12" r="2"></circle>
                 </svg>
               </div>
-              <span class="revolut-action-label" style="font-weight: 600;">🎯 Цели</span>
+              <span class="revolut-action-label" style="font-weight: 600;">Цели</span>
             </button>
           </div>
         </div>
@@ -9010,10 +9448,6 @@ self.addEventListener('fetch', (event) => {
                 <div style="font-size: 10px; opacity: 0.7; text-transform: uppercase;">Владелец</div>
                 <div style="font-weight: 600;">Семья • 1010</div>
               </div>
-              <div style="text-align: right;">
-                <div style="font-size: 10px; opacity: 0.7; text-transform: uppercase;">Срок</div>
-                <div style="font-mono font-weight: 600;">12/29</div>
-              </div>
             </div>
           </div>
 
@@ -9088,33 +9522,10 @@ self.addEventListener('fetch', (event) => {
 <!-- Accounts Overview Table -->
 
         <div class="card accounts-card">
-          <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-
-          <h3 style="margin-bottom: 12px; font-size: 16px;">Балансы всех счетов семьи</h3>
-
-          <table>
-
-            <thead>
-
-              <tr>
-
-                <th>Код</th>
-
-                <th>Счет</th>
-
-                <th>Тип</th>
-
-                <th>Принадлежность</th>
-
-                <th style="text-align: right;">Текущий остаток</th>
-
-              </tr>
-
-            </thead>
-
-            <tbody id="overviewAccountsBody"></tbody>
-
-          </table>
+          <h3 id="overviewAccountsHeading" style="margin-bottom: 12px; font-size: 16px;">Балансы всех счетов семьи</h3>
+          <p class="account-list-hint">Все счета · прокрутите список, чтобы увидеть остальные</p>
+          <div class="accounts-list-viewport" tabindex="0" role="region" aria-labelledby="overviewAccountsHeading">
+            <div id="overviewAccountsBody" class="accounts-list" role="list"></div>
           </div>
 
         </div>
@@ -10793,7 +11204,7 @@ self.addEventListener('fetch', (event) => {
 
       if (tabId === 'tab-categories') loadCategories();
 
-      if (tabId === 'tab-tx') renderCategoryChips();
+      if (tabId === 'tab-tx') renderCategoryCustomDropdowns();
 
       if (tabId === 'tab-import') populateImportAccounts();
 
@@ -10803,16 +11214,17 @@ self.addEventListener('fetch', (event) => {
 
     let currentAnalyticsPeriod = 'current_month';
 
+    let analyticsRequestSequence = 0;
+    let analyticsRequestController = null;
+
     let currentForecastDays = 30;
+
+    let forecastRequestSequence = 0;
+    let forecastRequestController = null;
 
     let forecastIncludeBurn = true;
 
-    function changeAnalyticsPeriod(period) {
-
-      currentAnalyticsPeriod = period;
-
-      document.querySelectorAll('.period-pills .pill-btn').forEach(btn => btn.classList.remove('active'));
-
+    function syncAnalyticsPeriodButtons(period) {
       const activeBtnMap = {
 
         'current_month': 'pillCurrentMonth',
@@ -10827,12 +11239,21 @@ self.addEventListener('fetch', (event) => {
 
       };
 
-      const btnEl = document.getElementById(activeBtnMap[period]);
+      document.querySelectorAll('.period-pills .pill-btn').forEach(btn => {
+        const active = btn.id === activeBtnMap[period];
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
+      });
+    }
 
-      if (btnEl) btnEl.classList.add('active');
+    syncAnalyticsPeriodButtons(currentAnalyticsPeriod);
+    [30, 60, 90].forEach(days => {
+      const btn = document.getElementById('btnForecast' + days);
+      if (btn) btn.setAttribute('aria-pressed', String(days === currentForecastDays));
+    });
 
-      loadAnalytics();
-
+    function changeAnalyticsPeriod(period) {
+      return loadAnalytics(period);
     }
 
     function changeForecastHorizon(days) {
@@ -10843,7 +11264,10 @@ self.addEventListener('fetch', (event) => {
 
         const btn = document.getElementById('btnForecast' + d);
 
-        if (btn) btn.classList.toggle('active', d === days);
+        if (btn) {
+          btn.classList.toggle('active', d === days);
+          btn.setAttribute('aria-pressed', String(d === days));
+        }
 
       });
 
@@ -10862,14 +11286,27 @@ self.addEventListener('fetch', (event) => {
     }
 
     async function loadAnalytics(period) {
+      const requestSequence = ++analyticsRequestSequence;
+      if (analyticsRequestController) analyticsRequestController.abort();
+      analyticsRequestController = new AbortController();
+      const targetPeriod = period || currentAnalyticsPeriod || currentSelectedMonth || 'current_month';
+      currentAnalyticsPeriod = targetPeriod;
+      syncAnalyticsPeriodButtons(targetPeriod);
+      const analyticsSection = document.getElementById('tab-analytics');
+      analyticsSection?.setAttribute('aria-busy', 'true');
+      document.getElementById('analyticsPeriodLabel').innerText = 'Загрузка выбранного периода…';
       try {
-        const targetPeriod = period || currentAnalyticsPeriod || currentSelectedMonth || 'current_month';
-        currentAnalyticsPeriod = targetPeriod;
-        const res = await fetch('/api/analytics/summary?period=' + targetPeriod, { headers: authHeaders() });
+        const res = await fetch('/api/analytics/summary?period=' + encodeURIComponent(targetPeriod), {
+          headers: authHeaders(), signal: analyticsRequestController.signal
+        });
 
         if (res.status === 401 || res.status === 423) return;
 
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
         const data = await res.json();
+
+        if (requestSequence !== analyticsRequestSequence) return;
 
         // 1. KPI Cards
 
@@ -10999,9 +11436,9 @@ self.addEventListener('fetch', (event) => {
 
               <td>${t.date}</td>
 
-              <td style="font-weight:500;">${t.description}</td>
+              <td style="font-weight:500;">${escapeHtml(t.description || '')}</td>
 
-              <td>${t.category_icon} ${t.category_name}</td>
+              <td>${t.category_icon} ${escapeHtml(t.category_name)}</td>
 
               <td style="font-weight:600; color:#f87171;">-${t.amount_rub} ₽</td>
 
@@ -11013,8 +11450,18 @@ self.addEventListener('fetch', (event) => {
 
       } catch (err) {
 
+        if (err.name === 'AbortError' || requestSequence !== analyticsRequestSequence) return;
         console.error('Error loading analytics:', err);
-
+        document.getElementById('analyticsPeriodLabel').innerText = 'Не удалось загрузить период. Повторите выбор.';
+        ['analyticsTotalIncome', 'analyticsTotalExpense', 'analyticsSavingsRate', 'analyticsRunway'].forEach(id => {
+          document.getElementById(id).innerText = '—';
+        });
+        ['analyticsSavingsSub', 'analyticsRunwaySub', 'donutChartContainer', 'donutLegend',
+         'categoriesBarsContainer', 'membersBarsContainer', 'topExpensesBody'].forEach(id => {
+          document.getElementById(id).textContent = '';
+        });
+      } finally {
+        if (requestSequence === analyticsRequestSequence) analyticsSection?.setAttribute('aria-busy', 'false');
       }
 
     }
@@ -11120,14 +11567,24 @@ self.addEventListener('fetch', (event) => {
     }
 
     async function loadForecast() {
-
+      const requestSequence = ++forecastRequestSequence;
+      if (forecastRequestController) forecastRequestController.abort();
+      forecastRequestController = new AbortController();
+      const forecastChart = document.getElementById('cashFlowChartSvg');
+      forecastChart?.setAttribute('aria-busy', 'true');
       try {
 
-        const res = await fetch('/api/forecast/cashflow?days=' + currentForecastDays + '&include_burn=' + (forecastIncludeBurn ? '1' : '0'), { headers: authHeaders() });
+        const res = await fetch('/api/forecast/cashflow?days=' + currentForecastDays + '&include_burn=' + (forecastIncludeBurn ? '1' : '0'), {
+          headers: authHeaders(), signal: forecastRequestController.signal
+        });
 
         if (res.status === 401 || res.status === 423) return;
 
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
         const data = await res.json();
+
+        if (requestSequence !== forecastRequestSequence) return;
 
         // 1. Stats strip
 
@@ -11140,6 +11597,14 @@ self.addEventListener('fetch', (event) => {
         document.getElementById('fcMinBalance').innerText = data.min_projected_balance_rub + ' ₽';
 
         document.getElementById('fcMinBalance').style.color = data.min_projected_balance_cents < 0 ? '#ef4444' : '#34d399';
+        let forecastPolicy = document.getElementById('forecastPolicyNote');
+        if (!forecastPolicy) {
+          forecastPolicy = document.createElement('p'); forecastPolicy.id = 'forecastPolicyNote';
+          forecastPolicy.style.cssText = 'font-size:12px;color:var(--text-muted);line-height:1.5';
+          document.getElementById('fcMinBalance').parentElement.appendChild(forecastPolicy);
+        }
+        forecastPolicy.innerText = data.model_note || '';
+
 
         // 2. Deficit Alert Banner
 
@@ -11203,8 +11668,16 @@ self.addEventListener('fetch', (event) => {
 
       } catch (err) {
 
+        if (err.name === 'AbortError' || requestSequence !== forecastRequestSequence) return;
         console.error('Error loading forecast:', err);
-
+        if (forecastChart) forecastChart.textContent = 'Не удалось загрузить прогноз. Повторите выбор горизонта.';
+        ['fcStartLiquid', 'fcCreditDebt', 'fcDailyBurn', 'fcMinBalance'].forEach(id => {
+          document.getElementById(id).innerText = '—';
+        });
+        document.getElementById('forecastMilestonesList').textContent = '';
+        document.getElementById('forecastDeficitAlert').classList.add('hidden');
+      } finally {
+        if (requestSequence === forecastRequestSequence) forecastChart?.setAttribute('aria-busy', 'false');
       }
 
     }
@@ -11854,6 +12327,14 @@ self.addEventListener('fetch', (event) => {
 
       }
 
+      let moneyPolicy = document.getElementById('moneyPolicyNote');
+      if (!moneyPolicy) {
+        moneyPolicy = document.createElement('p');
+        moneyPolicy.id = 'moneyPolicyNote';
+        moneyPolicy.style.cssText = 'color:var(--text-muted);font-size:12px;line-height:1.5;margin:12px 0';
+        document.getElementById('valSafeToSpend').closest('.card')?.appendChild(moneyPolicy);
+      }
+      moneyPolicy.innerText = 'Сводные итоги — только RUB. Валютные остатки показаны отдельно без пересчёта. Цели и конверты — планы накопления; одни деньги повторно из свободного остатка не вычитаются.';
       document.getElementById('valLiquid').innerText = overviewData.common_liquid_assets_rub + ' ₽';
       const heroTot = document.getElementById('valHeroTotalBalance');
       if (heroTot) heroTot.innerText = overviewData.common_liquid_assets_rub + ' ₽';
@@ -11922,73 +12403,79 @@ self.addEventListener('fetch', (event) => {
     }
 
     function renderOverviewAccounts() {
-
-      const tbody = document.getElementById('overviewAccountsBody');
-
-      tbody.innerHTML = '';
-
+      const list = document.getElementById('overviewAccountsBody');
+      const previousScroll = list.parentElement.scrollTop;
+      list.replaceChildren();
+      const scopes = {COMMON: 'Общий', PERSONAL_HUSBAND: 'Муж', PERSONAL_WIFE: 'Жена'};
+      const types = {DEBIT_CARD: 'Дебетовая карта', CASH: 'Наличные', CHECKING: 'Текущий счёт', SAVINGS: 'Накопления', SAVINGS_LIQUID: 'Накопительный счёт', DEPOSIT: 'Вклад', RESERVE: 'Резерв', CREDIT_CARD: 'Кредитная карта', LOAN: 'Кредит', MORTGAGE: 'Ипотека', EQUITY: 'Капитал'};
       overviewData.accounts.forEach(a => {
-
-        const tr = document.createElement('tr');
-
-        const scopeBadge = a.scope === 'COMMON' ? '<span class="badge">Общий</span>' :
-
-                          (a.scope === 'PERSONAL_HUSBAND' ? '<span class="badge" style="background:#0e7490;">Муж</span>' : '<span class="badge" style="background:#be185d;">Жена</span>');
-
-        tr.innerHTML = `
-
-          <td style="font-family:monospace; color:var(--text-muted);">${a.code}</td>
-
-          <td><strong>${a.name}</strong></td>
-
-          <td>${a.subtype}</td>
-
-          <td>${scopeBadge}</td>
-
-          <td style="font-weight:700; text-align: right; font-variant-numeric: tabular-nums;">${a.balance_rub} ₽</td>
-
-        `;
-
-        tbody.appendChild(tr);
-
+        const row = document.createElement('div');
+        row.className = 'account-list-row';
+        row.setAttribute('role', 'listitem');
+        const identity = document.createElement('div');
+        identity.className = 'account-list-identity';
+        const name = document.createElement('strong');
+        name.className = 'account-list-name';
+        name.textContent = a.name;
+        name.title = a.name;
+        name.tabIndex = 0;
+        const metadata = document.createElement('span');
+        metadata.className = 'account-list-meta';
+        metadata.textContent = [a.code, types[a.subtype] || a.subtype, scopes[a.scope] || a.scope].filter(Boolean).join(' · ');
+        metadata.title = metadata.textContent;
+        identity.append(name, metadata);
+        const amount = document.createElement('span');
+        amount.className = 'account-list-amount';
+        // balance_rub is the legacy name for native account cents / 100; no FX conversion is applied by the API.
+        const currency = /^[A-Z]{3}$/.test(a.currency || '') ? a.currency : 'RUB';
+        const [whole, fraction = '00'] = String(a.balance_rub ?? '0.00').split('.');
+        amount.textContent = whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\u00a0') + ',' + fraction + '\u00a0' + currency;
+        row.append(identity, amount);
+        list.appendChild(row);
       });
-
+      if (!overviewData.accounts.length) {
+        const empty = document.createElement('p');
+        empty.className = 'account-list-empty';
+        empty.textContent = 'Активных счетов пока нет.';
+        list.appendChild(empty);
+      }
+      list.parentElement.scrollTop = previousScroll;
     }
 
     function renderManageAccounts() {
-
       const tbody = document.getElementById('manageAccountsBody');
-
-      tbody.innerHTML = '';
-
+      tbody.replaceChildren();
+      tbody.closest('table').classList.add('manage-accounts-table');
       overviewData.accounts.forEach(a => {
-
         const tr = document.createElement('tr');
-
-        const limitDisplay = a.credit_limit_cents > 0 ? a.credit_limit_rub + ' ₽' : '—';
-
-        tr.innerHTML = `
-
-          <td style="font-family:monospace;">${a.code}</td>
-
-          <td>${a.name}</td>
-
-          <td>${a.subtype}</td>
-
-          <td>${a.scope}</td>
-
-          <td>${a.balance_rub} ₽</td>
-
-          <td>${limitDisplay}</td>
-
-          <td><button class="btn btn-secondary" style="padding:4px 8px; font-size:12px;" onclick="archiveAccount('${a.id}')">Архив</button></td>
-
-        `;
-
+        const currency = /^[A-Z]{3}$/.test(a.currency || '') ? a.currency : 'RUB';
+        const formatAmount = value => {
+          const [whole, fraction = '00'] = String(value ?? '0.00').split('.');
+          return whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\u00a0') + ',' + fraction + '\u00a0' + currency;
+        };
+        const fields = [
+          ['Код', a.code], ['Название', a.name], ['Тип', a.subtype], ['Принадлежность', a.scope],
+          ['Баланс', formatAmount(a.balance_rub)],
+          ['Кредитный лимит', a.credit_limit_cents > 0 ? formatAmount(a.credit_limit_rub) : '—']
+        ];
+        fields.forEach(([label, value]) => {
+          const cell = document.createElement('td');
+          cell.dataset.label = label;
+          cell.textContent = value;
+          tr.appendChild(cell);
+        });
+        const actions = document.createElement('td');
+        actions.dataset.label = 'Действия';
+        const archive = document.createElement('button');
+        archive.className = 'btn btn-secondary';
+        archive.type = 'button';
+        archive.textContent = 'Архив';
+        archive.setAttribute('aria-label', 'Архивировать счёт ' + a.name);
+        archive.addEventListener('click', () => archiveAccount(a.id));
+        actions.appendChild(archive);
+        tr.appendChild(actions);
         tbody.appendChild(tr);
-
       });
-
     }
 
     function populateSelects() {
@@ -12563,7 +13050,7 @@ self.addEventListener('fetch', (event) => {
 
       try {
 
-        const res = await fetch('/api/obligations', { headers: authHeaders() });
+        const res = await fetch('/api/obligations?month=' + encodeURIComponent(currentSelectedMonth), { headers: authHeaders() });
 
         if (!res.ok) return;
 
@@ -12595,11 +13082,11 @@ self.addEventListener('fetch', (event) => {
 
             </div>
 
-            <span class="badge" style="background: #5b21b6; color: #ddd6fe;">${data.month_year}</span>
+            <span class="badge" style="background: #5b21b6; color: #ddd6fe;">${formatMonthRu(data.selected_month || currentSelectedMonth)}</span>
 
           </div>
 
-          <table>
+          <table class="obligations-table">
 
             <thead>
 
@@ -12643,17 +13130,17 @@ self.addEventListener('fetch', (event) => {
 
             <tr>
 
-              <td><strong>до ${o.due_day}-го</strong></td>
+              <td data-label="Срок"><strong>до ${o.due_day}-го</strong></td>
 
-              <td><strong>${o.name}</strong>${o.note ? `<br><small style="color:var(--text-muted);">${o.note}</small>` : ''}</td>
+              <td data-label="Платеж"><strong>${escapeHtml(o.name)}</strong>${o.note ? `<br><small style="color:var(--text-muted);">${escapeHtml(o.note)}</small>` : ''}</td>
 
-              <td style="font-weight: 700; font-size: 15px;">${o.amount_rub} ₽</td>
+              <td data-label="Сумма" style="font-weight: 700; font-size: 15px;">${o.amount_rub} ₽</td>
 
-              <td>${o.category_icon} ${o.category_name}</td>
+              <td data-label="Категория">${o.category_icon} ${escapeHtml(o.category_name)}</td>
 
-              <td>${statusBadge}</td>
+              <td data-label="Статус">${statusBadge}</td>
 
-              <td>
+              <td data-label="Действия">
 
                 <div style="display:flex; gap:6px;">
 
@@ -12739,7 +13226,7 @@ self.addEventListener('fetch', (event) => {
 
         headers: authHeaders(),
 
-        body: JSON.stringify({ obligation_id: obligationId })
+        body: JSON.stringify({ obligation_id: obligationId, month_year: currentSelectedMonth })
 
       });
 
@@ -12757,7 +13244,7 @@ self.addEventListener('fetch', (event) => {
 
         headers: authHeaders(),
 
-        body: JSON.stringify({ obligation_id: obligationId })
+        body: JSON.stringify({ obligation_id: obligationId, month_year: currentSelectedMonth })
 
       });
 
@@ -12777,7 +13264,7 @@ self.addEventListener('fetch', (event) => {
 
         headers: authHeaders(),
 
-        body: JSON.stringify({ obligation_id: obligationId })
+        body: JSON.stringify({ obligation_id: obligationId, month_year: currentSelectedMonth })
 
       });
 
@@ -13248,14 +13735,14 @@ self.addEventListener('fetch', (event) => {
           tbody.innerHTML = '';
           txs.forEach(t => {
             const tr = document.createElement('tr');
-            const postingSummary = t.postings.map(p => `${p.type === 'DEBIT' ? 'Дт' : 'Кт'} ${p.account_name} (${p.amount_rub} ₽)`).join('<br>');
+            const postingSummary = t.postings.map(p => `${p.type === 'DEBIT' ? 'Дт' : 'Кт'} ${escapeHtml(p.account_name)} (${p.amount_rub} ₽)`).join('<br>');
             const mainAmount = t.postings[0] ? t.postings[0].amount_rub + ' ₽' : '0.00 ₽';
-            const safeDesc = encodeURIComponent(t.description || '');
+            const safeDesc = encodeURIComponent(t.description || '').split(String.fromCharCode(39)).join('%27');
             const isExpense = (t.tx_type === 'EXPENSE');
             tr.innerHTML = `
               <td><strong>${t.tx_date}</strong></td>
-              <td><span class="badge ${isExpense ? 'badge-expense' : 'badge-income'}">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
-              <td>${t.description}</td>
+              <td><span class="badge ${isExpense ? 'badge-expense' : 'badge-income'}">${t.category_icon || '🏷️'} ${escapeHtml(t.category_name)}</span></td>
+              <td>${escapeHtml(t.description || '')}</td>
               <td style="font-size: 13px;">${postingSummary}</td>
               <td class="amount-val ${isExpense ? 'amount-expense' : 'amount-income'}" style="text-align: right; white-space: nowrap;">${isExpense ? '-' : '+'}${mainAmount}</td>
               <td style="text-align: right; white-space: nowrap;">
@@ -13278,12 +13765,12 @@ self.addEventListener('fetch', (event) => {
           recentTxs.forEach(t => {
             const tr = document.createElement('tr');
             const mainAmount = t.postings[0] ? t.postings[0].amount_rub + ' ₽' : '0.00 ₽';
-            const safeDesc = encodeURIComponent(t.description || '');
+            const safeDesc = encodeURIComponent(t.description || '').split(String.fromCharCode(39)).join('%27');
             const isExpense = (t.tx_type === 'EXPENSE');
             tr.innerHTML = `
               <td style="white-space: nowrap; font-size: 13px; color: var(--text-muted);">${t.tx_date}</td>
-              <td><span class="badge ${isExpense ? 'badge-expense' : 'badge-income'}" style="font-size: 12px;">${t.category_icon || '🏷️'} ${t.category_name}</span></td>
-              <td style="font-weight: 500; font-size: 14px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.description}</td>
+              <td><span class="badge ${isExpense ? 'badge-expense' : 'badge-income'}" style="font-size: 12px;">${t.category_icon || '🏷️'} ${escapeHtml(t.category_name)}</span></td>
+              <td style="font-weight: 500; font-size: 14px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.description || '')}</td>
               <td class="amount-val ${isExpense ? 'amount-expense' : 'amount-income'}" style="text-align: right; white-space: nowrap;">${isExpense ? '-' : '+'}${mainAmount}</td>
               <td style="text-align: right; white-space: nowrap;">
                 <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 11px;" onclick="openEditTxModal('${t.id}')" title="Редактировать">✏️</button>
@@ -13579,19 +14066,19 @@ self.addEventListener('fetch', (event) => {
 
       if (mainAcc && parseFloat(mainCard) > 0) {
 
-        balances.push({ account_id: mainAcc.id, balance_cents: Math.round(parseFloat(mainCard) * 100) });
+        balances.push({ account_id: mainAcc.id, balance_rub: String(mainCard) });
 
       }
 
       if (wifeAcc && parseFloat(wifeCard) > 0) {
 
-        balances.push({ account_id: wifeAcc.id, balance_cents: Math.round(parseFloat(wifeCard) * 100) });
+        balances.push({ account_id: wifeAcc.id, balance_rub: String(wifeCard) });
 
       }
 
       if (cashAcc && parseFloat(cash) > 0) {
 
-        balances.push({ account_id: cashAcc.id, balance_cents: Math.round(parseFloat(cash) * 100) });
+        balances.push({ account_id: cashAcc.id, balance_rub: String(cash) });
 
       }
 
@@ -13601,9 +14088,9 @@ self.addEventListener('fetch', (event) => {
 
           account_id: credAcc.id,
 
-          balance_cents: Math.round(parseFloat(credDebt) * 100),
+          balance_rub: String(credDebt),
 
-          credit_limit_cents: Math.round(parseFloat(credLimit) * 100)
+          credit_limit_rub: String(credLimit)
 
         });
 
@@ -13617,7 +14104,7 @@ self.addEventListener('fetch', (event) => {
 
           name: oblName,
 
-          amount_cents: Math.round(parseFloat(oblAmount) * 100),
+          amount_rub: String(oblAmount),
 
           due_day: oblDay,
 
@@ -13664,6 +14151,32 @@ self.addEventListener('fetch', (event) => {
       }
 
     }
+
+    const financialFetch = window.fetch.bind(window);
+    const commandRoutes = new Set(['/api/goals/contribute','/api/debts/pay','/api/envelopes/deposit','/api/envelopes/withdraw','/api/envelopes/transfer']);
+    window.fetch = async function financialCommandFetch(resource, options) {
+      const route = typeof resource === 'string' ? resource.split('?')[0] : '';
+      let key = null;
+      if (commandRoutes.has(route) && options?.method === 'POST' && typeof options.body === 'string') {
+        const payload = JSON.parse(options.body);
+        if (!payload.idempotency_key) {
+          const fingerprint = route + ':' + options.body;
+          const previous = JSON.parse(sessionStorage.getItem('ffos_pending_command') || 'null');
+          key = previous?.fingerprint === fingerprint ? previous.key : crypto.randomUUID();
+          sessionStorage.setItem('ffos_pending_command', JSON.stringify({ fingerprint, key }));
+          options = { ...options, body: JSON.stringify({ ...payload, idempotency_key: key }) };
+        }
+      }
+      const response = await financialFetch(resource, options);
+      if (key && response.ok) {
+        const result = await response.clone().json();
+        if (result.status === 'success') {
+          const pending = JSON.parse(sessionStorage.getItem('ffos_pending_command') || 'null');
+          if (pending?.key === key) sessionStorage.removeItem('ffos_pending_command');
+        }
+      }
+      return response;
+    };
 
     let currentPreviewItems = [];
 
@@ -13777,11 +14290,11 @@ self.addEventListener('fetch', (event) => {
 
         tr.innerHTML = `
 
-          <td>${item.date}</td>
+          <td>${escapeHtml(item.date)}</td>
 
           <td>${dirBadge}</td>
 
-          <td>${item.description}</td>
+          <td>${escapeHtml(item.description)}</td>
 
           <td>
 
@@ -13789,7 +14302,7 @@ self.addEventListener('fetch', (event) => {
 
               <option value="">Без категории</option>
 
-              ${categoryData ? categoryData.map(c => `<option value="${c.id}" ${c.id === item.category_id ? 'selected' : ''}>${c.name}</option>`).join('') : ''}
+              ${categoryData ? (categoryData.flat || []).map(c => `<option value="${c.id}" ${c.id === item.category_id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('') : ''}
 
             </select>
 
@@ -13849,9 +14362,11 @@ self.addEventListener('fetch', (event) => {
 
         const data = await res.json();
 
-        if (data.status === 'success') {
+        if (res.ok && ['success', 'partial'].includes(data.status)) {
 
-          alert(`Успешно импортировано операций: ${data.imported_count} (пропущено дубликатов: ${data.skipped_count})`);
+          alert(`Импортировано: ${data.imported_count}; дубликатов: ${data.skipped_count}; ошибок: ${data.error_count || 0}.` +
+            ((data.errors || []).length ? String.fromCharCode(10) + data.errors.map(e => `Строка ${e.line_num ?? '?'}: ${e.message}`).join(String.fromCharCode(10)) : '') +
+            (data.identity_warning ? String.fromCharCode(10) + data.identity_warning : ''));
 
           currentPreviewItems = [];
 
@@ -13937,7 +14452,7 @@ self.addEventListener('fetch', (event) => {
 
             const catLabel = p.category_name ? ` · 🏷️ ${p.category_name}` : '';
 
-            const accLabel = p.account_name ? ` · 💳 ${p.account_name}` : '';
+            const accLabel = p.account_name ? ` · 💳 ${escapeHtml(p.account_name)}` : '';
 
             previewEl.innerHTML = `⚡ <strong>Распознано:</strong> ${p.amount_rub} ₽ (${dirLabel}${catLabel}${accLabel}) — <em>"${p.description}"</em>`;
 
@@ -14182,7 +14697,7 @@ self.addEventListener('fetch', (event) => {
 
           const accText = g.account_name 
 
-            ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">🏦 Счет: ${g.account_name}</div>`
+            ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">🏦 Счет: ${escapeHtml(g.account_name)}</div>`
 
             : '';
 
@@ -14200,7 +14715,7 @@ self.addEventListener('fetch', (event) => {
 
                     <div>
 
-                      <div style="font-weight: 700; font-size: 16px; color: var(--text);">${g.name}</div>
+                      <div style="font-weight: 700; font-size: 16px; color: var(--text);">${escapeHtml(g.name)}</div>
 
                       ${dateText}
 
@@ -14244,7 +14759,7 @@ self.addEventListener('fetch', (event) => {
 
                   ${accText}
 
-                  ${g.note ? `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">💬 ${g.note}</div>` : ''}
+                  ${g.note ? `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">💬 ${escapeHtml(g.note)}</div>` : ''}
 
                 </div>
 
@@ -14332,7 +14847,7 @@ self.addEventListener('fetch', (event) => {
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
 
-              <span style="font-size: 13px; font-weight: 600; color: var(--text);">${g.icon || '🎯'} ${g.name}</span>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text);">${g.icon || '🎯'} ${escapeHtml(g.name)}</span>
 
               <div style="display: flex; align-items: center; gap: 8px;">
 
@@ -14747,7 +15262,7 @@ self.addEventListener('fetch', (event) => {
         if (urgentBanner && urgentText) {
           if (allDebtsData.has_urgent_card_payment) {
             urgentBanner.classList.remove('hidden');
-            urgentText.innerHTML = `<strong>Срочное внимание по кредитным картам семьи!</strong> Приближается срок платежа или допущена просрочка (карт с платежом: <strong>${allDebtsData.urgent_cards_count || 1}</strong>). Общий обязательный платеж: <strong>${allDebtsData.total_min_payments_rub || '0.00'} ₽</strong>. Внесите платежи вовремя, чтобы избежать штрафной неустойки 36% годовых и начисления процентов!`;
+            urgentText.innerHTML = `<strong>Срочное внимание по кредитным картам семьи!</strong> Приближается срок платежа или допущена просрочка (карт с платежом: <strong>${allDebtsData.urgent_cards_count || 1}</strong>). Общий обязательный платеж: <strong>${allDebtsData.total_min_payments_rub || '0.00'} ₽</strong>. Внесите платежи вовремя, чтобы избежать неожиданных начислений по условиям ваших договоров.`;
           } else {
             urgentBanner.classList.add('hidden');
           }
@@ -14771,6 +15286,7 @@ self.addEventListener('fetch', (event) => {
         container.innerHTML = debts.map(d => {
           const cfg = DEBT_SUBTYPE_CONFIG[d.subtype] || DEBT_SUBTYPE_CONFIG.LOAN;
           const isCard = d.subtype === 'CREDIT_CARD';
+          const currency = escapeHtml(d.currency || 'RUB');
           const fullDebtNum = parseFloat(d.debt_rub) || 0;
           const typeBadge = `<span class="badge" style="background:${cfg.badgeBg}; color:${cfg.badgeColor}; display: inline-flex; align-items: center; gap: 4px;">${cfg.icon} ${cfg.name}</span>`;
           const hasDebt = (d.debt_cents || 0) > 0;
@@ -14782,7 +15298,7 @@ self.addEventListener('fetch', (event) => {
               <div style="margin-top: 8px;">
                 <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
                   <span>Использовано лимита: <strong>${usedPct}%</strong></span>
-                  <span>Лимит: <strong>${d.credit_limit_rub || '0.00'} ₽</strong> | Доступно: <strong>${d.available_rub || '0.00'} ₽</strong></span>
+                  <span>Лимит: <strong>${d.credit_limit_rub || '0.00'} ${currency}</strong> | Доступно: <strong>${d.available_rub || '0.00'} ${currency}</strong></span>
                 </div>
                 <div class="progress-bar-bg" style="height: 6px;">
                   <div class="progress-bar-fill" style="width: ${usedPct}%; background: ${usedPct > 80 ? '#ef4444' : (usedPct > 50 ? '#f59e0b' : '#10b981')}; height: 100%;"></div>
@@ -14796,7 +15312,7 @@ self.addEventListener('fetch', (event) => {
             const b = d.banking;
             const statusColor = b.status_color === 'red' ? '#ef4444' : (b.status_color === 'yellow' ? '#f59e0b' : (b.status_color === 'green' ? '#10b981' : '#64748b'));
             const statusBg = b.status_color === 'red' ? 'rgba(239, 68, 68, 0.15)' : (b.status_color === 'yellow' ? 'rgba(245, 158, 11, 0.15)' : (b.status_color === 'green' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)'));
-            const statusBadge = `<span class="badge" style="background:${statusBg}; color:${statusColor}; border:1px solid ${statusColor}; font-weight:700; font-size:11px; padding:3px 8px;">${b.status_label || 'Активна'}</span>`;
+            const statusBadge = `<span class="badge" style="background:${statusBg}; color:${statusColor}; border:1px solid ${statusColor}; font-weight:700; font-size:11px; padding:3px 8px;">${escapeHtml(b.status_label) || 'Активна'}</span>`;
 
             cardBankingBlock = `
               <div style="background: var(--card-hover); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 12px; margin-top: 10px;">
@@ -14812,23 +15328,23 @@ self.addEventListener('fetch', (event) => {
 
                 <!-- Warning message -->
                 <div style="font-size: 12px; color: ${statusColor}; margin-bottom: 10px; line-height: 1.4; padding: 8px 12px; background: ${statusBg}; border-radius: 6px; border: 1px solid ${statusColor};">
-                  ${b.warning_message || 'Контроль платежей по кредитной карте активен.'}
+                  ${escapeHtml(b.warning_message) || 'Контроль платежей по кредитной карте активен.'}
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px;">
                   <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Обязательный мин. платеж:</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #fbbf24;">${b.min_payment_formatted || b.min_payment_rub || '0.00'} ₽</div>
-                    <div style="font-size: 10px; color: var(--text-muted);">${b.min_payment_percent || 3.0}% от суммы долга</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #fbbf24;">${b.min_payment_formatted ?? b.min_payment_rub ?? '—'} ${currency}</div>
+                    <div style="font-size: 10px; color: var(--text-muted);">${b.min_payment_percent ?? '—'}% от суммы долга</div>
                   </div>
                   <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Ставка банка вне грейса:</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #94a3b8;">${b.interest_rate_percent || 24.8}% <span style="font-size: 11px;">годовых</span></div>
-                    <div style="font-size: 10px; color: var(--text-muted);">0.0% в льготный период</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #94a3b8;">${b.interest_rate_percent ?? '—'}% <span style="font-size: 11px;">годовых</span></div>
+                    <div style="font-size: 10px; color: var(--text-muted);">Грейс действует только по условиям договора</div>
                   </div>
                   <div style="background: var(--card-hover); padding: 8px 10px; border-radius: 6px;">
                     <div style="font-size: 11px; color: var(--text-muted);">Неустойка за просрочку:</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #f87171;">${b.late_penalty_rate_percent || 36.0}% <span style="font-size: 11px;">годовых</span></div>
+                    <div style="font-size: 15px; font-weight: 700; color: #f87171;">${b.late_penalty_rate_percent ?? '—'}% <span style="font-size: 11px;">годовых</span></div>
                     <div style="font-size: 10px; color: var(--text-muted);">по договору Сбербанка</div>
                   </div>
                 </div>
@@ -14838,27 +15354,27 @@ self.addEventListener('fetch', (event) => {
                   <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
                     <div style="font-size: 12px; font-weight: 700; color: #fca5a5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;">
                       <span>⚠️ Расчет банковских штрафов при просрочке на 30 дней:</span>
-                      <span style="font-size: 13px; color: #ef4444; font-weight: 800;">+${b.simulation_30d_extra_rub || '0.00'} ₽ переплаты</span>
+                      <span style="font-size: 13px; color: #ef4444; font-weight: 800;">+${b.simulation_30d_extra_rub || '0.00'} ${currency} переплаты</span>
                     </div>
                     <div style="font-size: 11px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; line-height: 1.4;">
-                      <div>• Проценты по ставке (${b.interest_rate_percent || 24.8}%): <strong style="color:#f87171;">+${b.simulation_30d_interest_rub || '0.00'} ₽</strong></div>
-                      <div>• Неустойка банка (${b.late_penalty_rate_percent || 36.0}%): <strong style="color:#f87171;">+${b.simulation_30d_penalty_rub || '0.00'} ₽</strong></div>
+                      <div>• Проценты по ставке (${b.interest_rate_percent ?? '—'}%): <strong style="color:#f87171;">+${b.simulation_30d_interest_rub || '0.00'} ${currency}</strong></div>
+                      <div>• Неустойка банка (${b.late_penalty_rate_percent ?? '—'}%): <strong style="color:#f87171;">+${b.simulation_30d_penalty_rub || '0.00'} ${currency}</strong></div>
                     </div>
                     <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(239, 68, 68, 0.2); font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                       <span>Итого к оплате банку при просрочке:</span>
-                      <strong style="color: #fca5a5; font-size: 14px;">${b.simulation_30d_total_rub || '0.00'} ₽</strong>
+                      <strong style="color: #fca5a5; font-size: 14px;">${b.simulation_30d_total_rub || '0.00'} ${currency}</strong>
                     </div>
                   </div>
                 ` : ''}
 
                 <!-- Action buttons for this card -->
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                  ${hasDebt ? `
+                  ${hasDebt && b.min_payment_cents > 0 ? `
                     <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 10px; color: #fbbf24; border-color: rgba(251, 191, 36, 0.4);" onclick="openPayDebtModal('${d.id}', ${b.min_payment_rub || 0})">
-                      💳 Внести мин. платеж (${b.min_payment_formatted || b.min_payment_rub || '0.00'} ₽)
+                      💳 Внести мин. платеж (${b.min_payment_formatted ?? b.min_payment_rub ?? '—'} ${currency})
                     </button>
                     <button class="btn btn-danger" style="font-size: 12px; padding: 6px 10px;" onclick="openPayDebtModal('${d.id}', ${fullDebtNum})">
-                      💰 Закрыть весь долг (${d.debt_rub || '0.00'} ₽)
+                      💰 Закрыть весь долг (${d.debt_rub || '0.00'} ${currency})
                     </button>
                   ` : ''}
                   <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" onclick="openCardSettingsModal('${d.id}')">
@@ -14871,7 +15387,7 @@ self.addEventListener('fetch', (event) => {
 
           const obInfo = d.linked_obligation ? `
             <div style="font-size: 12px; color: #60a5fa; margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(59,130,246,0.1); padding: 6px 12px; border-radius: 6px;">
-              <span>📅 Привязан регулярный платеж: <strong>${d.linked_obligation.amount_rub || '0.00'} ₽</strong> (до ${d.linked_obligation.due_day}-го числа)</span>
+              <span>📅 Привязан регулярный платеж: <strong>${d.linked_obligation.amount_rub || '0.00'} ${currency}</strong> (до ${d.linked_obligation.due_day}-го числа)</span>
               ${d.linked_obligation.is_paid ? '<span class="badge" style="background:#065f46; color:#6ee7b7; font-size:10px;">Оплачен в этом месяце</span>' : '<span class="badge" style="background:#991b1b; color:#fca5a5; font-size:10px;">Ожидает оплаты</span>'}
             </div>
           ` : '';
@@ -14900,7 +15416,7 @@ self.addEventListener('fetch', (event) => {
                 <div style="background: var(--card-hover); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px;">
                   <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
                     <span>🚀 Стратегии: сколько платить, чтобы закрыть долг быстрее</span>
-                    <span style="font-size: 11px; color: var(--text-muted);">Расчет по договору Сбербанка (${d.banking.interest_rate_percent || 24.8}% APR)</span>
+                    <span style="font-size: 11px; color: var(--text-muted);">Расчётная модель (${d.banking.interest_rate_percent ?? 24.8}% APR), без новых покупок и комиссий</span>
                   </div>
 
                   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-bottom: 8px;">
@@ -14908,14 +15424,14 @@ self.addEventListener('fetch', (event) => {
                     ${graceSc && graceSc.is_active ? `
                       <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                          <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 2px;">💎 В льготный период (0% переплаты)</div>
+                          <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 2px;">💎 До указанной даты грейса</div>
                           <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
                             Срок: <strong style="color: var(--text);">${graceSc.days_left || 0} дн.</strong> (до ${graceSc.due_date || 'конца грейса'})<br>
-                            Переплата: <strong style="color: #34d399;">0.00 ₽</strong> (100% экономия)
+                            Переплата: <strong style="color: #34d399;">0.00 ${currency}</strong> по условному грейс-сценарию
                           </div>
                         </div>
                         <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #34d399; border-color: rgba(52,211,153,0.4);" onclick="openPayDebtModal('${d.id}', ${fullDebtNum}, 100)">
-                          Закрыть без процентов (${d.debt_rub || '0.00'} ₽)
+                          Погасить основной долг (${d.debt_rub || '0.00'} ${currency})
                         </button>
                       </div>
                     ` : ''}
@@ -14924,15 +15440,15 @@ self.addEventListener('fetch', (event) => {
                     ${minSc ? `
                       <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                          <div style="font-size: 11px; font-weight: 700; color: #fca5a5; margin-bottom: 2px;">⚠️ Мин. платеж (${minSc.payment_percent || 3.0}% от долга)</div>
+                          <div style="font-size: 11px; font-weight: 700; color: #fca5a5; margin-bottom: 2px;">⚠️ Мин. платеж (${minSc.payment_percent ?? 3.0}% от долга)</div>
                           <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
-                            Платеж: <strong style="color: #fbbf24;">${minSc.first_payment_rub || '0.00'} ₽/мес</strong> (${minSc.payment_percent || 3.0}%)<br>
-                            Срок: <strong style="color: #f87171;">${minSc.days_to_payoff || 0} дн.</strong> (${minSc.months_to_payoff || 0} мес.)<br>
-                            Переплата: <strong style="color: #ef4444;">+${minSc.total_interest_rub || '0.00'} ₽</strong>
+                            Платеж: <strong style="color: #fbbf24;">${minSc.first_payment_rub || '0.00'} ${currency}/мес</strong> (${minSc.payment_percent ?? 3.0}%)<br>
+                            Срок: <strong style="color: #f87171;">${minSc.paid_off ? minSc.days_to_payoff + ' дн.' : 'Не определён'}</strong> (${minSc.paid_off ? minSc.months_to_payoff + ' мес.' : 'остаток ' + minSc.remaining_rub})<br>
+                            Переплата: <strong style="color: #ef4444;">${minSc.total_interest_rub == null ? 'Не определена' : '+' + minSc.total_interest_rub + ' RUB'}</strong>
                           </div>
                         </div>
-                        <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #fbbf24; border-color: rgba(251,191,36,0.4);" onclick="openPayDebtModal('${d.id}', ${(minSc.first_payment_cents || 0) / 100}, ${minSc.payment_percent || 3.0})">
-                          Мин. платеж (${minSc.first_payment_rub || '0.00'} ₽)
+                        <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #fbbf24; border-color: rgba(251,191,36,0.4);" onclick="openPayDebtModal('${d.id}', ${(minSc.first_payment_cents || 0) / 100}, ${minSc.payment_percent ?? 3.0})">
+                          Мин. платеж (${minSc.first_payment_rub || '0.00'} ${currency})
                         </button>
                       </div>
                     ` : ''}
@@ -14943,13 +15459,13 @@ self.addEventListener('fetch', (event) => {
                         <div>
                           <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 2px;">⚡ ${a.label || 'Ускоренное погашение'}</div>
                           <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3;">
-                            Платеж: <strong style="color: var(--text);">${a.monthly_payment_rub || '0.00'} ₽/мес</strong> (${a.monthly_payment_percent || 0}%)<br>
+                            Платеж: <strong style="color: var(--text);">${a.monthly_payment_rub || '0.00'} ${currency}/мес</strong> (${a.monthly_payment_percent || 0}%)<br>
                             Срок: <strong style="color: #38bdf8;">${a.days || 0} дн.</strong> (${a.months || 0} мес.)<br>
-                            Экономия: <strong style="color: #34d399;">+${a.interest_savings_rub || '0.00'} ₽</strong>
+                            Экономия: <strong style="color: #34d399;">${a.interest_savings_rub == null ? 'Не определена' : '+' + a.interest_savings_rub + ' RUB'}</strong>
                           </div>
                         </div>
                         <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; margin-top: 6px; color: #38bdf8; border-color: rgba(56,189,248,0.4);" onclick="openPayDebtModal('${d.id}', ${(a.monthly_payment_cents || 0) / 100}, ${a.monthly_payment_percent || 0})">
-                          Платить ${a.monthly_payment_rub || '0.00'} ₽/мес
+                          Платить ${a.monthly_payment_rub || '0.00'} ${currency}/мес
                         </button>
                       </div>
                     `).join('')}
@@ -14959,7 +15475,7 @@ self.addEventListener('fetch', (event) => {
             }
           }
 
-          const safeName = encodeURIComponent(d.name || '');
+          const safeName = encodeURIComponent(d.name || '').split(String.fromCharCode(39)).join('%27');
 
           return `
             <div class="card" style="margin-bottom: 0; border-left: 4px solid ${hasDebt ? '#ef4444' : '#10b981'};">
@@ -14967,13 +15483,13 @@ self.addEventListener('fetch', (event) => {
                 <div>
                   <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <span style="font-size: 18px;">${cfg.icon}</span>
-                    <strong style="font-size: 16px; color: var(--text);">${d.name}</strong>
+                    <strong style="font-size: 16px; color: var(--text);">${escapeHtml(d.name)}</strong>
                     ${typeBadge}
                     ${scopeBadge}
                     <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">${d.code}</span>
                   </div>
                   <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
-                    Остаток задолженности: <strong style="color: ${hasDebt ? '#f87171' : '#34d399'}; font-size: 17px;">${d.debt_rub || '0.00'} ₽</strong>
+                    Остаток задолженности: <strong style="color: ${hasDebt ? '#f87171' : '#34d399'}; font-size: 17px;">${d.debt_rub || '0.00'} ${currency}</strong>
                   </div>
                   ${descInfo}
                 </div>
@@ -15017,7 +15533,7 @@ self.addEventListener('fetch', (event) => {
       document.getElementById('newDebtNotes').value = '';
       document.getElementById('newDebtMsg').innerHTML = '';
       
-      // Defaults according to Sberbank contract TP-1001
+      // Illustrative default rates; the grace due date must come from the user statement.
       const now = new Date();
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const yyyy = lastDayOfMonth.getFullYear();
@@ -15026,7 +15542,7 @@ self.addEventListener('fetch', (event) => {
       const defDueDate = `${yyyy}-${mm}-${dd}`;
 
       const elDue = document.getElementById('newDebtGraceDueDate');
-      if (elDue) elDue.value = defDueDate;
+      if (elDue) elDue.value = '';
       const elApr = document.getElementById('newDebtApr');
       if (elApr) elApr.value = '24.8';
       const elGrace = document.getElementById('newDebtGraceDays');
@@ -15175,7 +15691,7 @@ self.addEventListener('fetch', (event) => {
       const msgEl = document.getElementById('newDebtMsg');
 
       const interest_rate_percent = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtApr')?.value, 24.8) : 24.8;
-      const grace_period_days = (subtype === 'CREDIT_CARD') ? (parseInt(document.getElementById('newDebtGraceDays')?.value) || 120) : 120;
+      const grace_period_days = (subtype === 'CREDIT_CARD') ? Number(document.getElementById('newDebtGraceDays')?.value ?? 120) : 120;
       const grace_due_date = (subtype === 'CREDIT_CARD') ? (document.getElementById('newDebtGraceDueDate')?.value || null) : null;
       const min_payment_percent = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtMinPaymentPct')?.value, 3.0) : 3.0;
       const late_penalty_rate_percent = (subtype === 'CREDIT_CARD') ? parseMobileFloat(document.getElementById('newDebtLatePenaltyPct')?.value, 36.0) : 36.0;
@@ -15243,13 +15759,13 @@ self.addEventListener('fetch', (event) => {
 
       document.getElementById('cardSettingsAccId').value = card.id;
       document.getElementById('cardSettingsTitle').innerText = card.name;
-      document.getElementById('cardSettingsDebtBal').innerText = (card.debt_rub || '0.00') + ' ₽';
+      document.getElementById('cardSettingsDebtBal').innerText = (card.debt_rub || '0.00') + ' ' + (card.currency || 'RUB');
       document.getElementById('cardSettingsLimit').value = parseFloat(card.credit_limit_rub) || 0;
       document.getElementById('cardSettingsDueDate').value = b.grace_due_date || '';
-      document.getElementById('cardSettingsApr').value = b.interest_rate_percent || 24.8;
-      document.getElementById('cardSettingsGraceDays').value = b.grace_period_days || 120;
-      document.getElementById('cardSettingsMinPaymentPct').value = b.min_payment_percent || 3.0;
-      document.getElementById('cardSettingsLatePenaltyPct').value = b.late_penalty_rate_percent || 36.0;
+      document.getElementById('cardSettingsApr').value = b.interest_rate_percent ?? 24.8;
+      document.getElementById('cardSettingsGraceDays').value = b.grace_period_days ?? 120;
+      document.getElementById('cardSettingsMinPaymentPct').value = b.min_payment_percent ?? 3.0;
+      document.getElementById('cardSettingsLatePenaltyPct').value = b.late_penalty_rate_percent ?? 36.0;
       document.getElementById('cardSettingsMsg').innerHTML = '';
 
       document.getElementById('modalCardSettings').classList.remove('hidden');
@@ -15263,12 +15779,15 @@ self.addEventListener('fetch', (event) => {
       const accId = document.getElementById('cardSettingsAccId').value;
       const limitRub = parseFloat(document.getElementById('cardSettingsLimit').value) || 0;
       const dueDate = document.getElementById('cardSettingsDueDate').value || null;
-      const apr = parseFloat(document.getElementById('cardSettingsApr').value) || 24.8;
-      const graceDays = parseInt(document.getElementById('cardSettingsGraceDays').value) || 120;
-      const minPct = parseFloat(document.getElementById('cardSettingsMinPaymentPct').value) || 3.0;
-      const penaltyPct = parseFloat(document.getElementById('cardSettingsLatePenaltyPct').value) || 36.0;
+      const apr = Number(document.getElementById('cardSettingsApr').value);
+      const graceDays = Number(document.getElementById('cardSettingsGraceDays').value);
+      const minPct = Number(document.getElementById('cardSettingsMinPaymentPct').value);
+      const penaltyPct = Number(document.getElementById('cardSettingsLatePenaltyPct').value);
       const msgEl = document.getElementById('cardSettingsMsg');
 
+      if (![limitRub, apr, graceDays, minPct, penaltyPct].every(Number.isFinite) || [limitRub, apr, graceDays, minPct, penaltyPct].some(v => v < 0) || !Number.isInteger(graceDays)) {
+        msgEl.textContent = 'Укажите неотрицательные конечные значения и целое число дней.'; return;
+      }
       try {
         const res = await fetch('/api/debts/update-card-settings', {
           method: 'POST',
@@ -15330,7 +15849,7 @@ self.addEventListener('fetch', (event) => {
         allDebtsData.debts.forEach(d => {
           const opt = document.createElement('option');
           opt.value = d.id;
-          opt.innerText = `${d.name} (долг: ${d.debt_rub} ₽)`;
+          opt.innerText = `${d.name} (долг: ${d.debt_rub} ${d.currency || 'RUB'})`;
           if (selectedLiabilityId && d.id === selectedLiabilityId) opt.selected = true;
           liabSel.appendChild(opt);
         });
@@ -15342,7 +15861,7 @@ self.addEventListener('fetch', (event) => {
         overviewData.accounts.filter(a => a.type === 'ASSET' && (a.subtype === 'CHECKING' || a.subtype === 'CASH' || a.subtype === 'SAVINGS' || a.subtype === 'DEBIT_CARD')).forEach(a => {
           const opt = document.createElement('option');
           opt.value = a.id;
-          opt.innerText = `${a.name} (${a.scope || a.ownership_scope || ''}, ${a.balance_rub} ₽)`;
+          opt.innerText = `${a.name} (${a.scope || a.ownership_scope || ''}, ${a.balance_rub} ${a.currency || 'RUB'})`;
           srcSel.appendChild(opt);
         });
       }
@@ -15406,9 +15925,9 @@ self.addEventListener('fetch', (event) => {
       const d = allDebtsData.debts.find(x => x.id === liabId);
       if (!d) return;
       const curEl = document.getElementById('payDebtCurrentAmount');
-      if (curEl) curEl.innerText = d.debt_rub + ' ₽';
+      if (curEl) curEl.innerText = d.debt_rub + ' ' + (d.currency || 'RUB');
       const limEl = document.getElementById('payDebtLimitAmount');
-      if (limEl) limEl.innerText = (d.credit_limit_rub || '0.00') + ' ₽';
+      if (limEl) limEl.innerText = (d.credit_limit_rub || '0.00') + ' ' + (d.currency || 'RUB');
 
       // Auto-select category corresponding to debt subtype
       const catSel = document.getElementById('payDebtCategory');
@@ -15481,91 +16000,57 @@ self.addEventListener('fetch', (event) => {
       onPayDebtAmountRubChanged();
     }
 
-    function updatePayDebtForecast() {
-      const box = document.getElementById('payDebtForecastBox');
-      if (!box) return;
-      const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
-      const d = (allDebtsData && allDebtsData.debts) ? allDebtsData.debts.find(x => x.id === liabId) : null;
-      const debtRub = d ? (parseFloat(d.debt_rub) || 0) : 0;
-      const payRub = parseFloat(document.getElementById('payDebtAmount')?.value) || 0;
-
-      const daysEl = document.getElementById('payDebtForecastDays');
-      const dateEl = document.getElementById('payDebtForecastDate');
-      const intEl = document.getElementById('payDebtForecastInterest');
-      const savEl = document.getElementById('payDebtForecastSavings');
+    let debtForecastSequence = 0;
+    let debtForecastController = null;
+    async function updatePayDebtForecast() {
+      const sequence = ++debtForecastSequence;
+      if (debtForecastController) debtForecastController.abort();
+      const ids = ['payDebtForecastDays','payDebtForecastDate','payDebtForecastInterest','payDebtForecastSavings'];
+      const fields = ids.map(id => document.getElementById(id));
       const statusEl = document.getElementById('payDebtForecastStatus');
-
-      if (debtRub <= 0 || payRub <= 0) {
-        if (daysEl) daysEl.innerText = '—';
-        if (dateEl) dateEl.innerText = '—';
-        if (intEl) intEl.innerText = '—';
-        if (savEl) savEl.innerText = '—';
-        if (statusEl) statusEl.innerText = '';
+      const liabId = document.getElementById('payDebtLiabilityAccount')?.value;
+      const debt = allDebtsData?.debts?.find(item => item.id === liabId);
+      const amount = document.getElementById('payDebtAmount')?.value;
+      const numericAmount = parseMobileFloat(amount, NaN);
+      const clear = () => fields.forEach(el => { if (el) el.innerText = '—'; });
+      clear();
+      if (!debt || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+        if (statusEl) statusEl.textContent = ''; return;
+      }
+      if (numericAmount > Number(debt.debt_rub)) {
+        if (statusEl) statusEl.textContent = 'Сумма превышает текущий основной долг.'; return;
+      }
+      if (numericAmount === Number(debt.debt_rub)) {
+        if (fields[0]) fields[0].innerText = 'Полное погашение основного долга';
+        if (fields[1]) fields[1].innerText = 'Сегодня';
+        if (statusEl) statusEl.textContent = 'Платёж закрывает учтённый основной долг. Проценты по выписке учитываются отдельно.';
         return;
       }
-
-      const apr = (d && d.banking && d.banking.interest_rate_percent) ? parseFloat(d.banking.interest_rate_percent) : 24.8;
-      const monthlyRate = (apr / 100.0) / 12.0;
-
-      let baseInterest = 0;
-      let dBase = debtRub;
-      let mBase = 0;
-      while (dBase > 0 && mBase < 360) {
-        mBase++;
-        const intr = dBase * monthlyRate;
-        baseInterest += intr;
-        const minP = Math.max(150, dBase * 0.03);
-        const effP = Math.min(dBase + intr, minP < intr + 10 ? intr + 10 : minP);
-        dBase -= (effP - intr);
-      }
-
-      if (payRub >= debtRub) {
-        if (daysEl) daysEl.innerText = '0 дней (полное погашение)';
-        if (dateEl) dateEl.innerText = 'Сегодня';
-        if (intEl) intEl.innerText = '0.00 ₽ (0%)';
-        if (savEl) savEl.innerText = '+' + baseInterest.toFixed(2) + ' ₽ (100% экономия)';
-        if (statusEl) statusEl.innerHTML = '<span style="color:#34d399; font-weight:700;">✅ Полное закрытие</span>';
-        return;
-      }
-
-      let dSim = debtRub;
-      let months = 0;
-      let totalInt = 0;
-      let maxMonths = 360;
-      let isTrapped = false;
-
-      while (dSim > 0 && months < maxMonths) {
-        months++;
-        const intr = dSim * monthlyRate;
-        totalInt += intr;
-        if (payRub <= intr && dSim > 0) {
-          isTrapped = true;
-          break;
+      debtForecastController = new AbortController();
+      if (statusEl) statusEl.textContent = 'Расчёт сценария ежемесячных платежей…';
+      try {
+        const query = new URLSearchParams({liability_account_id: liabId, custom_payment_rub: amount});
+        const response = await fetch('/api/debts/calculate-payoff?' + query, {headers: authHeaders(), signal: debtForecastController.signal});
+        const data = await response.json();
+        if (sequence !== debtForecastSequence) return;
+        if (!response.ok || data.status === 'error') throw new Error(data.message || 'Расчёт недоступен');
+        const result = data.custom_scenario;
+        if (!result) throw new Error('Сценарий не получен');
+        if (result.paid_off) {
+          if (fields[0]) fields[0].innerText = result.months_to_payoff + ' мес. ≈ ' + result.days_to_payoff + ' дн.';
+          if (fields[1]) fields[1].innerText = result.payoff_date || '—';
+          if (fields[2]) fields[2].innerText = result.total_interest_rub + ' RUB';
+          if (fields[3]) fields[3].innerText = result.interest_savings_rub == null ? 'Не определена' : result.interest_savings_rub + ' RUB';
+          if (statusEl) statusEl.textContent = 'Оценка при таком платеже каждый месяц; APR/12, HALF_UP, без новых покупок и комиссий.';
+        } else if (statusEl) {
+          statusEl.textContent = result.status === 'NON_AMORTIZING'
+            ? 'Платёж не уменьшает долг после расчётных процентов. Конечный срок не определён.'
+            : 'За 360 расчётных месяцев долг не погашен. Остаток: ' + result.remaining_rub + ' RUB. Конечный срок не определён.';
         }
-        const princ = Math.min(dSim, payRub - intr);
-        dSim -= princ;
+      } catch (error) {
+        if (error.name === 'AbortError' || sequence !== debtForecastSequence) return;
+        clear(); if (statusEl) statusEl.textContent = error.message;
       }
-
-      if (isTrapped) {
-        if (daysEl) daysEl.innerText = 'Бесконечно ⚠️';
-        if (dateEl) dateEl.innerText = 'Платеж меньше ежемесячных процентов!';
-        if (intEl) intEl.innerText = 'Долг не закроется';
-        if (savEl) savEl.innerText = 'Увеличьте сумму платежа';
-        if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444; font-weight:700;">⚠️ Ловушка</span>';
-        return;
-      }
-
-      const days = months * 30;
-      const now = new Date();
-      now.setDate(now.getDate() + days);
-      const targetDateStr = now.toISOString().slice(0, 10);
-      const savings = Math.max(0, baseInterest - totalInt);
-
-      if (daysEl) daysEl.innerText = days + ' дн. (' + months + ' мес.)';
-      if (dateEl) dateEl.innerText = targetDateStr;
-      if (intEl) intEl.innerText = totalInt.toFixed(2) + ' ₽';
-      if (savEl) savEl.innerText = '+' + savings.toFixed(2) + ' ₽';
-      if (statusEl) statusEl.innerHTML = '<span style="color:#38bdf8; font-weight:700;">⚡ Расчет готов</span>';
     }
 
     async function submitPayDebt() {
@@ -15720,7 +16205,7 @@ self.addEventListener('fetch', (event) => {
 
           const accInfo = e.linked_account_name ? `
 
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">🏦 Счет хранения: ${e.linked_account_name}</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">🏦 Счет хранения: ${escapeHtml(e.linked_account_name)}</div>
 
           ` : '';
 
@@ -15736,7 +16221,7 @@ self.addEventListener('fetch', (event) => {
 
                   <div>
 
-                    <strong style="font-size: 16px; color: var(--text);">${e.name}</strong>
+                    <strong style="font-size: 16px; color: var(--text);">${escapeHtml(e.name)}</strong>
 
                     <div style="font-size: 11px; color: var(--text-muted);">${e.category_name || 'Без категории'}</div>
 
@@ -15766,7 +16251,7 @@ self.addEventListener('fetch', (event) => {
 
               ${accInfo}
 
-              ${e.note ? `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">💬 ${e.note}</div>` : ''}
+              ${e.note ? `<div style="font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 6px;">💬 ${escapeHtml(e.note)}</div>` : ''}
 
               <div style="display: flex; gap: 6px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
 
@@ -15836,7 +16321,7 @@ self.addEventListener('fetch', (event) => {
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
 
-              <span style="font-size: 13px; font-weight: 600; color: var(--text);">${e.icon || '✉️'} ${e.name}</span>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text);">${e.icon || '✉️'} ${escapeHtml(e.name)}</span>
 
               <span style="font-size: 13px; font-weight: 700; color: #34d399;">${e.current_amount_rub} ₽</span>
 
@@ -16922,6 +17407,106 @@ self.addEventListener('fetch', (event) => {
     window.updatePayDebtForecast = updatePayDebtForecast;
 
     window.addEventListener('load', loadStatus);
+
+    function scrollNavigation(delta) {
+      document.getElementById('navTabsBar').scrollBy({ left: delta, behavior: 'smooth' });
+    }
+
+    /* ── Nav Tabs Drag-to-Scroll + Wheel + Chevron Visibility ── */
+    (function initNavDragScroll() {
+      const navTabs = document.getElementById('navTabsBar');
+      if (!navTabs) return;
+      const positionKey = 'ffos_nav_scroll_left';
+      let pointerId = null, startX = 0, scrollLeftStart = 0;
+      let dragging = false, suppressClickUntil = 0, restored = false;
+
+      navTabs.addEventListener('pointerdown', function(e) {
+        // Touch keeps the browser's native pan, momentum and cancellation.
+        if (e.pointerType === 'touch' || !e.isPrimary || e.button !== 0) return;
+        pointerId = e.pointerId;
+        startX = e.clientX;
+        scrollLeftStart = navTabs.scrollLeft;
+        dragging = false;
+        suppressClickUntil = 0;
+      });
+      document.addEventListener('pointermove', function(e) {
+        if (e.pointerId !== pointerId) return;
+        const delta = e.clientX - startX;
+        if (!dragging && Math.abs(delta) < 6) return;
+        if (!dragging) {
+          dragging = true;
+          navTabs.classList.add('is-dragging');
+          navTabs.setPointerCapture(pointerId);
+        }
+        e.preventDefault();
+        navTabs.scrollLeft = scrollLeftStart - delta;
+      }, { passive: false });
+
+      function finishDrag(e) {
+        if (pointerId === null || (e && e.pointerId !== undefined && e.pointerId !== pointerId)) return;
+        const releasedPointer = pointerId;
+        if (dragging) suppressClickUntil = performance.now() + 500;
+        pointerId = null;
+        dragging = false;
+        navTabs.classList.remove('is-dragging');
+        if (navTabs.hasPointerCapture(releasedPointer)) navTabs.releasePointerCapture(releasedPointer);
+        savePosition();
+      }
+      document.addEventListener('pointerup', finishDrag);
+      document.addEventListener('pointercancel', finishDrag);
+      navTabs.addEventListener('lostpointercapture', finishDrag);
+      window.addEventListener('blur', () => finishDrag());
+      navTabs.addEventListener('click', function(e) {
+        if (performance.now() < suppressClickUntil && e.detail !== 0) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          suppressClickUntil = 0;
+        }
+      }, true);
+      navTabs.addEventListener('dragstart', e => e.preventDefault());
+      navTabs.addEventListener('wheel', function(e) {
+        if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        const multiplier = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? navTabs.clientWidth : 1);
+        const delta = e.deltaY * multiplier;
+        const maxScroll = navTabs.scrollWidth - navTabs.clientWidth;
+        const next = Math.max(0, Math.min(maxScroll, navTabs.scrollLeft + delta));
+        // At either edge the document must remain vertically scrollable.
+        if (Math.abs(next - navTabs.scrollLeft) > 0.5) {
+          e.preventDefault();
+          navTabs.scrollLeft = next;
+        }
+      }, { passive: false });
+
+      function savePosition() {
+        if (!restored) return;
+        try { sessionStorage.setItem(positionKey, String(navTabs.scrollLeft)); } catch (e) {}
+      }
+      function updateChevrons() {
+        if (!navTabs.clientWidth) return;
+        if (!restored) {
+          restored = true;
+          try {
+            const saved = Number(sessionStorage.getItem(positionKey));
+            if (Number.isFinite(saved) && saved > 0) navTabs.scrollTo({ left: saved, behavior: 'instant' });
+          } catch (e) {}
+        }
+        const sl = document.getElementById('navScrollLeft');
+        const sr = document.getElementById('navScrollRight');
+        const maxScroll = navTabs.scrollWidth - navTabs.clientWidth;
+        if (sl) {
+          sl.disabled = navTabs.scrollLeft <= 1;
+          sl.setAttribute('aria-disabled', String(sl.disabled));
+        }
+        if (sr) {
+          sr.disabled = navTabs.scrollLeft >= maxScroll - 1;
+          sr.setAttribute('aria-disabled', String(sr.disabled));
+        }
+      }
+      navTabs.addEventListener('scroll', () => { updateChevrons(); savePosition(); }, { passive: true });
+      window.addEventListener('resize', updateChevrons);
+      if (window.ResizeObserver) new ResizeObserver(updateChevrons).observe(navTabs);
+      updateChevrons();
+    })();
 
   </script>
 

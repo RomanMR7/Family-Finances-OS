@@ -216,7 +216,16 @@ class TestStage12DebtTypesCreation(unittest.TestCase):
         found = any(d["id"] == acc_id for d in data_get["debts"])
         self.assertTrue(found, "Created auto loan must appear in /api/debts")
 
-        # Archive debt
+        # A debt with outstanding principal cannot disappear from net worth.
+        before_net_worth = self.ledger.get_financial_overview()["family_net_worth_cents"]
+        status_reject, reject = self._execute_http("POST", "/api/debts/archive", {"account_id": acc_id}, token=self.token)
+        self.assertEqual(status_reject, 400)
+        self.assertEqual(reject["status"], "error")
+        self.assertEqual(self.ledger.get_financial_overview()["family_net_worth_cents"], before_net_worth)
+        source = self.ledger.create_account("Payoff source", "ASSET", "CHECKING", "COMMON", initial_balance_cents=85000000)
+        self.ledger.record_debt_repayment(source.id, acc_id, 85000000)
+
+        # A paid-off debt can be archived and its linked obligation deactivated.
         status_arch, resp_arch = self._execute_http(
             "POST", "/api/debts/archive",
             {"account_id": acc_id},

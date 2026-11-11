@@ -8,6 +8,15 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 
 
+def require_cents(value: int, *, allow_zero: bool = False) -> int:
+    """Money in the ledger is an exact integer, never a bool or a float."""
+    if type(value) is not int or value < (0 if allow_zero else 1):
+        raise ValueError("Сумма должна быть целым числом копеек" + (" не меньше нуля." if allow_zero else " больше нуля."))
+    if value > 9_007_199_254_740_991:
+        raise ValueError("Сумма превышает безопасный диапазон денежных значений.")
+    return value
+
+
 def rubles_to_cents(amount_rub: float | str | Decimal) -> int:
     """
     Safely convert rubles to integer cents without floating-point inaccuracies.
@@ -16,6 +25,8 @@ def rubles_to_cents(amount_rub: float | str | Decimal) -> int:
     """
     if amount_rub is None:
         return 0
+    if isinstance(amount_rub, bool):
+        raise ValueError("Логическое значение не является денежной суммой.")
     if isinstance(amount_rub, (int, float)):
         dec = Decimal(str(amount_rub))
     else:
@@ -24,11 +35,16 @@ def rubles_to_cents(amount_rub: float | str | Decimal) -> int:
             return 0
         try:
             dec = Decimal(s)
-            if not dec.is_finite():
-                return 0
         except Exception:
-            return 0
-    cents = (dec * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            raise ValueError("Некорректная денежная сумма.") from None
+    if not dec.is_finite():
+        raise ValueError("Сумма должна быть конечным числом.")
+    try:
+        cents = (dec * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    except Exception:
+        raise ValueError("Сумма превышает допустимую точность.") from None
+    if abs(cents) > 9_007_199_254_740_991:
+        raise ValueError("Сумма превышает безопасный диапазон денежных значений.")
     return int(cents)
 
 

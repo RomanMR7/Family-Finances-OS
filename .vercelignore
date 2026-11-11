@@ -1,0 +1,13 @@
+artifacts/
+family_finances_os/data/
+family_finances_os/test_*.py
+family_finances_os/temp_*
+family_finances_os/guardian_quality_gate_report.json
+.env*
+.git/
+**/__pycache__/
+**/*.db
+**/*.db-*
+**/*.db.enc*
+**/*.bak
+**/*.log
