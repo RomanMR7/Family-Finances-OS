@@ -7,7 +7,7 @@ import io
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\User\Desktop\Таблицы")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from family_finances_os.db import EncryptedDatabaseStorage, init_database, get_connection
 from family_finances_os.auth import AuthService
@@ -197,7 +197,7 @@ class TestGuardian1TransactionsCategories(unittest.TestCase):
         self.assertEqual(float(res["parsed"]["amount_rub"]), 450.0)
 
     def test_04_html_and_css_contract(self):
-        with open(r"C:\Users\User\Desktop\Таблицы\family_finances_os\web_server.py", "r", encoding="utf-8") as f:
+        with Path(__file__).with_name("web_server.py").open("r", encoding="utf-8") as f:
             content = f.read()
 
         # Check required functions
